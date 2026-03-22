@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+
+# IDE / local workspace
+.vscode/
+*.code-workspace
+
+# Logs / runtime artifacts
+*.log
+streamlit_smoke_*.log
+desktop_smoke_*.log
+
+# Build / test caches
+.pytest_cache/
+.mypy_cache/
+
+# Local data outputs and large local datasets
+data/raw/
+data/results/
+data/bin/
+
+# Legacy backup tree (kept locally, not tracked by default)
+legacy/

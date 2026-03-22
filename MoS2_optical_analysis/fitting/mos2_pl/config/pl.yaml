@@ -1,0 +1,20 @@
+# Photoluminescence (PL) analysis configuration
+models:
+  - pl_single_gaussian
+  - pl_single_pvoigt
+selection_metric: hybrid
+fit:
+  x_min: 520.0
+  x_max: 780.0
+  compare_x_min: 520.0
+  compare_x_max: 780.0
+  pl_center_init: 650.0
+  pl_center_min: 560.0
+  pl_center_max: 760.0
+  pl_sigma_min: 1.0
+  pl_sigma_max: 40.0
+
+report_export:
+  include_selected_fitted_y: false
+  include_all_candidates: true
+  include_candidate_fitted_y: false

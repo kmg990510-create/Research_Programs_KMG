@@ -1,0 +1,63 @@
+# Streamlit graph/UI defaults for Raman report viewers
+
+sample_comparison:
+  default_report_count: 4
+  status_filter:
+    enabled_default: true
+    allowed_default: ["valid", "attention"]
+  coefficients:
+    s_e: -6.48
+    s_a: -1.21
+    d_e: -0.33
+    d_a: -2.22
+  center_metric_default: "mean"
+  error_metric_default: "std"
+  overlay_scatter_default: true
+  absolute_isolines:
+    show_default: true
+    density_default: "light"
+    steps:
+      light:
+        eps_step: 0.1
+        n_step: 0.1
+      normal:
+        eps_step: 0.1
+        n_step: 0.1
+
+all_spectra_viewer:
+  x_window:
+    fallback_min: 340.0
+    fallback_max: 430.0
+    peak_padding: 18.0
+  fit_curve:
+    smooth_factor: 5
+    max_points: 4000
+  style:
+    raw_marker_color: "#666666"
+    raw_marker_size: 6
+    raw_marker_opacity: 0.6
+    fit_line_color: "#FF1E1E"
+    fit_line_width: 4.0
+    baseline_color: "#111111"
+    baseline_width: 2.0
+    baseline_dash: "dash"
+    component_line_width: 2.8
+    component_line_dash: "dot"
+    component_fill_alpha: 0.18
+    component_colors:
+      lo: "#CC00CC"
+      e2g: "#0066FF"
+      a1g: "#00A651"
+      zo: "#00B7C7"
+      la: "#F3C300"
+    editor_handles:
+      top: "#0B5ED7"
+      fwhm: "#C2185B"
+      fraction: "#FF8C00"
+      size: 11
+
+flagged_spectra:
+  legacy_thresholds:
+    rmse_threshold: 15.0
+    r2_lower_bound: 0.98
+    delta_max: 25.0

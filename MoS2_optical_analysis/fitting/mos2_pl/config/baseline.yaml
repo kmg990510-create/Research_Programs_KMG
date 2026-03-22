@@ -1,0 +1,5 @@
+# Baseline ensemble configuration
+default_method: zero_baseline
+default_score: 1.0
+methods:
+  - zero_baseline

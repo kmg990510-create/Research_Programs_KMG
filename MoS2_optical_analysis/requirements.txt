@@ -1,0 +1,21 @@
+# Core scientific stack
+numpy>=1.26
+scipy>=1.12
+pandas>=2.2
+
+# Config / serialization
+PyYAML>=6.0
+
+# Fitting utilities
+lmfit>=1.3
+
+# App / visualization
+streamlit>=1.40
+plotly>=5.24
+matplotlib>=3.8
+PySide6>=6.8
+pyqtgraph>=0.13
+
+# Optional quality-of-life
+tqdm>=4.66
+pytest>=8.2
