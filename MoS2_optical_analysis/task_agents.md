@@ -931,3 +931,13 @@
   - `README.md`
   - `ARCHITECTURE.md`
   - `AGENTS.md`
+
+## Git Workflow Policy Update (2026-03-22)
+
+- User preference applied:
+  - Codex should proactively use `branch + commit` workflow by default.
+- Policy added to `AGENTS.md`:
+  - create task-scoped branch before edits
+  - commit completed changes with scoped message
+  - keep behavior-changing code/doc updates in same commit
+  - respect explicit user override when no-commit/no-branch is requested

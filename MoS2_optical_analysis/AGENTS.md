@@ -77,6 +77,16 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Keep GUI path logic in `gui/components/report_loader.py`.
 - Do not add runtime path dependencies to `legacy/`, `mos2_raman/`, or `mos2_spectra_pipeline/`.
 
+## Git Workflow Rules
+
+- Default workflow for Codex:
+  1. create a task-scoped branch before edits (`chore/...`, `feat/...`, `fix/...`, `exp/...`)
+  2. apply code/docs updates
+  3. commit changes with a concise scoped message
+- Keep docs and code in the same commit when behavior changes.
+- Keep commits small and reversible; avoid mixing unrelated changes.
+- If user explicitly requests no commit/branch for a task, follow user request.
+
 ## Raman Config Rules
 
 - Keep `fit.two_stage_anchor` in nested form only (`enabled`, `window`).
