@@ -458,6 +458,33 @@
   - Run Analysis and manual editor launch paths remain valid in frozen mode.
   - Packaging docs clearly define included vs excluded runtime data.
 
+### TASK-017: Standardize distribution layout and end-user packaging guide
+- Description: Clean up packaging output conventions and ensure distributable bundle includes minimal end-user usage instructions
+- Assigned: raman_pl_agent
+- Related Files:
+  - `task_agents.md`
+  - `PACKAGING_PYINSTALLER.md`
+  - `README.md`
+  - `mos2_optical_analysis.spec`
+  - `PACKAGING_DIST_README.md`
+  - `AGENTS.md`
+- Status: Todo
+- Impact: medium (distribution UX + release process clarity)
+- Sub-steps:
+  1. Standardize packaging paths to `dist/mos2-analysis` (deliverable) and `dist/build` (temporary work output).
+  2. Define `dist_progressfix` / `build_progressfix` as temporary fallback-only outputs and remove them from default release flow.
+  3. Ensure distribution includes minimal end-user guide for launch, port handling, and CLI examples.
+  4. Confirm packaging docs and policy docs are aligned on build/distribute workflow.
+- Prerequisites:
+  - TASK-016 completed
+- Risks:
+  - Confusion from mixed output folder naming in release artifacts
+  - End users missing run instructions when only executables are delivered
+- Success Criteria:
+  - One canonical distribution layout is documented and used
+  - Temporary fallback folders are not treated as default deliverables
+  - Distributable folder always includes a minimal usage README
+
 ## Execution Notes (2026-03-20)
 
 - TASK-001 complete:
