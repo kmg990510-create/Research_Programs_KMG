@@ -29,8 +29,11 @@ def _resolve_main_script() -> Path:
 
 def main() -> int:
     main_script = _resolve_main_script()
-    project_root = main_script.parents[1]
+    bundled_code_root = main_script.parents[1]
+    project_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else bundled_code_root
 
+    if str(bundled_code_root) not in sys.path:
+        sys.path.insert(0, str(bundled_code_root))
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     os.chdir(project_root)

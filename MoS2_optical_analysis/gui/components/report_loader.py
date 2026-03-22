@@ -10,11 +10,13 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from fitting.mos2_core.core.runtime_paths import runtime_project_root
+
 SUPPORTED_MODALITIES = ("raman", "pl")
 
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return runtime_project_root(__file__, 2)
 
 
 def results_dir() -> Path:

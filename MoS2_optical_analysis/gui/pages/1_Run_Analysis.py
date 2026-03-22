@@ -11,7 +11,9 @@ from typing import Any
 
 import streamlit as st
 
-ROOT = Path(__file__).resolve().parents[2]
+from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
+
+ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 

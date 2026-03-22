@@ -6,7 +6,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-_ROOT = Path(__file__).resolve().parents[2]
+from fitting.mos2_core.core.runtime_paths import runtime_project_root
+
+_ROOT = runtime_project_root(__file__, 2)
 _GRAPH_PATH = _ROOT / "fitting" / "mos2_raman" / "config" / "raman_graph.yaml"
 
 

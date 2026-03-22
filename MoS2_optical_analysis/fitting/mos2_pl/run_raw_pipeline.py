@@ -10,6 +10,7 @@ from typing import NamedTuple
 from fitting.mos2_core.core.default_stages import build_default_context, build_default_stages
 from fitting.mos2_core.core.pipeline import run_pipeline
 from fitting.mos2_core.core.types import SpectrumRecord
+from fitting.mos2_core.core.runtime_paths import runtime_project_root
 from fitting.mos2_core.io import load_pipeline_config, load_raman_txt_directory
 
 
@@ -197,7 +198,7 @@ def _apply_runtime_overrides(
 
 def main() -> None:
     args = _build_arg_parser().parse_args()
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = runtime_project_root(__file__, 2)
     config_dir = Path(__file__).resolve().parent / "config"
     base_config = load_pipeline_config(config_dir)
     runtime_config = _apply_runtime_overrides(

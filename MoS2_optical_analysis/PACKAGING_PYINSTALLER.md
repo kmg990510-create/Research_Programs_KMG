@@ -39,6 +39,12 @@ From repository root:
 
 These are expected to be generated/managed externally at runtime.
 
+## Runtime Output Location (Packaged App)
+
+- In frozen execution, runtime-generated outputs are written outside the executable binary under:
+  - `dist/mos2-analysis/data/results/...`
+- The executable itself is not modified; outputs are regular external files.
+
 ## Packaging Compatibility Adjustments
 
 - `gui/pages/1_Run_Analysis.py` now detects frozen mode and launches:
