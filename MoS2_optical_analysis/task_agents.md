@@ -508,6 +508,58 @@
   - Docs mention flagged-first triage flow
   - No regression in page routing
 
+### TASK-019: MVP manual-override unification + cross-view projection + bin linkage
+- Description: Unify manual changes into one override JSON per report, apply projection in all viewers, and link report JSON move/delete with paired CSV and override JSON
+- Assigned: raman_pl_agent
+- Related Files:
+  - `task_agents.md`
+  - `gui/components/report_loader.py`
+  - `gui/pages/1_Run_Analysis.py`
+  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/4_Map_Viewer.py`
+  - `gui/pages/5_Model_Comparison.py`
+  - `gui/pages/6_Sample_Comparison.py`
+  - `gui/pages/7_Finalize.py`
+  - `fitting/mos2_core/review/manual_refit_store.py`
+  - `fitting/mos2_core/review/refit_api.py`
+  - `gui/components/data_bin.py`
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `AGENTS.md`
+- Status: Todo
+- Impact: high (manual-edit data contract + cross-page consistency + delete/bin behavior)
+- Sub-steps:
+  1. JSON unification: stop persisting `request/editor_response/bundle` as durable artifacts and standardize one override file per report:
+     - `data/results/{modality}/manual_refits/{run_id}_manual_overrides.json`
+  2. Define and adopt override schema `manual_overrides.v1` with per-spectrum latest-write semantics (`updated_at_utc`) and `action_type` (`model_override|manual_refit|autofit`).
+  3. Add projection logic in common report load path (`report_loader.py`) so `load_report_payload()` always merges report JSON + override JSON before returning payload/dataframe.
+  4. Ensure projected results are reflected consistently across:
+     - `2_All_Spectra_Viewer.py`
+     - `4_Map_Viewer.py`
+     - `5_Model_Comparison.py`
+     - `6_Sample_Comparison.py`
+     - `7_Finalize.py`
+  5. Add manual model-selection path in All Spectra Viewer (`Apply Model Override`) while keeping AIC auto-selection as default behavior.
+  6. Bin/delete linkage rule:
+     - when report JSON is moved/restored/purged, process paired CSV + matching override JSON together as one set.
+     - set mapping: `{run_id}_fit_report.json` <-> `{run_id}_fit_parameters.csv` <-> `{run_id}_manual_overrides.json`
+  7. Run Analysis > `A) Move Result Files to Bin` selection list policy:
+     - show only `*_fit_report.json` and `*_manual_overrides.json`
+     - hide CSV from direct selection and handle CSV only via linked action with report JSON.
+- Prerequisites:
+  - TASK-018 does not block this task but can be merged in the same UX validation pass.
+  - Existing report naming convention (`*_fit_report.json`, `*_fit_parameters.csv`) remains stable.
+- Risks:
+  - Schema drift between legacy `manual_refits.jsonl` records and new unified override format.
+  - Cache invalidation issues causing some pages to show stale pre-override data.
+  - Incomplete linked delete/restore behavior causing orphaned CSV/override files.
+- Success Criteria:
+  - Manual updates are persisted in one canonical override JSON per report.
+  - Page navigation after manual update shows consistent values in Map/Model/Sample/Finalize.
+  - Durable `request/editor_response/bundle` files are not left behind.
+  - Report JSON bin move/delete always moves/deletes paired CSV + override JSON together.
+  - Bin selection UI displays only report JSON + override JSON entries.
+
 ## Execution Notes (2026-03-20)
 
 - TASK-001 complete:
