@@ -32,6 +32,17 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - GUI:
   - `python -m streamlit run gui/Main.py`
 
+## Packaging Entry Points (PyInstaller)
+
+- Top-level app launcher:
+  - `mos2-analysis` -> runs Streamlit (`gui/Main.py`)
+- Worker executables used by GUI subprocess calls in frozen mode:
+  - `mos2-run-raman` -> `fitting.mos2_raman.run_raw_pipeline`
+  - `mos2-run-pl` -> `fitting.mos2_pl.run_raw_pipeline`
+  - `mos2-desktop-editor` -> `gui.desktop_editor.app`
+- Spec file:
+  - `mos2_optical_analysis.spec`
+
 ## Data and Report Routing
 
 - Pipeline reports are written under `data/results/{modality}/reports`.

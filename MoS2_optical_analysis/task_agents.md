@@ -428,6 +428,36 @@
   - Updated parameters are reflected in table and serialized response payload correctly.
   - Manual refit smoke flow remains stable after interaction upgrade.
 
+### TASK-016: Add PyInstaller packaging setup for mixed Streamlit + pipeline + desktop editor app
+- Description: Create project-specific PyInstaller spec with frozen-compatible subprocess launchers
+- Assigned: raman_pl_agent
+- Related Files:
+  - `mos2_optical_analysis.spec`
+  - `packaging/entry_streamlit.py`
+  - `packaging/entry_run_raman.py`
+  - `packaging/entry_run_pl.py`
+  - `packaging/entry_desktop_editor.py`
+  - `gui/pages/1_Run_Analysis.py`
+  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `PACKAGING_PYINSTALLER.md`
+- Status: Done
+- Impact: medium (distribution/build workflow)
+- Sub-steps:
+  1. Inspect real entrypoints and resource/config layout.
+  2. Add dedicated frozen launchers for Streamlit and subprocess worker targets.
+  3. Build multi-target one-folder PyInstaller spec for app + workers.
+  4. Exclude runtime-generated result outputs from bundled datas.
+  5. Add packaging notes and build command docs.
+- Prerequisites:
+  - TASK-008~015 runtime structure remains stable.
+- Risks:
+  - Streamlit dynamic imports can cause hidden-import misses in frozen builds.
+  - Frozen subprocess behavior can fail if worker executables are not bundled.
+- Success Criteria:
+  - Spec file matches repository paths and mixed runtime model.
+  - Run Analysis and manual editor launch paths remain valid in frozen mode.
+  - Packaging docs clearly define included vs excluded runtime data.
+
 ## Execution Notes (2026-03-20)
 
 - TASK-001 complete:

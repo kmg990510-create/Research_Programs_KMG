@@ -172,15 +172,31 @@ def _build_after_row(before_row: dict[str, Any], refit_payload: dict[str, Any]) 
 
 
 def _launch_desktop_editor(request_path: Path, output_path: Path) -> subprocess.CompletedProcess[str]:
-    cmd = [
-        sys.executable,
-        "-m",
-        "gui.desktop_editor.app",
-        "--request",
-        str(request_path),
-        "--output",
-        str(output_path),
-    ]
+    suffix = ".exe" if sys.platform.startswith("win") else ""
+    desktop_exe = None
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).resolve().with_name(f"mos2-desktop-editor{suffix}")
+        if candidate.exists():
+            desktop_exe = candidate
+
+    if desktop_exe is not None:
+        cmd = [
+            str(desktop_exe),
+            "--request",
+            str(request_path),
+            "--output",
+            str(output_path),
+        ]
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "gui.desktop_editor.app",
+            "--request",
+            str(request_path),
+            "--output",
+            str(output_path),
+        ]
     return subprocess.run(
         cmd,
         cwd=str(ROOT),

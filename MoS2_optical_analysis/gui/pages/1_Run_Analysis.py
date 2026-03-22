@@ -36,6 +36,14 @@ purge_bin_entry = _data_bin.purge_bin_entry
 RESULT_BIN_SCOPE = "results"
 
 
+def _frozen_tool_executable(stem: str) -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    suffix = ".exe" if os.name == "nt" else ""
+    candidate = Path(sys.executable).resolve().with_name(f"{stem}{suffix}")
+    return candidate if candidate.exists() else None
+
+
 @st.cache_data(show_spinner=False)
 def _discover_txt_folders(base_dir: str) -> list[str]:
     root = Path(base_dir)
@@ -397,6 +405,7 @@ st.caption("Select a raw folder and run Raman/PL analysis without typing CLI arg
 
 modality = st.selectbox("Modality", options=["raman", "pl"], index=0)
 module_name = "fitting.mos2_raman.run_raw_pipeline" if modality == "raman" else "fitting.mos2_pl.run_raw_pipeline"
+runner_stem = "mos2-run-raman" if modality == "raman" else "mos2-run-pl"
 base_raw_dir = ROOT / "data" / "raw" / modality
 
 with st.expander("Result Bin (optional): move results / restore / delete later", expanded=False):
@@ -657,28 +666,50 @@ if modality == "raman":
 else:
     st.caption("Raman advanced options (`peak_n_mode`, outlier overrides, `si_calibration`) are available in Raman modality.")
 
-cmd = [
-    sys.executable,
-    "-u",
-    "-m",
-    module_name,
-    "--raw-dir",
-    str(selected_folder),
-    "--pattern",
-    str(pattern),
-    "--run-id",
-    str(run_id),
-    "--progress-every",
-    str(int(progress_every)),
-    "--peak-n-mode",
-    str(peak_n_mode),
-    "--distance-outlier",
-    str(distance_outlier_mode),
-    "--delta-outlier",
-    str(delta_outlier_mode),
-    "--si-calibration",
-    str(si_calibration_mode),
-]
+pipeline_exe = _frozen_tool_executable(runner_stem)
+if pipeline_exe is not None:
+    cmd = [
+        str(pipeline_exe),
+        "--raw-dir",
+        str(selected_folder),
+        "--pattern",
+        str(pattern),
+        "--run-id",
+        str(run_id),
+        "--progress-every",
+        str(int(progress_every)),
+        "--peak-n-mode",
+        str(peak_n_mode),
+        "--distance-outlier",
+        str(distance_outlier_mode),
+        "--delta-outlier",
+        str(delta_outlier_mode),
+        "--si-calibration",
+        str(si_calibration_mode),
+    ]
+else:
+    cmd = [
+        sys.executable,
+        "-u",
+        "-m",
+        module_name,
+        "--raw-dir",
+        str(selected_folder),
+        "--pattern",
+        str(pattern),
+        "--run-id",
+        str(run_id),
+        "--progress-every",
+        str(int(progress_every)),
+        "--peak-n-mode",
+        str(peak_n_mode),
+        "--distance-outlier",
+        str(distance_outlier_mode),
+        "--delta-outlier",
+        str(delta_outlier_mode),
+        "--si-calibration",
+        str(si_calibration_mode),
+    ]
 if run_mode == "batch_subdirs":
     cmd.append("--batch-subdirs")
 
