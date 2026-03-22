@@ -33,7 +33,7 @@ class ThresholdReviewQueue(ReviewQueueStage):
         total = len(selections)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[review] start: {total} spectra")
+            print(f"[review] start: {total} spectra", flush=True)
 
         for index, spectrum_id in enumerate(selections, start=1):
             conf = confidence.get(spectrum_id)
@@ -43,7 +43,8 @@ class ThresholdReviewQueue(ReviewQueueStage):
                     print(
                         "[review] "
                         f"{index}/{total} | flagged_valid={flagged_valid_count}/{selected_valid_total} "
-                        f"| queue={len(queue)} | elapsed={elapsed:.1f}s"
+                        f"| queue={len(queue)} | elapsed={elapsed:.1f}s",
+                        flush=True,
                     )
                 continue
             reason = ", ".join(conf.reasons) if conf.reasons else "requires_manual_review"
@@ -65,7 +66,8 @@ class ThresholdReviewQueue(ReviewQueueStage):
                 print(
                     "[review] "
                     f"{index}/{total} | flagged_valid={flagged_valid_count}/{selected_valid_total} "
-                    f"| queue={len(queue)} | elapsed={elapsed:.1f}s"
+                    f"| queue={len(queue)} | elapsed={elapsed:.1f}s",
+                    flush=True,
                 )
 
         context.state["flagged_count"] = len(queue)

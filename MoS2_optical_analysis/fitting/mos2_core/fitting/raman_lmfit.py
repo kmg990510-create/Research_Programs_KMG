@@ -1427,7 +1427,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         total = len(spectra)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[fit] start: {total} spectra")
+            print(f"[fit] start: {total} spectra", flush=True)
 
         for index, spectrum in enumerate(spectra, start=1):
             metadata_index[spectrum.spectrum_id] = dict(spectrum.metadata)
@@ -1667,7 +1667,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     f"{index}/{total} | valid={fit_status_counts.get('valid', 0)} "
                     f"attention={fit_status_counts.get('attention', 0)} "
                     f"invalid={fit_status_counts.get('invalid', 0)} "
-                    f"| elapsed={elapsed:.1f}s"
+                    f"| elapsed={elapsed:.1f}s",
+                    flush=True,
                 )
 
         context.state["fit_count"] = len(ensemble)

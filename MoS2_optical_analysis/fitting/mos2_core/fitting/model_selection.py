@@ -88,7 +88,7 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
         total = len(fit_results)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[select] start: {total} spectra")
+            print(f"[select] start: {total} spectra", flush=True)
 
         for index, (spectrum_id, result) in enumerate(fit_results.items(), start=1):
             if not result.candidates:
@@ -169,7 +169,8 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
                     f"{index}/{total} | valid={selected_status_counts.get('valid', 0)} "
                     f"attention={selected_status_counts.get('attention', 0)} "
                     f"invalid={selected_status_counts.get('invalid', 0)} "
-                    f"| elapsed={elapsed:.1f}s"
+                    f"| elapsed={elapsed:.1f}s",
+                    flush=True,
                 )
 
         context.state["selection_count"] = len(selected)

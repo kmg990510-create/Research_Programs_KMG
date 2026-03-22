@@ -123,16 +123,16 @@ def _run_single(
 
 
 def _print_run_summary(summary: RunSummary) -> None:
-    print("Raman raw pipeline run completed.")
-    print(f"Run ID: {summary.run_id}")
-    print(f"Resolved raw dir: {summary.raw_dir}")
-    print(f"Input files: {summary.input_total}")
-    print(f"Accepted results: {summary.accepted_total}")
-    print(f"Flagged queue size: {summary.flagged_total}")
+    print("Raman raw pipeline run completed.", flush=True)
+    print(f"Run ID: {summary.run_id}", flush=True)
+    print(f"Resolved raw dir: {summary.raw_dir}", flush=True)
+    print(f"Input files: {summary.input_total}", flush=True)
+    print(f"Accepted results: {summary.accepted_total}", flush=True)
+    print(f"Flagged queue size: {summary.flagged_total}", flush=True)
     if summary.report_json_path:
-        print(f"Fit report (JSON): {summary.report_json_path}")
+        print(f"Fit report (JSON): {summary.report_json_path}", flush=True)
     if summary.report_csv_path:
-        print(f"Fit report (CSV): {summary.report_csv_path}")
+        print(f"Fit report (CSV): {summary.report_csv_path}", flush=True)
 
 
 def _apply_runtime_overrides(
@@ -215,7 +215,7 @@ def main() -> None:
         else:
             auto_targets = _discover_subdir_targets(resolved_raw_dir, args.pattern)
             if auto_targets:
-                print("No direct TXT files in --raw-dir. Auto-switching to subdirectory batch mode.")
+                print("No direct TXT files in --raw-dir. Auto-switching to subdirectory batch mode.", flush=True)
                 run_targets = auto_targets
             else:
                 raise FileNotFoundError(
@@ -227,8 +227,8 @@ def main() -> None:
     total_targets = len(run_targets)
     for index, (target_dir, run_id) in enumerate(run_targets, start=1):
         if total_targets > 1:
-            print("")
-            print(f"[Batch {index}/{total_targets}] run_id={run_id} | raw_dir={target_dir}")
+            print("", flush=True)
+            print(f"[Batch {index}/{total_targets}] run_id={run_id} | raw_dir={target_dir}", flush=True)
         summary = _run_single(
             raw_dir=target_dir,
             run_id=run_id,
@@ -244,12 +244,12 @@ def main() -> None:
         total_input = sum(s.input_total for s in summaries)
         total_accepted = sum(s.accepted_total for s in summaries)
         total_flagged = sum(s.flagged_total for s in summaries)
-        print("")
-        print("Batch run summary:")
-        print(f"Runs: {len(summaries)}")
-        print(f"Input files: {total_input}")
-        print(f"Accepted results: {total_accepted}")
-        print(f"Flagged queue size: {total_flagged}")
+        print("", flush=True)
+        print("Batch run summary:", flush=True)
+        print(f"Runs: {len(summaries)}", flush=True)
+        print(f"Input files: {total_input}", flush=True)
+        print(f"Accepted results: {total_accepted}", flush=True)
+        print(f"Flagged queue size: {total_flagged}", flush=True)
 
 
 if __name__ == "__main__":
