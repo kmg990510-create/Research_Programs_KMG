@@ -97,6 +97,15 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `ZO = A1g + d_zo_from_a1g`
   - `LA = A1g + d_la_from_a1g`
 
+## Build/Packaging Policy
+
+- Do not run packaging/build commands (for example, `PyInstaller`) unless the user explicitly asks for a build in the current request.
+- If packaging-related files are edited but no explicit build request is given, stop at code/doc updates and report what changed without building.
+- Standard packaging layout:
+  - distributable folder: `dist/mos2-analysis`
+  - temporary work folder: `dist/build`
+- `dist_progressfix` / `build_progressfix` are temporary fallback names and must not be the default distribution target.
+
 ## Minimal Validation Required
 
 After changes, run at least:

@@ -16,6 +16,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
+DIST_README = PROJECT_ROOT / "PACKAGING_DIST_README.md"
 
 
 def _safe_collect_data_files(package: str, **kwargs):
@@ -50,6 +51,10 @@ datas += _safe_collect_data_files("streamlit")
 # Runtime YAML config files.
 datas += _safe_collect_data_files("fitting.mos2_raman", includes=["config/*.yaml"])
 datas += _safe_collect_data_files("fitting.mos2_pl", includes=["config/*.yaml"])
+
+# Minimal user-facing usage note shipped in distribution root.
+if DIST_README.exists():
+    datas.append((str(DIST_README), "."))
 
 # Keep package metadata for runtime version/plugin checks.
 for package_name in (

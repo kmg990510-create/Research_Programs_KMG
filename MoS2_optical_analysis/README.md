@@ -74,6 +74,24 @@ Note:
 .\.venv\Scripts\python.exe -m streamlit run gui/Main.py
 ```
 
+## Package (PyInstaller)
+
+Build from repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build mos2_optical_analysis.spec
+```
+
+Packaging outputs:
+
+- distributable: `dist/mos2-analysis`
+- temporary work files: `dist/build`
+
+Distribution minimum:
+
+- ship the full `dist/mos2-analysis` folder (including `_internal`)
+- include `PACKAGING_DIST_README.md` for end-user run instructions
+
 ## Manual Refit (All Spectra Viewer + Desktop Editor)
 
 - All Spectra Viewer now supports hybrid manual correction:

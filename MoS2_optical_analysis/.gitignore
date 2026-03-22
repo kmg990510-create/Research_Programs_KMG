@@ -20,6 +20,10 @@ desktop_smoke_*.log
 # Build / test caches
 .pytest_cache/
 .mypy_cache/
+build/
+dist/
+build_*/
+dist_*/
 
 # Local data outputs and large local datasets
 data/raw/
