@@ -6,8 +6,8 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import Any
 
 import pandas as pd
@@ -19,11 +19,12 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from fitting.mos2_core.review.manual_refit_store import ManualRefitStore  # noqa: E402
 from fitting.mos2_core.review.refit_api import (  # noqa: E402
     ManualRefitRequest,
     SingleSpectrumRefitAPI,
-    build_manual_refit_record,
+)
+from fitting.mos2_core.review.manual_overrides import (  # noqa: E402
+    upsert_manual_override,
 )
 from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.manual_refit_contract import (  # noqa: E402
@@ -60,12 +61,6 @@ def _resolve_modality(payload: dict[str, Any], row: dict[str, Any], report_path:
     if "pl" in path_tokens:
         return "pl"
     return "raman"
-
-
-def _manual_refit_dir(modality: str) -> Path:
-    directory = ROOT / "data" / "results" / modality / "manual_refits"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
 
 
 def _sync_index_from_slider() -> None:
@@ -391,22 +386,61 @@ candidate_names = [
     for c in all_candidates
     if isinstance(c, dict) and isinstance(c.get("model_name"), str)
 ]
+display_row = dict(row)
+selected_candidate: dict[str, Any] | None = None
+has_manual_override = bool(row.get("manual_override", False))
+manual_override_action = str(row.get("manual_override_action", "")).strip()
+
 if candidate_names:
-    default_model = str(row.get("selected_model", candidate_names[0]))
-    if default_model not in candidate_names:
-        default_model = candidate_names[0]
+    projected_option = "__projected_result__"
+    model_options = [projected_option, *candidate_names]
+
+    selected_model_value = str(row.get("selected_model", "")).strip()
+    default_option = projected_option if has_manual_override else selected_model_value
+    if default_option not in model_options:
+        default_option = candidate_names[0]
+
     selected_model_for_view = st.selectbox(
         "Fitting model to display",
-        candidate_names,
-        index=candidate_names.index(default_model),
+        model_options,
+        index=model_options.index(default_option),
         key="all_spectra_model_choice",
+        format_func=lambda value: (
+            "Current projected result (manual override)"
+            if value == projected_option and has_manual_override
+            else ("Current projected result" if value == projected_option else value)
+        ),
     )
-    selected_candidate = next(
-        c for c in all_candidates if isinstance(c, dict) and c.get("model_name") == selected_model_for_view
+
+    if selected_model_for_view != projected_option:
+        selected_candidate = next(
+            c for c in all_candidates if isinstance(c, dict) and c.get("model_name") == selected_model_for_view
+        )
+        display_row = _build_display_row_for_candidate(row=row, candidate=selected_candidate)
+
+    if has_manual_override and manual_override_action:
+        st.caption(f"Manual override active: {manual_override_action}")
+
+if selected_candidate is not None:
+    model_override_key = (
+        f"apply_model_override_{_sanitize_filename(report_path.stem)}_{_sanitize_filename(spectrum_id)}"
     )
-    display_row = _build_display_row_for_candidate(row=row, candidate=selected_candidate)
-else:
-    display_row = dict(row)
+    if st.button("Apply Model Override", key=model_override_key, use_container_width=False):
+        params = selected_candidate.get("params", {})
+        metrics = selected_candidate.get("metrics", {})
+        fitted_y = selected_candidate.get("fitted_y", [])
+        override_path = upsert_manual_override(
+            report_json=report_path,
+            spectrum_id=spectrum_id,
+            action_type="model_override",
+            selected_model=str(selected_candidate.get("model_name", "")),
+            params=params if isinstance(params, dict) else {},
+            metrics=metrics if isinstance(metrics, dict) else {},
+            fitted_y=fitted_y if isinstance(fitted_y, list) else [],
+            operator_note="manual_model_override",
+        )
+        st.success(f"Model override saved: {override_path}")
+        st.rerun()
 
 x_raw, y_raw = load_raw_xy(str(source_path))
 try:
@@ -458,12 +492,6 @@ manual_action_cols = st.columns([2, 1])
 open_key = f"open_manual_editor_{_sanitize_filename(report_path.stem)}_{_sanitize_filename(spectrum_id)}"
 if manual_action_cols[0].button("Open Manual Editor (Desktop)", use_container_width=True, key=open_key):
     modality = _resolve_modality(payload=payload, row=row, report_path=report_path)
-    manual_dir = _manual_refit_dir(modality)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = f"{stamp}_{_sanitize_filename(spectrum_id)}"
-    request_path = manual_dir / f"{stem}_request.json"
-    editor_output_path = manual_dir / f"{stem}_editor_response.json"
-
     request_payload = build_editor_request(
         report_path=report_path,
         spectrum_id=spectrum_id,
@@ -475,62 +503,59 @@ if manual_action_cols[0].button("Open Manual Editor (Desktop)", use_container_wi
         x=[float(v) for v in x_for_plot],
         y=[float(v) for v in y_raw],
     )
-    request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        with tempfile.TemporaryDirectory(prefix="mos2_manual_editor_") as tmpdir:
+            request_path = Path(tmpdir) / "request.json"
+            editor_output_path = Path(tmpdir) / "editor_response.json"
+            request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    with st.spinner("Launching desktop editor. Save and close the editor to continue..."):
-        process = _launch_desktop_editor(request_path=request_path, output_path=editor_output_path)
+            with st.spinner("Launching desktop editor. Save and close the editor to continue..."):
+                process = _launch_desktop_editor(request_path=request_path, output_path=editor_output_path)
 
-    if process.returncode != 0 and not editor_output_path.exists():
-        stderr_text = process.stderr.strip() if process.stderr else ""
-        stdout_text = process.stdout.strip() if process.stdout else ""
-        debug_text = stderr_text or stdout_text or "No process output available"
-        st.error(f"Desktop editor failed (exit={process.returncode}). {debug_text}")
-    elif not editor_output_path.exists():
-        st.warning("Desktop editor closed without saving. No manual refit was applied.")
-    else:
-        try:
-            editor_response = json.loads(editor_output_path.read_text(encoding="utf-8"))
-            valid, reason = validate_editor_response(editor_response)
-            if not valid:
-                raise ValueError(reason)
+            if process.returncode != 0 and not editor_output_path.exists():
+                stderr_text = process.stderr.strip() if process.stderr else ""
+                stdout_text = process.stdout.strip() if process.stdout else ""
+                debug_text = stderr_text or stdout_text or "No process output available"
+                st.error(f"Desktop editor failed (exit={process.returncode}). {debug_text}")
+            elif not editor_output_path.exists():
+                st.warning("Desktop editor closed without saving. No manual refit was applied.")
+            else:
+                editor_response = json.loads(editor_output_path.read_text(encoding="utf-8"))
+                valid, reason = validate_editor_response(editor_response)
+                if not valid:
+                    raise ValueError(reason)
 
-            merged_request = dict(request_payload)
-            merged_request["selected_model"] = str(editor_response.get("selected_model", request_payload["selected_model"]))
-            merged_request["peaks"] = editor_response.get("peaks", request_payload.get("peaks", []))
-            merged_request["reason"] = str(editor_response.get("reason", "manual_refit_from_desktop"))
-            merged_request["operator_note"] = str(editor_response.get("operator_note", ""))
+                merged_request = dict(request_payload)
+                merged_request["selected_model"] = str(
+                    editor_response.get("selected_model", request_payload["selected_model"])
+                )
+                merged_request["peaks"] = editor_response.get("peaks", request_payload.get("peaks", []))
+                merged_request["reason"] = str(editor_response.get("reason", "manual_refit_from_desktop"))
+                merged_request["operator_note"] = str(editor_response.get("operator_note", ""))
 
-            api = SingleSpectrumRefitAPI(project_root=ROOT)
-            refit_payload = api.submit_refit(ManualRefitRequest.from_payload(merged_request))
-            after_row = _build_after_row(before_row=display_row, refit_payload=refit_payload)
+                api = SingleSpectrumRefitAPI(project_root=ROOT)
+                refit_payload = api.submit_refit(ManualRefitRequest.from_payload(merged_request))
+                after_row = _build_after_row(before_row=display_row, refit_payload=refit_payload)
 
-            record = build_manual_refit_record(
-                request_payload=merged_request,
-                result_payload=refit_payload,
-            )
-            store = ManualRefitStore(manual_dir / "manual_refits.jsonl")
-            store.append(record)
+                override_path = upsert_manual_override(
+                    report_json=report_path,
+                    spectrum_id=spectrum_id,
+                    action_type="manual_refit",
+                    selected_model=str(refit_payload.get("selected_model", "")),
+                    params=refit_payload.get("params", {}),
+                    metrics=refit_payload.get("metrics", {}),
+                    fitted_y=refit_payload.get("fitted_y", []),
+                    operator_note=str(merged_request.get("operator_note", "")),
+                )
 
-            bundle = {
-                "request": merged_request,
-                "editor_response": editor_response,
-                "refit_result": refit_payload,
-                "record": record,
-                "saved_at_utc": datetime.utcnow().isoformat() + "Z",
-            }
-            bundle_path = manual_dir / f"{stem}_bundle.json"
-            bundle_path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8")
-
-            manual_refit_cache[manual_key] = {
-                "after_row": after_row,
-                "refit_payload": refit_payload,
-                "bundle": bundle,
-                "bundle_path": str(bundle_path),
-                "store_path": str((manual_dir / "manual_refits.jsonl")),
-            }
-            st.success("Manual refit applied and saved.")
-        except Exception as exc:
-            st.error(f"Manual refit processing failed: {exc}")
+                manual_refit_cache[manual_key] = {
+                    "after_row": after_row,
+                    "refit_payload": refit_payload,
+                    "override_path": str(override_path),
+                }
+                st.success(f"Manual refit applied and saved: {override_path}")
+    except Exception as exc:
+        st.error(f"Manual refit processing failed: {exc}")
 
 if manual_action_cols[1].button("Clear Manual Result", use_container_width=True):
     if manual_key in manual_refit_cache:
@@ -569,21 +594,9 @@ if isinstance(manual_state, dict):
         with st.expander("Manual Refit Fit Summary", expanded=False):
             render_fit_summary(after_row, download_key=f"download_manual_row_{_sanitize_filename(spectrum_id)}")
 
-        bundle_payload = manual_state.get("bundle")
-        if isinstance(bundle_payload, dict):
-            st.download_button(
-                "Download manual refit bundle (JSON)",
-                data=json.dumps(bundle_payload, ensure_ascii=False, indent=2).encode("utf-8"),
-                file_name=f"manual_refit_{_sanitize_filename(spectrum_id)}.json",
-                mime="application/json",
-            )
-
-        bundle_path_text = str(manual_state.get("bundle_path", "")).strip()
-        store_path_text = str(manual_state.get("store_path", "")).strip()
-        if bundle_path_text:
-            st.caption(f"Saved bundle: {bundle_path_text}")
-        if store_path_text:
-            st.caption(f"JSONL store: {store_path_text}")
+        override_path_text = str(manual_state.get("override_path", "")).strip()
+        if override_path_text:
+            st.caption(f"Saved override: {override_path_text}")
 
 if candidate_names:
     with st.expander("Candidate Metrics (advanced)", expanded=False):

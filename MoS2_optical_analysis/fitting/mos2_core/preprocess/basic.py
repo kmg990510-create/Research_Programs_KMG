@@ -15,6 +15,37 @@ def lorentzian(x: np.ndarray, amp: float, cen: float, wid: float) -> np.ndarray:
     return amp * (wid**2 / ((x - cen) ** 2 + wid**2))
 
 
+def estimate_si_window_area(
+    x: Sequence[float],
+    y: Sequence[float],
+    window_min: float = 510.0,
+    window_max: float = 530.0,
+    min_points: int = 5,
+) -> float:
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+    mask = (x_arr >= window_min) & (x_arr <= window_max)
+    if int(np.sum(mask)) < int(min_points):
+        return 0.0
+
+    x_fit = x_arr[mask]
+    y_fit = y_arr[mask]
+    if x_fit.size < 2:
+        return 0.0
+
+    # Use a local linear baseline in Si window and integrate only positive component.
+    x0, x1 = float(x_fit[0]), float(x_fit[-1])
+    if not np.isfinite(x0) or not np.isfinite(x1) or abs(x1 - x0) < 1.0e-12:
+        return 0.0
+    y0, y1 = float(y_fit[0]), float(y_fit[-1])
+    slope = (y1 - y0) / (x1 - x0)
+    intercept = y0 - slope * x0
+    baseline = slope * x_fit + intercept
+    signal = np.clip(y_fit - baseline, 0.0, None)
+    area = float(np.trapezoid(signal, x_fit))
+    return max(area, 0.0)
+
+
 def get_si_calibration_offset(
     x: Sequence[float],
     y: Sequence[float],
@@ -93,12 +124,13 @@ class IdentityPreprocessing(PreprocessingStage):
         offsets: list[float] = []
         success_count = 0
 
-        def _metadata(record: SpectrumRecord, offset: float, success: bool) -> dict[str, object]:
+        def _metadata(record: SpectrumRecord, offset: float, success: bool, si_area: float) -> dict[str, object]:
             meta = dict(record.metadata)
             meta.setdefault("modality", record.modality)
             meta["calibration_offset"] = float(offset)
             meta["calibration_success"] = bool(success)
             meta["si_target_peak"] = float(target_peak)
+            meta["si_area"] = float(si_area)
             return meta
 
         output: list[PreprocessedSpectrum] = []
@@ -108,6 +140,15 @@ class IdentityPreprocessing(PreprocessingStage):
 
             offset = 0.0
             success = False
+            si_area = 0.0
+            if str(s.modality).lower() == "raman":
+                si_area = estimate_si_window_area(
+                    x,
+                    y,
+                    window_min=window_min,
+                    window_max=window_max,
+                    min_points=min_points,
+                )
             if calibration_enabled and str(s.modality).lower() == "raman":
                 offset, success = get_si_calibration_offset(
                     x,
@@ -130,7 +171,7 @@ class IdentityPreprocessing(PreprocessingStage):
                     spectrum_id=s.spectrum_id,
                     x=x_shifted,
                     y=y,
-                    metadata=_metadata(s, offset=offset, success=success),
+                    metadata=_metadata(s, offset=offset, success=success, si_area=si_area),
                 )
             )
         

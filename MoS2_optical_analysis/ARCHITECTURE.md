@@ -49,11 +49,11 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - GUI report loader reads from `data/results/{raman,pl}/reports`.
 - Graph config is loaded from `fitting/mos2_raman/config`.
 - Manual refit artifacts are stored under `data/results/{modality}/manual_refits`.
-  - append-only history: `manual_refits.jsonl`
-  - per-session bundle snapshots: `*_bundle.json`
+  - canonical override file per report: `{run_id}_manual_overrides.json`
 
 ## GUI Runtime Behavior
 
+- Home navigation order follows triage-first flow: `Run Analysis -> Flagged -> All Spectra -> Finalize`.
 - Run Analysis page supports two modes: `single` and `batch_subdirs`.
 - In batch mode, each immediate subfolder is executed as one run and subfolder name becomes run-id.
 - If `run_raw_pipeline` is called in single mode and no direct TXT files are found, it auto-switches to subdirectory batch mode.
@@ -67,6 +67,8 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - batch mode: `Overall (fit only)` and `Current Fit` cards with current batch/folder/file hints
   - raw logs remain available in advanced expander
 - Run Analysis includes Result Bin workflow: move result files to `data/bin/results/{modality}`, restore later, or permanently delete from Bin.
+- Result Bin selection policy shows JSON only (`*_fit_report.json`, `*_manual_overrides.json`).
+- Linked result-set rule: selecting/moving/restoring/purging report JSON also processes paired CSV + matching override JSON.
 - All Spectra Viewer handles single-row filtered results without slider errors.
 - All Spectra Viewer uses unified sidebar coordinate navigation:
   - `Row index (Y)` for vertical movement across rows
@@ -75,11 +77,11 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - Shared raw/fitted/baseline/component colors
   - Smoother fitted-curve rendering via dense x-grid plotting
 - All Spectra Viewer supports hybrid manual refit flow:
-  - Streamlit builds request JSON and launches external `PySide6 + pyqtgraph` desktop editor
+  - Streamlit creates temporary request/response JSON in a temp directory and launches external `PySide6 + pyqtgraph` desktop editor
   - editor returns overrides JSON (`fraction/center/height/fwhm/fixed`)
   - Streamlit calls `SingleSpectrumRefitAPI` for one-spectrum refit
   - UI renders before/after overlays and metrics
-  - result record is appended to JSONL store under `manual_refits`
+  - manual model-choice and manual-refit outputs are upserted into `{run_id}_manual_overrides.json`
 - Desktop manual editor interaction modes:
   - Top icon-toolbar modes:
     - `Move` (drag pan)

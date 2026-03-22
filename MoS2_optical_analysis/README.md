@@ -74,18 +74,23 @@ Note:
 .\.venv\Scripts\python.exe -m streamlit run gui/Main.py
 ```
 
+Recommended review flow in Home navigation:
+- `Run Analysis -> Flagged -> All Spectra -> Finalize`
+
 ## Package (PyInstaller)
 
 Build from repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build mos2_optical_analysis.spec
+Copy-Item -Path PACKAGING_DIST_README.md -Destination dist/mos2-analysis/PACKAGING_DIST_README.md -Force
 ```
 
 Packaging outputs:
 
 - distributable: `dist/mos2-analysis`
 - temporary work files: `dist/build`
+- legacy fallback folders (`build/`, `build_progressfix/`, `dist_progressfix/`) are not release targets
 
 Distribution minimum:
 
@@ -105,6 +110,7 @@ Distribution minimum:
   - raw/fitted/baseline/component colors are shared across All Spectra and Manual Refit preview
   - fitted curves are rendered on a denser x-grid for smoother display
 - From **All Spectra Viewer**, click `Open Manual Editor (Desktop)` on current spectrum.
+- From **All Spectra Viewer**, candidate model dropdown also provides `Apply Model Override` for manual model selection.
 - In desktop editor:
   - switch interaction mode with top icon buttons: `Move` / `Zoom` / `Edit`
   - initial x-range and autoscale use the same rule as All Spectra main graph (`e2g/a1g +/- peak_padding`, fallback from `raman_graph.yaml`)
@@ -122,7 +128,8 @@ Distribution minimum:
 - Back in Streamlit:
   - one-spectrum refit runs via `SingleSpectrumRefitAPI`
   - before/after overlay and metrics are shown
-  - record is appended to `data/results/{raman,pl}/manual_refits/manual_refits.jsonl`
+  - manual override is saved to `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`
+  - request/response IPC JSON files are temporary runtime artifacts and are not kept as durable result files
 
 Direct desktop editor launch:
 
@@ -146,7 +153,9 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
   - each immediate subfolder with matching TXT files is executed
   - each subfolder name becomes `run-id`
 - `Result Bin (optional)` in Run Analysis
-  - move result files into `data/bin/results/{modality}` first (soft delete)
+  - selectable items are report JSON + manual override JSON
+  - when report JSON is selected, paired CSV and matching manual override JSON are linked automatically
+  - move selected set into `data/bin/results/{modality}` first (soft delete)
   - restore from Bin when needed
   - permanently delete later from Bin with explicit confirmation
 - `Progress every N files` controls log update frequency from pipeline

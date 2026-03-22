@@ -1,4 +1,4 @@
-# Task Agents (Current Work Tracking)
+﻿# Task Agents (Current Work Tracking)
 
 ## Purpose
 `task_agents.md` is a tool for centrally managing current tasks and agent responsibilities. It records status for each task and specifies links to `agents.md` policies and `architecture.md` impacts.
@@ -239,7 +239,7 @@
   - `AGENTS.md`
   - `ARCHITECTURE.md`
   - `task_agents.md`
-  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
   - `fitting/mos2_core/review/refit_api.py`
 - Status: Done
 - Impact: medium (architecture contract addition)
@@ -318,7 +318,7 @@
 - Description: Add Streamlit-side orchestration to open desktop editor, ingest result, and visualize before/after refit
 - Assigned: raman_pl_agent
 - Related Files:
-  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
   - `gui/components/spectrum_viewer.py`
   - `gui/components/report_loader.py` (if path helpers are needed)
 - Status: Done
@@ -372,7 +372,7 @@
 - Related Files:
   - `fitting/mos2_raman/config/raman_graph.yaml`
   - `gui/components/spectrum_viewer.py`
-  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
   - `gui/desktop_editor/plot_widget.py` (if desktop preview style needs the same palette)
   - `README.md`
   - `ARCHITECTURE.md`
@@ -438,7 +438,7 @@
   - `packaging/entry_run_pl.py`
   - `packaging/entry_desktop_editor.py`
   - `gui/pages/1_Run_Analysis.py`
-  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
   - `PACKAGING_PYINSTALLER.md`
 - Status: Done
 - Impact: medium (distribution/build workflow)
@@ -468,7 +468,7 @@
   - `mos2_optical_analysis.spec`
   - `PACKAGING_DIST_README.md`
   - `AGENTS.md`
-- Status: Todo
+- Status: Done
 - Impact: medium (distribution UX + release process clarity)
 - Sub-steps:
   1. Standardize packaging paths to `dist/mos2-analysis` (deliverable) and `dist/build` (temporary work output).
@@ -493,10 +493,10 @@
   - `gui/Main.py`
   - `README.md`
   - `ARCHITECTURE.md`
-- Status: Todo
+- Status: Done
 - Impact: low (navigation UX flow)
 - Sub-steps:
-  1. Swap page-link order in `gui/Main.py` so `3_Flagged_Spectra.py` is shown before `2_All_Spectra_Viewer.py`.
+  1. Swap page-link order in `gui/Main.py` so `2_Flagged_Spectra.py` is shown before `3_All_Spectra_Viewer.py`.
   2. Verify sidebar/top navigation labels and numbering reflect the new order consistently.
   3. Update user-facing docs that describe page order or recommended review flow.
 - Prerequisites:
@@ -515,18 +515,18 @@
   - `task_agents.md`
   - `gui/components/report_loader.py`
   - `gui/pages/1_Run_Analysis.py`
-  - `gui/pages/2_All_Spectra_Viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
   - `gui/pages/4_Map_Viewer.py`
   - `gui/pages/5_Model_Comparison.py`
   - `gui/pages/6_Sample_Comparison.py`
   - `gui/pages/7_Finalize.py`
-  - `fitting/mos2_core/review/manual_refit_store.py`
+  - `fitting/mos2_core/review/manual_overrides.py`
   - `fitting/mos2_core/review/refit_api.py`
   - `gui/components/data_bin.py`
   - `README.md`
   - `ARCHITECTURE.md`
   - `AGENTS.md`
-- Status: Todo
+- Status: Done
 - Impact: high (manual-edit data contract + cross-page consistency + delete/bin behavior)
 - Sub-steps:
   1. JSON unification: stop persisting `request/editor_response/bundle` as durable artifacts and standardize one override file per report:
@@ -534,7 +534,7 @@
   2. Define and adopt override schema `manual_overrides.v1` with per-spectrum latest-write semantics (`updated_at_utc`) and `action_type` (`model_override|manual_refit|autofit`).
   3. Add projection logic in common report load path (`report_loader.py`) so `load_report_payload()` always merges report JSON + override JSON before returning payload/dataframe.
   4. Ensure projected results are reflected consistently across:
-     - `2_All_Spectra_Viewer.py`
+     - `3_All_Spectra_Viewer.py`
      - `4_Map_Viewer.py`
      - `5_Model_Comparison.py`
      - `6_Sample_Comparison.py`
@@ -559,6 +559,103 @@
   - Durable `request/editor_response/bundle` files are not left behind.
   - Report JSON bin move/delete always moves/deletes paired CSV + override JSON together.
   - Bin selection UI displays only report JSON + override JSON entries.
+
+### TASK-020: Spectrum-level multiprocessing for fit stage
+- Description: Introduce spectrum-level multiprocessing in fitting to reduce end-to-end runtime while preserving current model coverage and fit behavior
+- Assigned: raman_pl_agent
+- Related Files:
+  - `task_agents.md`
+  - `fitting/mos2_core/fitting/raman_lmfit.py`
+  - `fitting/mos2_raman/run_raw_pipeline.py`
+  - `fitting/mos2_pl/run_raw_pipeline.py`
+  - `fitting/mos2_core/core/default_stages.py`
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `AGENTS.md`
+- Status: Todo
+- Impact: high (fit runtime performance + execution model)
+- Sub-steps:
+  1. Add worker-count runtime option (for example `--workers`) with safe default (`1`) to preserve current sequential behavior.
+  2. Refactor fit-stage per-spectrum execution into a top-level worker function compatible with Windows multiprocessing pickling.
+  3. Execute spectrum fits via `ProcessPoolExecutor` when `workers > 1` and merge results deterministically in input order.
+  4. Preserve current progress/log contract (`[fit] ...`) and status aggregation (`valid/attention/invalid`) in both sequential and parallel modes.
+  5. Add process-safety defaults for nested numeric threading (`OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`) when multiprocessing is enabled.
+  6. Validate parity of key outputs (selected model, RMSE/AIC/BIC, fit_status counts, report schema) between `workers=1` and `workers>1`.
+- Prerequisites:
+  - Current fit contracts from TASK-019 remain stable.
+  - No behavior changes to model list/selection policy in this task.
+- Risks:
+  - Serialization/pickling issues for non-top-level functions or non-picklable objects.
+  - Progress updates becoming noisy or out-of-order in parallel runs.
+  - Oversubscription regressions if internal BLAS/OpenMP threading is not controlled.
+- Success Criteria:
+  - `workers>1` run completes without regressions on Raman/PL smoke inputs.
+  - Report outputs remain schema-compatible and selection behavior is unchanged.
+  - Measurable runtime improvement is observed on multi-spectrum datasets.
+
+### TASK-021: Reduce fitting overhead by moving hot path from lmfit wrappers to scipy least_squares
+- Description: Replace high-overhead lmfit wrapper usage in hot fitting paths with equivalent `scipy.optimize.least_squares` implementations while preserving constraints and output semantics
+- Assigned: raman_pl_agent
+- Related Files:
+  - `task_agents.md`
+  - `fitting/mos2_core/fitting/raman_lmfit.py`
+  - `fitting/mos2_core/review/refit_api.py`
+  - `fitting/mos2_core/fitting/model_selection.py`
+  - `fitting/mos2_raman/config/raman.yaml`
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `AGENTS.md`
+- Status: Todo
+- Impact: high (core fitting engine performance + numeric behavior)
+- Sub-steps:
+  1. Identify hot models (`peak_2`~`peak_5`, PL single-peak variants) and define least-squares parameter vectorization for each.
+  2. Port current constraint semantics (bounds, anchor/order coupling, fixed/vary flags) to least-squares residual functions.
+  3. Implement conversion adapters so downstream payload remains unchanged (`params`, `metrics`, `fitted_y`, `nfev`, `fit_status` inputs).
+  4. Add guardrail mode for A/B comparison (`legacy_lmfit` vs `least_squares`) to quantify parity before default switch.
+  5. Run parity checks on representative reports and summarize deltas (RMSE/AIC/BIC, selected model, status counts, override/refit compatibility).
+  6. Update docs/config notes for the chosen default path and fallback strategy.
+- Prerequisites:
+  - TASK-020 is preferred first so parallelism and solver migration can be benchmarked independently.
+  - Existing report/override contracts must remain backward compatible.
+- Risks:
+  - Subtle constraint mismatch can change selected models or fit_status distribution.
+  - Metric calculation differences can impact AIC-based ranking.
+  - Manual refit/editor paths may diverge if adapter parity is incomplete.
+- Success Criteria:
+  - least-squares path reproduces current outputs within accepted numeric tolerance.
+  - Model-selection and review outcomes remain stable on validation datasets.
+  - Runtime improvement is confirmed versus current lmfit wrapper path.
+
+## Execution Notes (2026-03-22)
+
+- TASK-017 complete:
+  - Standardized canonical packaging output contract:
+    - distributable: `dist/mos2-analysis`
+    - temporary build work: `dist/build`
+  - Marked `build/`, `build_progressfix/`, `dist_progressfix/` as legacy fallback outputs (not default release targets).
+  - Confirmed end-user distribution note is included via `PACKAGING_DIST_README.md` and documented in packaging docs/README/agent policy.
+  - Build command now includes explicit post-build copy so distribution root contains:
+    - `dist/mos2-analysis/PACKAGING_DIST_README.md`
+- TASK-018 complete:
+  - Updated Home page next-step order in `gui/Main.py` to `Run Analysis -> Flagged -> All Spectra -> Finalize`.
+  - Swapped Streamlit page filenames so sidebar order is also aligned:
+    - `gui/pages/2_Flagged_Spectra.py`
+    - `gui/pages/3_All_Spectra_Viewer.py`
+  - Synced docs to reflect flagged-first triage flow.
+- TASK-019 complete:
+  - Added canonical manual override module: `fitting/mos2_core/review/manual_overrides.py`.
+  - Unified durable manual edits to one per-report file:
+    - `data/results/{modality}/manual_refits/{run_id}_manual_overrides.json`
+  - Added projection in common loader:
+    - `gui/components/report_loader.py::load_report_payload()` now merges report JSON + override JSON.
+  - Applied cross-page consistency by loading projected data through shared loader path (including `6_Sample_Comparison.py` cache-key fix with override mtime).
+  - Added manual model override action in All Spectra:
+    - `Apply Model Override` persists selected candidate into unified override JSON.
+  - Stopped durable request/response/bundle persistence in All Spectra manual refit flow:
+    - editor IPC files now run in temporary directory and are cleaned automatically.
+  - Implemented report-linked bin behavior in Run Analysis/data bin:
+    - selection list shows only report JSON + manual override JSON.
+    - report JSON actions auto-link paired CSV + override JSON for move/restore/purge.
 
 ## Execution Notes (2026-03-20)
 
@@ -678,7 +775,7 @@
     - validates response
     - executes single-spectrum refit
     - renders manual before/after preview
-  - File: `gui/pages/2_All_Spectra_Viewer.py`
+  - File: `gui/pages/3_All_Spectra_Viewer.py`
 - TASK-013 complete:
   - Added JSONL persistence store:
     - `fitting/mos2_core/review/manual_refit_store.py`
@@ -712,7 +809,7 @@
     - config-driven color/style rendering
     - denser fit plotting via interpolation/reconstruction on dense x-grid
     - baseline always overlaid in both main and manual preview graphs
-  - Updated `gui/pages/2_All_Spectra_Viewer.py` to pass style/smoothing config to both graph renders.
+  - Updated `gui/pages/3_All_Spectra_Viewer.py` to pass style/smoothing config to both graph renders.
 - TASK-015 complete:
   - Reworked `gui/desktop_editor/plot_widget.py`:
     - mode switching (`Move`, `Zoom`, `Edit`)
@@ -948,7 +1045,7 @@
 - Metrics:
   - per-model `nfev`
   - spectrum-level total `nfev` across candidate models
-  - paired `rmse` movement for context (speed-only interpretation 방지)
+  - paired `rmse` movement for context (speed-only interpretation 諛⑹?)
 - Output artifacts:
   - ablation summary table (mean/median nfev by setting)
   - raw detail CSV for reproducible follow-up
@@ -1073,3 +1170,4 @@
   - commit completed changes with scoped message
   - keep behavior-changing code/doc updates in same commit
   - respect explicit user override when no-commit/no-branch is requested
+

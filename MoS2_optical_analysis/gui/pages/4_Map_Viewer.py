@@ -71,6 +71,49 @@ if work_df.empty:
     st.warning("No rows left after fit_status filter.")
     st.stop()
 
+custom_ratio_col: str | None = None
+ratio_numeric_candidates = [
+    col
+    for col in work_df.columns
+    if pd.api.types.is_numeric_dtype(work_df[col]) and col not in {"map_x", "map_y"}
+]
+with st.sidebar.expander("3) Ratio Builder", expanded=False):
+    enable_custom_ratio = st.checkbox(
+        "Enable custom ratio (numerator / denominator)",
+        value=False,
+        key="map_custom_ratio_enable",
+    )
+    if enable_custom_ratio:
+        if len(ratio_numeric_candidates) < 2:
+            st.warning("Need at least two numeric columns for ratio.")
+        else:
+            ratio_num = st.selectbox(
+                "Numerator",
+                options=ratio_numeric_candidates,
+                key="map_custom_ratio_num",
+            )
+            ratio_den_options = [col for col in ratio_numeric_candidates if col != ratio_num]
+            ratio_den = st.selectbox(
+                "Denominator",
+                options=ratio_den_options,
+                key="map_custom_ratio_den",
+            )
+            default_name = f"{ratio_num}_over_{ratio_den}"
+            ratio_name_input = st.text_input(
+                "Ratio name",
+                value=default_name,
+                key="map_custom_ratio_name",
+            ).strip()
+            custom_ratio_col = ratio_name_input or default_name
+
+            num_series = pd.to_numeric(work_df[ratio_num], errors="coerce")
+            den_series = pd.to_numeric(work_df[ratio_den], errors="coerce")
+            valid = num_series.notna() & den_series.notna() & (den_series.abs() > 1.0e-12)
+            ratio_series = pd.Series(float("nan"), index=work_df.index, dtype=float)
+            ratio_series.loc[valid] = num_series.loc[valid] / den_series.loc[valid]
+            work_df[custom_ratio_col] = ratio_series
+            st.caption(f"Added ratio column: {custom_ratio_col} = {ratio_num} / {ratio_den}")
+
 preferred_candidates = [
     "delta_e2g_a1g",
     "e2g_a1g_area_ratio",
@@ -84,11 +127,15 @@ preferred_candidates = [
     "lo_fwhm",
     "zo_fwhm",
     "la_fwhm",
+    "si_area",
     "rmse",
     "r2",
     "aic",
     "bic",
 ]
+if custom_ratio_col:
+    preferred_candidates = [custom_ratio_col, *preferred_candidates]
+
 numeric_cols = [
     col
     for col in work_df.columns

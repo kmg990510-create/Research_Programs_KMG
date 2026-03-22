@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
+from fitting.mos2_core.review.manual_overrides import override_mtime_ns_for_report  # noqa: E402
 
 ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
@@ -639,7 +640,9 @@ used_default_names: set[str] = set()
 invalid_excluded_for_analysis = 0
 for lbl in selected_file_labels:
     path = file_labels[lbl]
-    df = load_spectra_dataframe(str(path), int(path.stat().st_mtime_ns))
+    report_mtime_ns = int(path.stat().st_mtime_ns)
+    overrides_mtime_ns = override_mtime_ns_for_report(path)
+    df = load_spectra_dataframe(str(path), report_mtime_ns, overrides_mtime_ns)
     if df.empty:
         continue
     if status_filter_on and status_selected and "fit_status" in df.columns:

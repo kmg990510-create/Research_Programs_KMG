@@ -50,6 +50,10 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `si_calibration`
 - Live status UI shows `fit/select/review` stage cards and keeps raw logs in the advanced expander.
 - Data delete workflow is soft-delete first: move selected result files to `data/bin/results/{modality}`.
+- In `A) Move Result Files to Bin`, selectable result items are JSON only:
+  - `reports/*_fit_report.json`
+  - `manual_refits/*_manual_overrides.json`
+- When a report JSON is moved/restored/purged, paired CSV + matching override JSON are linked and processed together.
 - Bin entries can be restored or permanently deleted later with explicit confirmation.
 
 ## Manual Refit UI Rules
@@ -67,7 +71,7 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Raman reports: `data/results/raman/reports/*_fit_report.json`
 - PL reports: `data/results/pl/reports/*_fit_report.json`
 - CSV pairs: `*_fit_parameters.csv`
-- Manual refit records: `data/results/{raman,pl}/manual_refits/manual_refits.jsonl`
+- Manual override records: `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`
 - `fit_status` domain: `valid | attention | invalid`
 
 ## Editing Rules

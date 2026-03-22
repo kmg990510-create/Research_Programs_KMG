@@ -11,6 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from fitting.mos2_core.core.runtime_paths import runtime_project_root
+from fitting.mos2_core.review.manual_overrides import (
+    apply_manual_overrides_to_payload,
+    override_mtime_ns_for_report,
+)
 
 SUPPORTED_MODALITIES = ("raman", "pl")
 
@@ -75,15 +79,25 @@ def paired_csv_path(json_path: Path) -> Path:
 
 
 @st.cache_data(show_spinner=False)
-def load_report_payload(path_str: str, cache_bust_mtime_ns: int | None = None) -> dict:
+def load_report_payload(
+    path_str: str,
+    cache_bust_mtime_ns: int | None = None,
+    manual_overrides_mtime_ns: int | None = None,
+) -> dict:
     _ = cache_bust_mtime_ns
+    _ = manual_overrides_mtime_ns
     path = Path(path_str)
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return apply_manual_overrides_to_payload(payload, path)
 
 
 @st.cache_data(show_spinner=False)
-def load_spectra_dataframe(path_str: str, cache_bust_mtime_ns: int | None = None) -> pd.DataFrame:
-    payload = load_report_payload(path_str, cache_bust_mtime_ns)
+def load_spectra_dataframe(
+    path_str: str,
+    cache_bust_mtime_ns: int | None = None,
+    manual_overrides_mtime_ns: int | None = None,
+) -> pd.DataFrame:
+    payload = load_report_payload(path_str, cache_bust_mtime_ns, manual_overrides_mtime_ns)
     spectra = payload.get("spectra", [])
     if isinstance(spectra, list):
         return pd.DataFrame(spectra)
@@ -108,8 +122,9 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
     selected_path = files[labels.index(selected_label)]
 
     selected_mtime_ns = int(selected_path.stat().st_mtime_ns)
-    payload = load_report_payload(str(selected_path), selected_mtime_ns)
-    df = load_spectra_dataframe(str(selected_path), selected_mtime_ns)
+    overrides_mtime_ns = override_mtime_ns_for_report(selected_path)
+    payload = load_report_payload(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
+    df = load_spectra_dataframe(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
     st.sidebar.caption(f"Path: {selected_path}")
     st.sidebar.divider()
     return selected_path, payload, df

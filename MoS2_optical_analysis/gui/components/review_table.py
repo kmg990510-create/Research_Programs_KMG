@@ -18,6 +18,7 @@ def render_review_table(df: pd.DataFrame, title: str = "Review Table") -> None:
         "map_y",
         "selected_model",
         "fit_status",
+        "reason",
         "e2g_position",
         "a1g_position",
         "delta_e2g_a1g",
@@ -36,6 +37,26 @@ def render_review_table(df: pd.DataFrame, title: str = "Review Table") -> None:
     ]
     cols = [c for c in preferred_cols if c in df.columns]
     table = (df[cols] if cols else df).copy()
+
+    if "reason" not in table.columns:
+        if "quality_flags" in table.columns:
+            table["reason"] = table["quality_flags"].apply(
+                lambda v: ", ".join(str(x) for x in v) if isinstance(v, list) else (str(v) if v is not None else "")
+            )
+        elif "attention_reasons" in table.columns:
+            table["reason"] = table["attention_reasons"].apply(
+                lambda v: ", ".join(str(x) for x in v) if isinstance(v, list) else (str(v) if v is not None else "")
+            )
+        elif "invalid_reasons" in table.columns:
+            table["reason"] = table["invalid_reasons"].apply(
+                lambda v: ", ".join(str(x) for x in v) if isinstance(v, list) else (str(v) if v is not None else "")
+            )
+        else:
+            table["reason"] = ""
+
+    reorder_cols = [c for c in preferred_cols if c in table.columns]
+    tail_cols = [c for c in table.columns if c not in reorder_cols]
+    table = table[reorder_cols + tail_cols]
     if "quality_flags" in table.columns:
         table["quality_flags"] = table["quality_flags"].apply(
             lambda v: ", ".join(str(x) for x in v) if isinstance(v, list) else (str(v) if v is not None else "")

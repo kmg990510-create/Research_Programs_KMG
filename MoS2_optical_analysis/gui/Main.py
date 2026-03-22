@@ -86,8 +86,8 @@ with right:
 st.subheader("Next Steps")
 nav_cols = st.columns(4)
 nav_cols[0].page_link("pages/1_Run_Analysis.py", label="Run Analysis")
-nav_cols[1].page_link("pages/2_All_Spectra_Viewer.py", label="All Spectra")
-nav_cols[2].page_link("pages/3_Flagged_Spectra.py", label="Flagged")
+nav_cols[1].page_link("pages/2_Flagged_Spectra.py", label="Flagged")
+nav_cols[2].page_link("pages/3_All_Spectra_Viewer.py", label="All Spectra")
 nav_cols[3].page_link("pages/7_Finalize.py", label="Finalize")
 
 

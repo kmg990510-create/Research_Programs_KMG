@@ -21,6 +21,7 @@ From repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build mos2_optical_analysis.spec
+Copy-Item -Path PACKAGING_DIST_README.md -Destination dist/mos2-analysis/PACKAGING_DIST_README.md -Force
 ```
 
 Notes:
@@ -40,7 +41,7 @@ Notes:
 ## Intentionally Excluded
 
 - Runtime outputs such as `data/results/**` and `data/bin/results/**`
-- User-generated manual refit history (`manual_refits.jsonl`)
+- User-generated manual overrides (`data/results/{modality}/manual_refits/*_manual_overrides.json`)
 - Legacy code under `legacy/**`
 
 These are expected to be generated/managed externally at runtime.
@@ -58,6 +59,7 @@ These are expected to be generated/managed externally at runtime.
 - Standardize on:
   - `dist/mos2-analysis` (deliverable)
   - `dist/build` (temporary build work)
+- If old top-level `build/`, `build_progressfix/`, or `dist_progressfix/` folders exist from earlier runs, treat them as legacy leftovers and do not use them for release artifacts.
 
 ## Distribution Checklist (Minimum)
 
@@ -74,7 +76,7 @@ Distribute the whole `dist/mos2-analysis` folder, including:
 
 - `gui/pages/1_Run_Analysis.py` now detects frozen mode and launches:
   - `mos2-run-raman(.exe)` or `mos2-run-pl(.exe)`
-- `gui/pages/2_All_Spectra_Viewer.py` now detects frozen mode and launches:
+- `gui/pages/3_All_Spectra_Viewer.py` now detects frozen mode and launches:
   - `mos2-desktop-editor(.exe)`
 
 Non-frozen behavior still uses `sys.executable -m ...` exactly as before.

@@ -9,6 +9,11 @@ from pathlib import Path
 import re
 import shutil
 
+from fitting.mos2_core.review.manual_overrides import (
+    is_result_json_selectable,
+    result_relpaths_linked_to_report_json,
+)
+
 
 METADATA_FILE = "metadata.json"
 PAYLOAD_DIR = "payload"
@@ -62,6 +67,30 @@ def list_scope_items(
             continue
         out.append(path.relative_to(root))
     return sorted(out, key=lambda p: p.as_posix().lower())
+
+
+def list_result_json_items(project_root: Path, modality: str) -> list[Path]:
+    """List only user-selectable result JSON files (report + manual override)."""
+    items = list_scope_items(
+        project_root,
+        scope="results",
+        modality=modality,
+        recursive=True,
+        files_only=True,
+    )
+    selected = [p for p in items if is_result_json_selectable(p)]
+    return sorted(selected, key=lambda p: p.as_posix().lower())
+
+
+def linked_result_relpaths_for_item(relative_path: str) -> list[str]:
+    """
+    Expand a selected result item to linked set.
+
+    - report JSON -> report JSON + paired CSV + manual override JSON
+    - other selectable JSON -> itself
+    """
+    rel = Path(relative_path).as_posix()
+    return result_relpaths_linked_to_report_json(rel)
 
 
 def _sanitize_fragment(text: str) -> str:

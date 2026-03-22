@@ -31,10 +31,12 @@ REPORT_LINE_RE = re.compile(r"^Fit report \((JSON|CSV)\):\s*(.+)\s*$")
 BATCH_HEADER_RE = re.compile(r"^\[Batch\s+(\d+)/(\d+)\]\s+run_id=(.+?)\s+\|\s+raw_dir=(.+)\s*$")
 
 list_scope_items = _data_bin.list_scope_items
+list_result_json_items = _data_bin.list_result_json_items
 list_bin_entries = _data_bin.list_bin_entries
 move_scope_item_to_bin = _data_bin.move_scope_item_to_bin
 restore_bin_entry = _data_bin.restore_bin_entry
 purge_bin_entry = _data_bin.purge_bin_entry
+linked_result_relpaths_for_item = _data_bin.linked_result_relpaths_for_item
 RESULT_BIN_SCOPE = "results"
 
 
@@ -175,6 +177,35 @@ def _build_fit_progress_plan(selected_folder: Path, run_mode: str, pattern: str,
         "targets": targets,
         "total_files": sum(int(target["file_count"]) for target in targets),
     }
+
+
+def _expand_result_bin_entry_ids(
+    entries: list[Any],
+    selected_entry_ids: list[str],
+) -> list[str]:
+    by_id: dict[str, Any] = {str(entry.entry_id): entry for entry in entries}
+    rel_to_ids: dict[str, list[str]] = {}
+    for entry in entries:
+        rel = str(getattr(entry, "original_relpath", "")).strip()
+        if not rel:
+            continue
+        rel_to_ids.setdefault(rel, []).append(str(entry.entry_id))
+
+    expanded: list[str] = []
+    seen_ids: set[str] = set()
+    for entry_id in selected_entry_ids:
+        if entry_id not in by_id:
+            continue
+        base_entry = by_id[entry_id]
+        base_rel = str(getattr(base_entry, "original_relpath", "")).strip()
+        linked_relpaths = linked_result_relpaths_for_item(base_rel) if base_rel else [base_rel]
+        for rel in linked_relpaths:
+            for linked_id in rel_to_ids.get(rel, []):
+                if linked_id in seen_ids:
+                    continue
+                seen_ids.add(linked_id)
+                expanded.append(linked_id)
+    return expanded
 
 
 def _render_fit_card(slot: Any, title: str, fit_state: dict[str, Any], total_override: int | None = None) -> None:
@@ -411,15 +442,9 @@ runner_stem = "mos2-run-raman" if modality == "raman" else "mos2-run-pl"
 base_raw_dir = ROOT / "data" / "raw" / modality
 
 with st.expander("Result Bin (optional): move results / restore / delete later", expanded=False):
-    st.caption("Raw data is not touched here. Only data/results/* files are staged to Bin.")
+    st.caption("Raw data is not touched here. Only report JSON and manual override JSON are selectable.")
 
-    result_items = list_scope_items(
-        ROOT,
-        scope=RESULT_BIN_SCOPE,
-        modality=modality,
-        recursive=True,
-        files_only=True,
-    )
+    result_items = list_result_json_items(ROOT, modality=modality)
     result_item_labels = [path.as_posix() for path in result_items]
     st.markdown("**A) Move Result Files to Bin**")
     if result_item_labels:
@@ -440,18 +465,27 @@ with st.expander("Result Bin (optional): move results / restore / delete later",
         )
         if move_clicked:
             moved_count = 0
+            already_handled: set[str] = set()
+            results_root = ROOT / "data" / "results" / modality
             with st.spinner("Moving selected result files to Bin..."):
-                for rel_path in selected_result_items:
-                    try:
-                        move_scope_item_to_bin(
-                            ROOT,
-                            scope=RESULT_BIN_SCOPE,
-                            modality=modality,
-                            relative_path=rel_path,
-                        )
-                        moved_count += 1
-                    except Exception as exc:  # pragma: no cover - UI feedback path
-                        st.error(f"Failed to move '{rel_path}' to Bin: {exc}")
+                for base_rel_path in selected_result_items:
+                    for rel_path in linked_result_relpaths_for_item(base_rel_path):
+                        rel_norm = Path(rel_path).as_posix()
+                        if rel_norm in already_handled:
+                            continue
+                        already_handled.add(rel_norm)
+                        if not (results_root / rel_norm).exists():
+                            continue
+                        try:
+                            move_scope_item_to_bin(
+                                ROOT,
+                                scope=RESULT_BIN_SCOPE,
+                                modality=modality,
+                                relative_path=rel_norm,
+                            )
+                            moved_count += 1
+                        except Exception as exc:  # pragma: no cover - UI feedback path
+                            st.error(f"Failed to move '{rel_norm}' to Bin: {exc}")
             if moved_count > 0:
                 st.success(f"Moved {moved_count} result file(s) into Bin.")
                 st.rerun()
@@ -510,8 +544,9 @@ with st.expander("Result Bin (optional): move results / restore / delete later",
 
         if restore_clicked:
             restored_count = 0
+            resolved_entry_ids = _expand_result_bin_entry_ids(entries, selected_entry_ids)
             with st.spinner("Restoring selected Bin items..."):
-                for entry_id in selected_entry_ids:
+                for entry_id in resolved_entry_ids:
                     try:
                         restore_bin_entry(
                             ROOT,
@@ -528,8 +563,9 @@ with st.expander("Result Bin (optional): move results / restore / delete later",
 
         if purge_clicked:
             purged_count = 0
+            resolved_entry_ids = _expand_result_bin_entry_ids(entries, selected_entry_ids)
             with st.spinner("Permanently deleting selected Bin items..."):
-                for entry_id in selected_entry_ids:
+                for entry_id in resolved_entry_ids:
                     try:
                         purge_bin_entry(
                             ROOT,
