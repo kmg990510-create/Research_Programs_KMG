@@ -33,6 +33,9 @@ python -m pip install -r requirements.txt
 # Raman raw (batch: immediate subfolders)
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --batch-subdirs
 
+# Raman raw with spectrum-level multiprocessing
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --run-id raman_run_mp --workers 4
+
 # PL dummy
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_dummy_pipeline
 
@@ -45,6 +48,7 @@ python -m pip install -r requirements.txt
 
 Note:
 - In single mode, if `--raw-dir` has no direct TXT files but has TXT-containing immediate subfolders, `run_raw_pipeline` auto-switches to batch-subdirs mode.
+- `--workers` controls spectrum-level fit multiprocessing (`1` = sequential). In restricted environments, pipeline auto-falls back to sequential and logs the reason.
 
 ## Raman Fit Config Conventions
 

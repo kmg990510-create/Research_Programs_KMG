@@ -38,6 +38,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--progress-every", type=int, default=5, help="Print real-time progress every N spectra")
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of spectrum-level fit worker processes (1 = sequential).",
+    )
+    parser.add_argument(
         "--peak-n-mode",
         type=str,
         default="auto",
@@ -96,6 +102,7 @@ def _run_single(
     project_root: Path,
     runtime_config: dict,
     progress_every: int,
+    fit_workers: int,
 ) -> RunSummary:
     raw_spectra = load_raman_txt_directory(raw_dir, pattern=pattern)
     if not raw_spectra:
@@ -108,6 +115,7 @@ def _run_single(
     )
     context.state["progress_enabled"] = True
     context.state["progress_every"] = max(int(progress_every), 1)
+    context.state["fit_workers"] = max(int(fit_workers), 1)
     stages = build_default_stages(config=context.config)
     result = run_pipeline(raw_spectra=raw_spectra, stages=stages, context=context)
 
@@ -236,6 +244,7 @@ def main() -> None:
             project_root=project_root,
             runtime_config=runtime_config,
             progress_every=args.progress_every,
+            fit_workers=args.workers,
         )
         _print_run_summary(summary)
         summaries.append(summary)

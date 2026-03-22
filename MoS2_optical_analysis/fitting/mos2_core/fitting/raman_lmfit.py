@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -92,6 +94,17 @@ class NPeakSpec:
     right_base: tuple[float, float]
     center_tolerance: float
     lock_baseline: bool
+
+
+@dataclass(slots=True)
+class _SpectrumFitResult:
+    """Per-spectrum fitting bundle used by sequential/parallel execution paths."""
+
+    spectrum_id: str
+    modality: str
+    candidates: list[FitCandidate]
+    prefit_info: dict[str, Any]
+    failures: list[dict[str, str]]
 
 
 def _finite(value: Any, default: float = 0.0) -> float:
@@ -1398,6 +1411,233 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             return "attention"
         return "invalid"
 
+    @staticmethod
+    def _resolve_modality(metadata: Mapping[str, Any]) -> str:
+        modality = str(metadata.get("modality", "raman")).strip().lower()
+        return modality or "raman"
+
+    @staticmethod
+    def _default_prefit_evaluation() -> PreFitEvaluation:
+        return PreFitEvaluation(
+            status="valid",
+            invalid_reasons=[],
+            attention_reasons=[],
+            metrics={
+                "prefit_noise_std": 0.0,
+                "prefit_e2g_peak_height": 0.0,
+                "prefit_a1g_peak_height": 0.0,
+                "prefit_e2g_peak_x": 0.0,
+                "prefit_a1g_peak_x": 0.0,
+                "prefit_e2g_snr": 0.0,
+                "prefit_a1g_snr": 0.0,
+            },
+        )
+
+    def _fit_spectrum(
+        self,
+        *,
+        spectrum: PreprocessedSpectrum,
+        baseline_y: Sequence[float],
+        cfg: RamanFitConfig,
+    ) -> _SpectrumFitResult:
+        modality = self._resolve_modality(spectrum.metadata)
+        x_full = np.asarray(spectrum.x, dtype=float)
+        y_full = np.asarray(spectrum.y, dtype=float)
+        baseline = np.asarray(baseline_y, dtype=float)
+        y_corr = y_full - baseline
+
+        failures: list[dict[str, str]] = []
+        if modality == "raman" and x_full.size >= 8:
+            prefit_eval = self._evaluate_prefit_gate(x_full=x_full, y_corr=y_corr, cfg=cfg)
+        else:
+            prefit_eval = self._default_prefit_evaluation()
+
+        raw_candidates: list[FitCandidate] = []
+        if modality == "raman":
+            if x_full.size < 20:
+                raw_candidates.append(
+                    self._fallback_candidate(
+                        model_name="fallback_signal_tracking",
+                        x_full=x_full,
+                        y_corr=y_corr,
+                        fit_status="attention",
+                        attention_reasons=["raman_too_few_points"],
+                        extra_metrics=prefit_eval.metrics,
+                    )
+                )
+            elif prefit_eval.status == "invalid":
+                raw_candidates.append(
+                    self._fallback_candidate(
+                        model_name="prefit_gate_invalid",
+                        x_full=x_full,
+                        y_corr=y_corr,
+                        fit_status="invalid",
+                        invalid_reasons=list(prefit_eval.invalid_reasons),
+                        attention_reasons=list(prefit_eval.attention_reasons),
+                        extra_metrics=prefit_eval.metrics,
+                    )
+                )
+            else:
+                peak2_anchor: FitCandidate | None = None
+                if cfg.two_stage_anchor_enabled:
+                    try:
+                        peak2_anchor = self._fit_n_peak_model(
+                            model_name="peak_2_model",
+                            x_full=x_full,
+                            y_corr=y_corr,
+                            cfg=cfg,
+                            anchor_centers=None,
+                        )
+                    except Exception as exc:
+                        failures.append(
+                            {
+                                "spectrum_id": spectrum.spectrum_id,
+                                "model_name": "peak_2_model(anchor_stage)",
+                                "error": str(exc),
+                            }
+                        )
+
+                anchor_centers: dict[str, float] | None = None
+                if peak2_anchor is not None:
+                    anchor_centers = {
+                        "e2g": _finite(peak2_anchor.params.get("e2g_position"), float("nan")),
+                        "a1g": _finite(peak2_anchor.params.get("a1g_position"), float("nan")),
+                    }
+
+                for model_name in cfg.models:
+                    try:
+                        if model_name == "peak_2_model" and peak2_anchor is not None:
+                            raw_candidates.append(peak2_anchor)
+                        else:
+                            raw_candidates.append(
+                                self._fit_candidate(
+                                    model_name=model_name,
+                                    x_full=x_full,
+                                    y_corr=y_corr,
+                                    cfg=cfg,
+                                    anchor_centers=anchor_centers,
+                                    modality="raman",
+                                )
+                            )
+                    except Exception as exc:  # pragma: no cover - defensive fallback
+                        failures.append(
+                            {
+                                "spectrum_id": spectrum.spectrum_id,
+                                "model_name": model_name,
+                                "error": str(exc),
+                            }
+                        )
+        elif modality == "pl" and self.enable_pl:
+            if x_full.size < 20:
+                raw_candidates.append(
+                    self._fallback_candidate(
+                        model_name="fallback_signal_tracking",
+                        x_full=x_full,
+                        y_corr=y_corr,
+                        fit_status="attention",
+                        attention_reasons=["pl_too_few_points"],
+                        extra_metrics=prefit_eval.metrics,
+                    )
+                )
+            else:
+                for model_name in cfg.models:
+                    try:
+                        raw_candidates.append(
+                            self._fit_candidate(
+                                model_name=model_name,
+                                x_full=x_full,
+                                y_corr=y_corr,
+                                cfg=cfg,
+                                anchor_centers=None,
+                                modality="pl",
+                            )
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive fallback
+                        failures.append(
+                            {
+                                "spectrum_id": spectrum.spectrum_id,
+                                "model_name": model_name,
+                                "error": str(exc),
+                            }
+                        )
+        else:
+            reason = (
+                "pl_disabled_in_fitter"
+                if modality == "pl" and not self.enable_pl
+                else f"unsupported_modality:{modality}"
+            )
+            raw_candidates.append(
+                self._fallback_candidate(
+                    model_name="fallback_signal_tracking",
+                    x_full=x_full,
+                    y_corr=y_corr,
+                    fit_status="attention",
+                    attention_reasons=[reason],
+                    extra_metrics=prefit_eval.metrics,
+                )
+            )
+
+        if not raw_candidates:
+            raw_candidates.append(
+                self._fallback_candidate(
+                    model_name="fallback_signal_tracking",
+                    x_full=x_full,
+                    y_corr=y_corr,
+                    fit_status="invalid",
+                    invalid_reasons=["fit_all_models_failed"],
+                    attention_reasons=list(prefit_eval.attention_reasons),
+                    extra_metrics=prefit_eval.metrics,
+                )
+            )
+
+        candidates: list[FitCandidate] = []
+        for candidate in raw_candidates:
+            self._recompute_metrics_on_window(
+                candidate,
+                x_full=x_full,
+                y_true=y_corr,
+                x_min=cfg.compare_x_min,
+                x_max=cfg.compare_x_max,
+            )
+            if modality == "raman":
+                try:
+                    candidate = self._maybe_auto_refine_candidate(
+                        candidate=candidate,
+                        x_full=x_full,
+                        y_corr=y_corr,
+                        cfg=cfg,
+                    )
+                except Exception as exc:
+                    failures.append(
+                        {
+                            "spectrum_id": spectrum.spectrum_id,
+                            "model_name": f"{candidate.model_name}(auto_refine)",
+                            "error": str(exc),
+                        }
+                    )
+            fit_invalid_reasons = self._candidate_math_invalid_reasons(candidate)
+            candidates.append(
+                self._apply_candidate_status(
+                    candidate=candidate,
+                    prefit_eval=prefit_eval,
+                    fit_invalid_reasons=fit_invalid_reasons,
+                )
+            )
+
+        prefit_info = {
+            "status": prefit_eval.status,
+            "invalid_reasons": list(prefit_eval.invalid_reasons),
+            "attention_reasons": list(prefit_eval.attention_reasons),
+            "metrics": dict(prefit_eval.metrics),
+        }
+        return _SpectrumFitResult(
+            spectrum_id=spectrum.spectrum_id,
+            modality=modality,
+            candidates=candidates,
+            prefit_info=prefit_info,
+            failures=failures,
+        )
+
     def run(
         self,
         spectra: Sequence[PreprocessedSpectrum],
@@ -1422,24 +1662,20 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             return bool(report_export.get("include_candidate_fitted_y", False))
 
         cfg_by_modality: dict[str, RamanFitConfig] = {}
+        modality_by_spectrum: dict[str, str] = {}
         progress_enabled = bool(context.state.get("progress_enabled", False))
         progress_every = max(int(_finite(context.state.get("progress_every", 5), 5.0)), 1)
+        fit_workers = max(int(_finite(context.state.get("fit_workers", 1), 1.0)), 1)
         total = len(spectra)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
             print(f"[fit] start: {total} spectra", flush=True)
 
-        for index, spectrum in enumerate(spectra, start=1):
+        for spectrum in spectra:
             metadata_index[spectrum.spectrum_id] = dict(spectrum.metadata)
-            modality = str(spectrum.metadata.get("modality", "raman")).lower()
-            if not modality:
-                modality = "raman"
+            modality = self._resolve_modality(spectrum.metadata)
+            modality_by_spectrum[spectrum.spectrum_id] = modality
             modality_counts[modality] = modality_counts.get(modality, 0) + 1
-
-            x_full = np.asarray(spectrum.x, dtype=float)
-            y_full = np.asarray(spectrum.y, dtype=float)
-            baseline = np.asarray(baselines[spectrum.spectrum_id].selected.baseline_y, dtype=float)
-            y_corr = y_full - baseline
 
             cfg = cfg_by_modality.get(modality)
             if cfg is None:
@@ -1448,208 +1684,153 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     modality="raman" if modality == "raman" else modality,
                 )
                 cfg_by_modality[modality] = cfg
-            if modality == "raman":
-                model_names = cfg.models
-            elif modality == "pl" and self.enable_pl:
-                model_names = cfg.models
-            else:
-                model_names = ["fallback_signal_tracking"]
-            if modality == "raman" and x_full.size >= 8:
-                prefit_eval = self._evaluate_prefit_gate(x_full=x_full, y_corr=y_corr, cfg=cfg)
-            else:
-                prefit_eval = PreFitEvaluation(
-                    status="valid",
-                    invalid_reasons=[],
-                    attention_reasons=[],
-                    metrics={
-                        "prefit_noise_std": 0.0,
-                        "prefit_e2g_peak_height": 0.0,
-                        "prefit_a1g_peak_height": 0.0,
-                        "prefit_e2g_peak_x": 0.0,
-                        "prefit_a1g_peak_x": 0.0,
-                        "prefit_e2g_snr": 0.0,
-                        "prefit_a1g_snr": 0.0,
-                    },
-                )
-            prefit_index[spectrum.spectrum_id] = {
-                "status": prefit_eval.status,
-                "invalid_reasons": list(prefit_eval.invalid_reasons),
-                "attention_reasons": list(prefit_eval.attention_reasons),
-                "metrics": dict(prefit_eval.metrics),
-            }
+        spectrum_by_id = {s.spectrum_id: s for s in spectra}
+        results_by_id: dict[str, _SpectrumFitResult] = {}
+        parallel_failed = False
+        if fit_workers > 1 and total > 1:
+            # Avoid CPU oversubscription: one process per spectrum task, one BLAS/OpenMP thread per process.
+            for env_key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+                os.environ.setdefault(env_key, "1")
 
-            raw_candidates: list[FitCandidate] = []
-            if modality == "raman":
-                if x_full.size < 20:
-                    raw_candidates.append(
-                        self._fallback_candidate(
-                            model_name="fallback_signal_tracking",
-                            x_full=x_full,
-                            y_corr=y_corr,
-                            fit_status="attention",
-                            attention_reasons=["raman_too_few_points"],
-                            extra_metrics=prefit_eval.metrics,
+            max_workers = min(fit_workers, total)
+            try:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    futures: dict[concurrent.futures.Future[_SpectrumFitResult], str] = {}
+                    for spectrum in spectra:
+                        modality = modality_by_spectrum[spectrum.spectrum_id]
+                        cfg = cfg_by_modality[modality]
+                        baseline_y = baselines[spectrum.spectrum_id].selected.baseline_y
+                        future = executor.submit(
+                            _fit_single_spectrum_worker,
+                            spectrum=spectrum,
+                            baseline_y=list(baseline_y),
+                            cfg=cfg,
+                            default_models=self.default_models,
+                            pl_models=self.pl_models,
+                            enable_pl=self.enable_pl,
                         )
-                    )
-                elif prefit_eval.status == "invalid":
-                    raw_candidates.append(
-                        self._fallback_candidate(
-                            model_name="prefit_gate_invalid",
-                            x_full=x_full,
-                            y_corr=y_corr,
-                            fit_status="invalid",
-                            invalid_reasons=list(prefit_eval.invalid_reasons),
-                            attention_reasons=list(prefit_eval.attention_reasons),
-                            extra_metrics=prefit_eval.metrics,
-                        )
-                    )
-                else:
-                    peak2_anchor: FitCandidate | None = None
-                    if cfg.two_stage_anchor_enabled:
+                        futures[future] = spectrum.spectrum_id
+
+                    completed = 0
+                    for future in concurrent.futures.as_completed(futures):
+                        spectrum_id = futures[future]
                         try:
-                            peak2_anchor = self._fit_n_peak_model(
-                                model_name="peak_2_model",
+                            fit_result = future.result()
+                        except Exception as exc:  # pragma: no cover - defensive fallback
+                            modality = modality_by_spectrum.get(spectrum_id, "raman")
+                            cfg = cfg_by_modality[modality]
+                            spectrum = spectrum_by_id.get(spectrum_id)
+                            if spectrum is None:
+                                completed += 1
+                                continue
+                            x_full = np.asarray(spectrum.x, dtype=float)
+                            y_full = np.asarray(spectrum.y, dtype=float)
+                            baseline = np.asarray(baselines[spectrum.spectrum_id].selected.baseline_y, dtype=float)
+                            y_corr = y_full - baseline
+                            prefit_eval = (
+                                self._evaluate_prefit_gate(x_full=x_full, y_corr=y_corr, cfg=cfg)
+                                if modality == "raman" and x_full.size >= 8
+                                else self._default_prefit_evaluation()
+                            )
+                            fallback = self._fallback_candidate(
+                                model_name="fit_worker_exception",
                                 x_full=x_full,
                                 y_corr=y_corr,
-                                cfg=cfg,
-                                anchor_centers=None,
+                                fit_status="invalid",
+                                invalid_reasons=["fit_worker_exception"],
+                                attention_reasons=list(prefit_eval.attention_reasons),
+                                extra_metrics=prefit_eval.metrics,
                             )
-                        except Exception as exc:
-                            failures.append(
-                                {
-                                    "spectrum_id": spectrum.spectrum_id,
-                                    "model_name": "peak_2_model(anchor_stage)",
-                                    "error": str(exc),
-                                }
-                            )
-
-                    anchor_centers: dict[str, float] | None = None
-                    if peak2_anchor is not None:
-                        anchor_centers = {
-                            "e2g": _finite(peak2_anchor.params.get("e2g_position"), float("nan")),
-                            "a1g": _finite(peak2_anchor.params.get("a1g_position"), float("nan")),
-                        }
-
-                    for model_name in model_names:
-                        try:
-                            if model_name == "peak_2_model" and peak2_anchor is not None:
-                                raw_candidates.append(peak2_anchor)
-                            else:
-                                raw_candidates.append(
-                                    self._fit_candidate(
-                                        model_name=model_name,
-                                        x_full=x_full,
-                                        y_corr=y_corr,
-                                        cfg=cfg,
-                                        anchor_centers=anchor_centers,
-                                        modality="raman",
+                            fit_result = _SpectrumFitResult(
+                                spectrum_id=spectrum_id,
+                                modality=modality,
+                                candidates=[
+                                    self._apply_candidate_status(
+                                        candidate=fallback,
+                                        prefit_eval=prefit_eval,
+                                        fit_invalid_reasons=["fit_worker_exception"],
                                     )
-                                )
-                        except Exception as exc:  # pragma: no cover - defensive fallback
-                            failures.append(
-                                {
-                                    "spectrum_id": spectrum.spectrum_id,
-                                    "model_name": model_name,
-                                    "error": str(exc),
-                                }
+                                ],
+                                prefit_info={
+                                    "status": prefit_eval.status,
+                                    "invalid_reasons": list(prefit_eval.invalid_reasons),
+                                    "attention_reasons": list(prefit_eval.attention_reasons),
+                                    "metrics": dict(prefit_eval.metrics),
+                                },
+                                failures=[
+                                    {
+                                        "spectrum_id": spectrum_id,
+                                        "model_name": "__worker__",
+                                        "error": str(exc),
+                                    }
+                                ],
                             )
-            elif modality == "pl" and self.enable_pl:
-                if x_full.size < 20:
-                    raw_candidates.append(
-                        self._fallback_candidate(
-                            model_name="fallback_signal_tracking",
-                            x_full=x_full,
-                            y_corr=y_corr,
-                            fit_status="attention",
-                            attention_reasons=["pl_too_few_points"],
-                            extra_metrics=prefit_eval.metrics,
-                        )
-                    )
-                else:
-                    for model_name in model_names:
-                        try:
-                            raw_candidates.append(
-                                self._fit_candidate(
-                                    model_name=model_name,
-                                    x_full=x_full,
-                                    y_corr=y_corr,
-                                    cfg=cfg,
-                                    anchor_centers=None,
-                                    modality="pl",
-                                )
+
+                        results_by_id[spectrum_id] = fit_result
+                        failures.extend(fit_result.failures)
+                        prefit_index[spectrum_id] = dict(fit_result.prefit_info)
+                        status = self._best_available_status(fit_result.candidates)
+                        fit_status_counts[status] = fit_status_counts.get(status, 0) + 1
+
+                        completed += 1
+                        if progress_enabled and (completed % progress_every == 0 or completed == total):
+                            elapsed = time.perf_counter() - t0
+                            print(
+                                "[fit] "
+                                f"{completed}/{total} | valid={fit_status_counts.get('valid', 0)} "
+                                f"attention={fit_status_counts.get('attention', 0)} "
+                                f"invalid={fit_status_counts.get('invalid', 0)} "
+                                f"| elapsed={elapsed:.1f}s",
+                                flush=True,
                             )
-                        except Exception as exc:  # pragma: no cover - defensive fallback
-                            failures.append(
-                                {
-                                    "spectrum_id": spectrum.spectrum_id,
-                                    "model_name": model_name,
-                                    "error": str(exc),
-                                }
-                            )
-            else:
-                reason = (
-                    "pl_disabled_in_fitter"
-                    if modality == "pl" and not self.enable_pl
-                    else f"unsupported_modality:{modality}"
+            except Exception as exc:  # pragma: no cover - environment-dependent fallback
+                parallel_failed = True
+                failures.append(
+                    {
+                        "spectrum_id": "__all__",
+                        "model_name": "process_pool_init",
+                        "error": str(exc),
+                    }
                 )
-                raw_candidates.append(
-                    self._fallback_candidate(
-                        model_name="fallback_signal_tracking",
-                        x_full=x_full,
-                        y_corr=y_corr,
-                        fit_status="attention",
-                        attention_reasons=[reason],
-                        extra_metrics=prefit_eval.metrics,
-                    )
-                )
+                if progress_enabled:
+                    print(f"[fit] multiprocessing disabled; fallback to sequential ({exc})", flush=True)
 
-            if not raw_candidates:
-                raw_candidates.append(
-                    self._fallback_candidate(
-                        model_name="fallback_signal_tracking",
-                        x_full=x_full,
-                        y_corr=y_corr,
-                        fit_status="invalid",
-                        invalid_reasons=["fit_all_models_failed"],
-                        attention_reasons=list(prefit_eval.attention_reasons),
-                        extra_metrics=prefit_eval.metrics,
-                    )
+        if fit_workers <= 1 or total <= 1 or parallel_failed:
+            completed = len(results_by_id)
+            for spectrum in spectra:
+                if spectrum.spectrum_id in results_by_id:
+                    continue
+                modality = modality_by_spectrum[spectrum.spectrum_id]
+                cfg = cfg_by_modality[modality]
+                fit_result = self._fit_spectrum(
+                    spectrum=spectrum,
+                    baseline_y=baselines[spectrum.spectrum_id].selected.baseline_y,
+                    cfg=cfg,
                 )
+                results_by_id[spectrum.spectrum_id] = fit_result
+                failures.extend(fit_result.failures)
+                prefit_index[spectrum.spectrum_id] = dict(fit_result.prefit_info)
+                status = self._best_available_status(fit_result.candidates)
+                fit_status_counts[status] = fit_status_counts.get(status, 0) + 1
 
-            candidates: list[FitCandidate] = []
-            for candidate in raw_candidates:
-                self._recompute_metrics_on_window(
-                    candidate,
-                    x_full=x_full,
-                    y_true=y_corr,
-                    x_min=cfg.compare_x_min,
-                    x_max=cfg.compare_x_max,
-                )
-                if modality == "raman":
-                    try:
-                        candidate = self._maybe_auto_refine_candidate(
-                            candidate=candidate,
-                            x_full=x_full,
-                            y_corr=y_corr,
-                            cfg=cfg,
-                        )
-                    except Exception as exc:
-                        failures.append(
-                            {
-                                "spectrum_id": spectrum.spectrum_id,
-                                "model_name": f"{candidate.model_name}(auto_refine)",
-                                "error": str(exc),
-                            }
-                        )
-                fit_invalid_reasons = self._candidate_math_invalid_reasons(candidate)
-                candidates.append(
-                    self._apply_candidate_status(
-                        candidate=candidate,
-                        prefit_eval=prefit_eval,
-                        fit_invalid_reasons=fit_invalid_reasons,
+                completed += 1
+                if progress_enabled and (completed % progress_every == 0 or completed == total):
+                    elapsed = time.perf_counter() - t0
+                    print(
+                        "[fit] "
+                        f"{completed}/{total} | valid={fit_status_counts.get('valid', 0)} "
+                        f"attention={fit_status_counts.get('attention', 0)} "
+                        f"invalid={fit_status_counts.get('invalid', 0)} "
+                        f"| elapsed={elapsed:.1f}s",
+                        flush=True,
                     )
-                )
 
+        for spectrum in spectra:
+            fit_result = results_by_id.get(spectrum.spectrum_id)
+            if fit_result is None:
+                continue
+            modality = fit_result.modality
+            candidates = fit_result.candidates
             ensemble[spectrum.spectrum_id] = FitEnsembleResult(modality=modality, candidates=candidates)
             fit_cache[spectrum.spectrum_id] = [
                 self._serialize_candidate(
@@ -1658,18 +1839,6 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 )
                 for c in candidates
             ]
-            status = self._best_available_status(candidates)
-            fit_status_counts[status] = fit_status_counts.get(status, 0) + 1
-            if progress_enabled and (index % progress_every == 0 or index == total):
-                elapsed = time.perf_counter() - t0
-                print(
-                    "[fit] "
-                    f"{index}/{total} | valid={fit_status_counts.get('valid', 0)} "
-                    f"attention={fit_status_counts.get('attention', 0)} "
-                    f"invalid={fit_status_counts.get('invalid', 0)} "
-                    f"| elapsed={elapsed:.1f}s",
-                    flush=True,
-                )
 
         context.state["fit_count"] = len(ensemble)
         context.state["fit_failures"] = failures
@@ -1684,3 +1853,24 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         else:
             context.state["run_modality"] = "raman"
         return ensemble
+
+
+def _fit_single_spectrum_worker(
+    *,
+    spectrum: PreprocessedSpectrum,
+    baseline_y: Sequence[float],
+    cfg: RamanFitConfig,
+    default_models: Sequence[str],
+    pl_models: Sequence[str],
+    enable_pl: bool,
+) -> _SpectrumFitResult:
+    fitter = LmfitRamanModelEnsembleFitting(
+        default_models=default_models,
+        pl_models=pl_models,
+        enable_pl=enable_pl,
+    )
+    return fitter._fit_spectrum(
+        spectrum=spectrum,
+        baseline_y=baseline_y,
+        cfg=cfg,
+    )

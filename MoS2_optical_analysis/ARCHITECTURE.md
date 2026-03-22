@@ -62,6 +62,10 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `distance_outlier` (`config|enabled|disabled`)
   - `delta_outlier` (`config|enabled|disabled`)
   - `si_calibration` (`config|enabled|disabled`)
+  - `fit_workers` (spectrum-level multiprocessing worker count)
+- `run_raw_pipeline` supports `--workers`:
+  - `1`: sequential fit path (baseline behavior)
+  - `>1`: process-pool fit path; auto-fallback to sequential if multiprocessing is unavailable in current environment
 - Live execution UI is fit-centric:
   - single mode: one `Fit Progress` card (`valid/attention/invalid`, elapsed, eta)
   - batch mode: `Overall (fit only)` and `Current Fit` cards with current batch/folder/file hints

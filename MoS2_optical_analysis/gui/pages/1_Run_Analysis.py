@@ -649,6 +649,15 @@ st.subheader("Step 3. Execution Options")
 run_id = st.text_input("Run ID", key="run_analysis_run_id_value", disabled=(run_mode == "batch_subdirs"))
 pattern = st.text_input("Pattern", value="*.txt")
 progress_every = st.number_input("Progress every N files", min_value=1, max_value=1000, value=1, step=1)
+default_workers = max((os.cpu_count() or 2) - 1, 1)
+fit_workers = st.number_input(
+    "Fit workers (processes)",
+    min_value=1,
+    max_value=64,
+    value=int(default_workers),
+    step=1,
+    help="Spectrum-level multiprocessing worker count. 1 keeps sequential behavior.",
+)
 if run_mode == "batch_subdirs":
     st.caption("Batch mode uses each immediate subfolder name as run-id (`Run ID` field disabled).")
 
@@ -716,6 +725,8 @@ if pipeline_exe is not None:
         str(run_id),
         "--progress-every",
         str(int(progress_every)),
+        "--workers",
+        str(int(fit_workers)),
         "--peak-n-mode",
         str(peak_n_mode),
         "--distance-outlier",
@@ -739,6 +750,8 @@ else:
         str(run_id),
         "--progress-every",
         str(int(progress_every)),
+        "--workers",
+        str(int(fit_workers)),
         "--peak-n-mode",
         str(peak_n_mode),
         "--distance-outlier",

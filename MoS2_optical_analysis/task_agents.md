@@ -572,7 +572,7 @@
   - `README.md`
   - `ARCHITECTURE.md`
   - `AGENTS.md`
-- Status: Todo
+- Status: Done
 - Impact: high (fit runtime performance + execution model)
 - Sub-steps:
   1. Add worker-count runtime option (for example `--workers`) with safe default (`1`) to preserve current sequential behavior.
@@ -625,6 +625,38 @@
   - least-squares path reproduces current outputs within accepted numeric tolerance.
   - Model-selection and review outcomes remain stable on validation datasets.
   - Runtime improvement is confirmed versus current lmfit wrapper path.
+
+## Execution Notes (2026-03-23)
+
+- TASK-020 complete:
+  - Added spectrum-level multiprocessing hook in fit stage:
+    - `fitting/mos2_core/fitting/raman_lmfit.py`
+    - new process-pool path with per-spectrum worker function
+    - deterministic merge of per-spectrum results back to input order
+  - Added runtime worker option to CLI entrypoints:
+    - `fitting/mos2_raman/run_raw_pipeline.py` (`--workers`)
+    - `fitting/mos2_pl/run_raw_pipeline.py` (`--workers`)
+    - pipeline context now carries `fit_workers`
+  - Added Run Analysis UI control and command wiring:
+    - `gui/pages/1_Run_Analysis.py`
+    - new `Fit workers (processes)` option passes `--workers`
+  - Added multiprocessing safety + fallback behavior:
+    - when `workers>1`, sets default process-safety env vars:
+      - `OMP_NUM_THREADS=1`
+      - `MKL_NUM_THREADS=1`
+      - `OPENBLAS_NUM_THREADS=1`
+    - if process-pool init fails in restricted environment, fit stage auto-falls back to sequential and logs reason.
+  - Docs synced:
+    - `README.md`
+    - `AGENTS.md`
+    - `ARCHITECTURE.md`
+  - Validation:
+    - `python -m py_compile` on updated fit/entrypoint modules: pass
+    - Raman dummy pipeline: pass
+    - PL dummy pipeline: pass
+    - Raman raw smoke (`workers=1`, 2 spectra): pass
+    - Raman raw smoke (`workers=2`): pass with automatic sequential fallback in restricted environment (`WinError 5`)
+    - PL raw smoke (`workers=2`): pass with automatic sequential fallback in restricted environment (`WinError 5`)
 
 ## Execution Notes (2026-03-22)
 

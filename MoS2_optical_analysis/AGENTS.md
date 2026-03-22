@@ -25,11 +25,13 @@ Run from workspace root (`MoS2_optical_analysis`):
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_dummy_pipeline
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --run-id my_raman
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --batch-subdirs
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --run-id my_raman_mp --workers 4
 
 # PL
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_dummy_pipeline
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id my_pl
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs
+.\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id my_pl_mp --workers 4
 
 # GUI
 .\.venv\Scripts\python.exe -m streamlit run gui/Main.py
@@ -48,6 +50,7 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `distance_outlier`
   - `delta_outlier`
   - `si_calibration`
+  - `fit_workers` (spectrum-level multiprocessing; `1` keeps sequential mode)
 - Live status UI shows `fit/select/review` stage cards and keeps raw logs in the advanced expander.
 - Data delete workflow is soft-delete first: move selected result files to `data/bin/results/{modality}`.
 - In `A) Move Result Files to Bin`, selectable result items are JSON only:
