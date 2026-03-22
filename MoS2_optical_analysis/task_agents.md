@@ -485,6 +485,29 @@
   - Temporary fallback folders are not treated as default deliverables
   - Distributable folder always includes a minimal usage README
 
+### TASK-018: Reorder navigation to show Flagged Spectra before All Spectra Viewer
+- Description: Change main navigation order so triage starts from flagged items, then detailed per-spectrum inspection
+- Assigned: raman_pl_agent
+- Related Files:
+  - `task_agents.md`
+  - `gui/Main.py`
+  - `README.md`
+  - `ARCHITECTURE.md`
+- Status: Todo
+- Impact: low (navigation UX flow)
+- Sub-steps:
+  1. Swap page-link order in `gui/Main.py` so `3_Flagged_Spectra.py` is shown before `2_All_Spectra_Viewer.py`.
+  2. Verify sidebar/top navigation labels and numbering reflect the new order consistently.
+  3. Update user-facing docs that describe page order or recommended review flow.
+- Prerequisites:
+  - Existing report-loading flow remains unchanged
+- Risks:
+  - Minor user confusion if docs and UI order diverge
+- Success Criteria:
+  - UI order is `Run Analysis -> Flagged Spectra -> All Spectra Viewer` for the relevant section
+  - Docs mention flagged-first triage flow
+  - No regression in page routing
+
 ## Execution Notes (2026-03-20)
 
 - TASK-001 complete:
