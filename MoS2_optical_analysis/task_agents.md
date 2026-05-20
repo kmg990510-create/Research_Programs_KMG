@@ -657,6 +657,57 @@
     - It is not yet parity-equivalent in every case; some differences are improved local optima vs lmfit, and at least one selected-model change was observed.
     - Next TASK-021 step should classify deltas by model/spectrum and decide acceptable tolerance or add stricter legacy-compatible optimizer settings before production integration.
 
+## TASK-021 Broader Guardrail Results (2026-05-20)
+
+- Additional comparison runs, production path unchanged:
+  - `sample_A`, first 20 spectra:
+    - selected-model agreement: `12/20` (`60.0%`)
+    - mean candidate speedup: `~8.23x`; median: `~4.93x`
+    - mean absolute RMSE delta: `~1.71`; max absolute RMSE delta: `~18.94`
+  - `sample_B`, first 20 spectra:
+    - selected-model agreement: `14/20` (`70.0%`)
+    - mean candidate speedup: `~8.48x`; median: `~4.86x`
+    - mean absolute RMSE delta: `~1.30`; max absolute RMSE delta: `~9.91`
+  - `sample_set_2/sample_E`, first 20 spectra:
+    - selected-model agreement: `16/20` (`80.0%`)
+    - mean candidate speedup: `~11.81x`; median: `~5.77x`
+    - mean absolute RMSE delta: `~3.16`; max absolute RMSE delta: `~30.94`
+  - `sample_set_3/sample_F`, first 20 spectra:
+    - selected-model agreement: `12/20` (`60.0%`)
+    - mean candidate speedup: `~6.45x`; median: `~4.53x`
+    - mean absolute RMSE delta: `~8.08`; max absolute RMSE delta: `~74.02`
+- Aggregate across the four 20-spectrum sets:
+  - spectra: `80`
+  - selected-model agreement: `54/80` (`67.5%`)
+  - transition counts:
+    - `peak_5 -> peak_5`: `42`
+    - `peak_4 -> peak_5`: `24`
+    - `peak_4 -> peak_4`: `12`
+    - `peak_5 -> peak_4`: `2`
+  - model-level mean speedup / mean absolute RMSE delta:
+    - `peak_2_model`: `~4.61x` / `~9.09`
+    - `peak_3_model`: `~4.11x` / `~2.68`
+    - `peak_4_model`: `~13.89x` / `~0.73`
+    - `peak_5_model`: `~12.36x` / `~1.76`
+- Full-grid check on `sample_A` (`81` spectra):
+  - selected-model agreement: `57/81` (`70.4%`)
+  - mean candidate speedup: `~8.73x`; median: `~4.85x`
+  - mean absolute RMSE delta: `~1.07`; max absolute RMSE delta: `~18.94`
+  - mean least-squares `nfev`: `~24.8`; max least-squares `nfev`: `101`
+  - transition counts:
+    - `peak_5 -> peak_5`: `50`
+    - `peak_4 -> peak_5`: `22`
+    - `peak_4 -> peak_4`: `7`
+    - `peak_5 -> peak_4`: `2`
+- Iteration-cap check:
+  - `sample_A`, first 20 spectra, `--max-nfev 300` produced the same selected-model agreement (`12/20`) as `--max-nfev 2000`.
+  - observed least-squares `nfev` was already low (`mean ~22.6`, max `101`), so current parity differences are not caused by hitting the iteration cap.
+- Current interpretation:
+  - Speed improvement is robust: roughly `4x` to `14x` candidate-level speedup depending on model and dataset.
+  - Parity is not yet acceptable for a default replacement because `peak_4 -> peak_5` selected-model transitions are common.
+  - Many large RMSE deltas are least-squares improvements over lmfit, especially for weaker lower-peak models, so the decision point is not only numeric tolerance; the team needs to decide whether preserving legacy model choice or adopting better local optima is the priority.
+  - Next tuning target: focus on model-selection stability between `peak_4_model` and `peak_5_model`, likely by comparing AIC/BIC penalty behavior, baseline lock behavior, and initial/bounds parity for the LA component.
+
 ## Execution Notes (2026-03-23)
 
 - TASK-020 complete:
