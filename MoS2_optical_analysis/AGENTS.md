@@ -104,6 +104,17 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `ZO = A1g + d_zo_from_a1g`
   - `LA = A1g + d_la_from_a1g`
 
+## TASK-021 Fitting Guardrail Rules
+
+- Production fitting remains lmfit-based unless a later task explicitly promotes least-squares.
+- `fitting/mos2_core/fitting/least_squares_hotpath.py` is experimental guardrail code only.
+- `fitting.mos2_raman.compare_lsq_guardrail` may be used to compare lmfit and least-squares candidates, but normal `run_raw_pipeline` behavior must not change without a dedicated promotion task.
+- Current guardrail result interpretation:
+  - least-squares is faster in Raman n-peak candidate tests.
+  - selected-model agreement is not yet high enough for a default replacement.
+  - common model-selection drift is `peak_4_model -> peak_5_model`.
+  - lower RMSE/AIC alone is not sufficient proof of scientific accuracy; inspect whether extra `peak_5_model`/LA components are physically meaningful.
+
 ## Build/Packaging Policy
 
 - Do not run packaging/build commands (for example, `PyInstaller`) unless the user explicitly asks for a build in the current request.

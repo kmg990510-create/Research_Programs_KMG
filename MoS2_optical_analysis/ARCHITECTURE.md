@@ -35,6 +35,24 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `python -m fitting.mos2_raman.compare_lsq_guardrail --raw-dir data/raw/raman/...`
   - compares current lmfit Raman n-peak candidates with the proposed scipy least-squares path without changing production pipeline defaults
 
+## Current Fitting Engine Status
+
+- Production Raman/PL fitting remains lmfit-based via `fitting/mos2_core/fitting/raman_lmfit.py`.
+- TASK-021 least-squares code is guardrail-only and is not used by `run_raw_pipeline`, Streamlit Run Analysis, report generation, or manual refit defaults.
+- The least-squares guardrail currently mirrors Raman n-peak first-pass candidate math and writes comparison CSVs with:
+  - candidate timing
+  - RMSE/AIC/BIC deltas
+  - selected-model agreement
+  - peak center deltas
+- Broader guardrail results on 2026-05-20 show strong speedup but insufficient parity:
+  - `80` spectra across four 20-spectrum sets: selected-model agreement `54/80` (`67.5%`)
+  - `sample_A` full grid (`81` spectra): selected-model agreement `57/81` (`70.4%`)
+  - common transition: lmfit `peak_4_model` selected, least-squares `peak_5_model` selected
+- Interpretation:
+  - lmfit is the current compatibility baseline, not proven universally more accurate.
+  - least-squares often finds lower RMSE/AIC, but that may change peak-count selection and downstream maps.
+  - Before any default switch, TASK-021 must validate whether extra `peak_5_model` selections are physically meaningful, especially LA/side-peak behavior.
+
 ## Packaging Entry Points (PyInstaller)
 
 - Top-level app launcher:

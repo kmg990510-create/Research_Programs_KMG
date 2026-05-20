@@ -55,6 +55,10 @@ Note:
 TASK-021 adds a non-production comparison runner for the proposed `scipy.optimize.least_squares`
 Raman hot path. It does not change normal pipeline results.
 
+Current production fitting still uses the lmfit path in
+`fitting/mos2_core/fitting/raman_lmfit.py`. Treat lmfit output as the current
+baseline for report compatibility until TASK-021 is explicitly promoted.
+
 ```powershell
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.compare_lsq_guardrail --raw-dir data/raw/raman/sample_A --pattern Y1-X*.txt --max-files 5
 ```
@@ -62,6 +66,15 @@ Raman hot path. It does not change normal pipeline results.
 The runner compares current lmfit candidates against least-squares candidates for
 `peak_2_model` through `peak_5_model`, then writes a candidate-level CSV under
 `data/results/raman/reports/`.
+
+Current guardrail status:
+- least-squares shows a material candidate-level speedup in Raman n-peak tests.
+- It is not yet a drop-in replacement: selected model agreement is only about
+  `67.5%` across four 20-spectrum sample sets and `70.4%` on one full 81-spectrum grid.
+- Most selected-model changes are `peak_4_model -> peak_5_model`.
+- Lower RMSE/AIC from least-squares does not automatically mean it is the more
+  correct scientific result; `peak_5_model` gains must be checked for physically
+  meaningful LA/side-peak behavior before changing the default.
 
 ## Raman Fit Config Conventions
 
