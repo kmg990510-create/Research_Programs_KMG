@@ -50,6 +50,19 @@ Note:
 - In single mode, if `--raw-dir` has no direct TXT files but has TXT-containing immediate subfolders, `run_raw_pipeline` auto-switches to batch-subdirs mode.
 - `--workers` controls spectrum-level fit multiprocessing (`1` = sequential). In restricted environments, pipeline auto-falls back to sequential and logs the reason.
 
+## Experimental Fitting Guardrail
+
+TASK-021 adds a non-production comparison runner for the proposed `scipy.optimize.least_squares`
+Raman hot path. It does not change normal pipeline results.
+
+```powershell
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.compare_lsq_guardrail --raw-dir data/raw/raman/sample_A --pattern Y1-X*.txt --max-files 5
+```
+
+The runner compares current lmfit candidates against least-squares candidates for
+`peak_2_model` through `peak_5_model`, then writes a candidate-level CSV under
+`data/results/raman/reports/`.
+
 ## Raman Fit Config Conventions
 
 - `fit.two_stage_anchor` uses nested keys only:

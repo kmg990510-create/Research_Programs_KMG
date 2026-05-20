@@ -31,6 +31,9 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `python -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs`
 - GUI:
   - `python -m streamlit run gui/Main.py`
+- Experimental TASK-021 least-squares guardrail:
+  - `python -m fitting.mos2_raman.compare_lsq_guardrail --raw-dir data/raw/raman/...`
+  - compares current lmfit Raman n-peak candidates with the proposed scipy least-squares path without changing production pipeline defaults
 
 ## Packaging Entry Points (PyInstaller)
 

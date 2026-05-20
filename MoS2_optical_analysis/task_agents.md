@@ -605,7 +605,7 @@
   - `README.md`
   - `ARCHITECTURE.md`
   - `AGENTS.md`
-- Status: Todo
+- Status: In Progress
 - Impact: high (core fitting engine performance + numeric behavior)
 - Sub-steps:
   1. Identify hot models (`peak_2`~`peak_5`, PL single-peak variants) and define least-squares parameter vectorization for each.
@@ -625,6 +625,37 @@
   - least-squares path reproduces current outputs within accepted numeric tolerance.
   - Model-selection and review outcomes remain stable on validation datasets.
   - Runtime improvement is confirmed versus current lmfit wrapper path.
+
+## Execution Notes (2026-05-20)
+
+- TASK-021 started with a guardrail-only implementation:
+  - Added `fitting/mos2_core/fitting/least_squares_hotpath.py`.
+    - Implements first-pass Raman `peak_2_model`~`peak_5_model` candidates with `scipy.optimize.least_squares`.
+    - Mirrors current pVoigt area/sigma/fraction math, linear baseline, sigma bounds, peak-order coupling, and anchor-centric LO/ZO/LA rules.
+    - Not wired into the production pipeline default path yet.
+  - Added comparison runner:
+    - `python -m fitting.mos2_raman.compare_lsq_guardrail --raw-dir ... --pattern ...`
+    - Writes candidate-level timing/parity CSV under `data/results/raman/reports/`.
+  - Initial guardrail checks:
+    - `py_compile` on new modules: pass
+    - 1 spectrum, `peak_2_model`: selected model agreement `1/1`; candidate speedup `~4.51x`; RMSE delta `~1.29`
+    - 1 spectrum, all n-peak models: selected model agreement `1/1`; mean candidate speedup `~4.07x`; mean absolute RMSE delta `~0.46`
+    - 5 spectra, all n-peak models (`sample_A`, `Y1-X*.txt`): selected model agreement `4/5`; mean candidate speedup `~6.56x`; median candidate speedup `~4.44x`; mean absolute RMSE delta `~3.14`; max absolute RMSE delta `~18.94`
+    - comparison CSV artifacts generated:
+      - `data/results/raman/reports/task021_lsq_guardrail_one_spectrum.csv`
+      - `data/results/raman/reports/task021_lsq_guardrail_5spectra.csv`
+  - Regression validation:
+    - Raman dummy pipeline: pass
+    - PL dummy pipeline: pass
+    - Raman raw single smoke (`sample_A`, `Y1-X1.txt`, `run_id=task021_raw_single_smoke`): pass
+    - Raman batch smoke (`sample_set_1`, `Y1-X1.txt`, `--batch-subdirs`): pass
+    - Streamlit GUI HTTP reachability: pass (`200`, port `8521`)
+    - All Spectra Viewer AppTest single-row filter (`Y1-X1`): pass (`Filtered Rows=1`)
+    - Manual refit API smoke (`SingleSpectrumRefitAPI.submit_refit` on one report row): pass (`status=ok`, `fit_status=attention`)
+  - Interpretation:
+    - least_squares already shows material speed improvement.
+    - It is not yet parity-equivalent in every case; some differences are improved local optima vs lmfit, and at least one selected-model change was observed.
+    - Next TASK-021 step should classify deltas by model/spectrum and decide acceptable tolerance or add stricter legacy-compatible optimizer settings before production integration.
 
 ## Execution Notes (2026-03-23)
 
