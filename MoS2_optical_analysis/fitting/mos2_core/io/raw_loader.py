@@ -1,4 +1,4 @@
-"""Load raw Raman TXT spectra exported by XperRAM-like software."""
+"""Load raw Raman/PL spectra exported as TXT or simple ASC XY files."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Iterable
 from ..core.types import SpectrumRecord
 
 _POINT_RE = re.compile(r"^Y(?P<y>\d+)-X(?P<x>\d+)$", re.IGNORECASE)
+_XY_SPLIT_RE = re.compile(r"[\s,;\t]+")
 
 
 def _infer_modality(header: dict[str, str]) -> str:
@@ -19,6 +20,24 @@ def _infer_modality(header: dict[str, str]) -> str:
     if "PL" in filetype or "PL" in axis_type:
         return "pl"
     return "raman"
+
+
+def _parse_numeric_xy_lines(lines: list[str], start: int = 0) -> tuple[list[float], list[float]]:
+    x_values: list[float] = []
+    y_values: list[float] = []
+    for raw in lines[start:]:
+        line = raw.strip()
+        if not line:
+            continue
+        parts = [part for part in _XY_SPLIT_RE.split(line) if part]
+        if len(parts) < 2:
+            continue
+        try:
+            x_values.append(float(parts[0]))
+            y_values.append(float(parts[1]))
+        except ValueError:
+            continue
+    return x_values, y_values
 
 
 def parse_raman_txt(path: str | Path) -> SpectrumRecord:
@@ -48,22 +67,15 @@ def parse_raman_txt(path: str | Path) -> SpectrumRecord:
             header[key.strip()] = value.strip()
 
     if data_start < 0:
-        raise ValueError(f"XYDATA marker not found: {file_path}")
-
-    x_values: list[float] = []
-    y_values: list[float] = []
-    for raw in lines[data_start:]:
-        line = raw.strip()
-        if not line:
-            continue
-        if "," not in line:
-            continue
-        left, right = line.split(",", 1)
-        try:
-            x_values.append(float(left.strip()))
-            y_values.append(float(right.strip()))
-        except ValueError:
-            continue
+        x_values, y_values = _parse_numeric_xy_lines(lines)
+        if not x_values:
+            raise ValueError(f"XYDATA marker not found and no numeric XY rows parsed: {file_path}")
+        if file_path.suffix.lower() == ".asc":
+            header["FILETYPE"] = header.get("FILETYPE", "PL_ASC")
+            header["TYPE"] = header.get("TYPE", "PL")
+            header["X_UNIT"] = header.get("X_UNIT", "nm")
+    else:
+        x_values, y_values = _parse_numeric_xy_lines(lines, start=data_start)
 
     if not x_values or len(x_values) != len(y_values):
         raise ValueError(f"Failed to parse XY data: {file_path}")
@@ -86,6 +98,7 @@ def parse_raman_txt(path: str | Path) -> SpectrumRecord:
         "dataset": parent,
         "header": header,
         "map_id": parent,
+        "source_extension": file_path.suffix.lower(),
     }
     if point_match:
         metadata["map_y"] = int(point_match.group("y"))
@@ -115,4 +128,3 @@ def load_raman_txt_paths(paths: Iterable[str | Path]) -> list[SpectrumRecord]:
     """Load spectra from an explicit list of file paths."""
 
     return [parse_raman_txt(p) for p in paths]
-

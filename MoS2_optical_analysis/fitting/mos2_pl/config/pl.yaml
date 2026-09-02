@@ -4,15 +4,16 @@ models:
   - pl_single_pvoigt
 selection_metric: hybrid
 fit:
-  x_min: 520.0
-  x_max: 780.0
-  compare_x_min: 520.0
-  compare_x_max: 780.0
-  pl_center_init: 650.0
-  pl_center_min: 560.0
-  pl_center_max: 760.0
-  pl_sigma_min: 1.0
-  pl_sigma_max: 40.0
+  x_unit: eV
+  x_min: 1.38
+  x_max: 2.33
+  compare_x_min: 1.38
+  compare_x_max: 2.33
+  pl_center_init: 1.85
+  pl_center_min: 1.50
+  pl_center_max: 2.15
+  pl_sigma_min: 0.002
+  pl_sigma_max: 0.20
 
 report_export:
   include_selected_fitted_y: false

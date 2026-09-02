@@ -29,6 +29,10 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `python -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id ...`
 - PL raw (batch by immediate subfolders):
   - `python -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs`
+- PL ASC input:
+  - default PL pattern is `*.asc`
+  - simple numeric `wavelength_nm,intensity` ASC files are parsed
+  - nm x-values are converted to eV before PL fitting with `eV = 1239.8419843320026 / nm`
 - GUI:
   - `python -m streamlit run gui/Main.py`
 - Experimental TASK-021 least-squares guardrail:
@@ -129,6 +133,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - Core data contracts remain in `fitting/mos2_core/core/types.py`.
 - `fit_status` values remain limited to `valid`, `attention`, `invalid`.
 - Raman and PL both produce JSON/CSV report pairs.
+- PL report rows include x-axis unit conversion metadata when nm input is converted (`x_unit`, `original_x_unit`, `x_conversion`).
 - Batch scope is immediate subdirectories only (not recursive multi-level batch).
 - Manual refit request contract:
   - `gui/components/manual_refit_contract.py` (`manual_refit_request.v1`)

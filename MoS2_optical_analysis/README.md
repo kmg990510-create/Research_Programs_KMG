@@ -47,8 +47,10 @@ python -m pip install -r requirements.txt
 ```
 
 Note:
-- In single mode, if `--raw-dir` has no direct TXT files but has TXT-containing immediate subfolders, `run_raw_pipeline` auto-switches to batch-subdirs mode.
+- In single mode, if `--raw-dir` has no direct files matching `--pattern` but has matching immediate subfolders, `run_raw_pipeline` auto-switches to batch-subdirs mode.
 - `--workers` controls spectrum-level fit multiprocessing (`1` = sequential). In restricted environments, pipeline auto-falls back to sequential and logs the reason.
+- PL raw runs default to `*.asc`. Headerless ASC files containing numeric `wavelength_nm,intensity` rows are supported.
+- PL wavelengths that look like nm are converted before fitting with `eV = 1239.8419843320026 / nm`; PL fit config values are therefore in eV.
 
 ## Experimental Fitting Guardrail
 
@@ -180,7 +182,7 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
   - user `Run ID` is used as report prefix
 - `Run type = Batch (immediate subfolders)`
   - selected folder is treated as parent
-  - each immediate subfolder with matching TXT files is executed
+  - each immediate subfolder with matching spectrum files is executed
   - each subfolder name becomes `run-id`
 - `Result Bin (optional)` in Run Analysis
   - selectable items are report JSON + manual override JSON
@@ -189,6 +191,7 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
   - restore from Bin when needed
   - permanently delete later from Bin with explicit confirmation
 - `Progress every N files` controls log update frequency from pipeline
+- `Pattern` defaults to `*.txt` for Raman and `*.asc` for PL.
 - `Raman Advanced Options` in Run Analysis:
   - `peak_n_mode`: choose auto or fixed model (`peak_2_model` ~ `peak_5_model`)
   - `distance_outlier`: config/enabled/disabled

@@ -213,6 +213,12 @@ class RamanFitReportGenerator(ReportGenerationStage):
             row = {
                 "spectrum_id": accepted.spectrum_id,
                 "source_file": meta.get("source_file"),
+                "source_extension": meta.get("source_extension"),
+                "x_unit": meta.get("x_unit"),
+                "original_x_unit": meta.get("original_x_unit"),
+                "x_conversion": meta.get("x_conversion"),
+                "original_x_min_nm": meta.get("original_x_min_nm"),
+                "original_x_max_nm": meta.get("original_x_max_nm"),
                 "calibration_offset": meta.get("calibration_offset"),
                 "calibration_success": meta.get("calibration_success"),
                 "si_area": meta.get("si_area"),

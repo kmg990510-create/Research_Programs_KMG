@@ -14,6 +14,9 @@ from fitting.mos2_core.core.runtime_paths import runtime_project_root
 from fitting.mos2_core.io import load_pipeline_config, load_raman_txt_directory
 
 
+NM_TO_EV = 1239.8419843320026
+
+
 class RunSummary(NamedTuple):
     raw_dir: Path
     run_id: str
@@ -25,9 +28,9 @@ class RunSummary(NamedTuple):
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run PL pipeline on raw TXT spectra.")
-    parser.add_argument("--raw-dir", type=Path, default=Path("data/raw/pl"), help="Directory containing raw *.txt spectra")
-    parser.add_argument("--pattern", type=str, default="*.txt", help="Glob pattern for spectra files")
+    parser = argparse.ArgumentParser(description="Run PL pipeline on raw spectra.")
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/raw/pl"), help="Directory containing raw spectra")
+    parser.add_argument("--pattern", type=str, default="*.asc", help="Glob pattern for spectra files")
     parser.add_argument("--run-id", type=str, default="pl_raw_e2e", help="Run identifier used for report filename")
     parser.add_argument(
         "--batch-subdirs",
@@ -96,17 +99,49 @@ def _discover_subdir_targets(parent_dir: Path, pattern: str) -> list[tuple[Path,
     return targets
 
 
+def _convert_nm_to_ev_if_needed(spectrum: SpectrumRecord) -> tuple[list[float], list[float], dict[str, object]]:
+    x_values = [float(v) for v in spectrum.x]
+    y_values = [float(v) for v in spectrum.y]
+    metadata = dict(spectrum.metadata)
+    header = metadata.get("header", {})
+    x_unit = ""
+    if isinstance(header, dict):
+        x_unit = str(header.get("X_UNIT", "")).strip().lower()
+
+    looks_like_nm = bool(x_values) and max(x_values) > 100.0
+    if x_unit == "nm" or looks_like_nm:
+        converted = [NM_TO_EV / value for value in x_values if value > 0.0]
+        if len(converted) != len(x_values):
+            raise ValueError(f"Cannot convert non-positive wavelength values to eV: {spectrum.spectrum_id}")
+        paired = sorted(zip(converted, y_values), key=lambda item: item[0])
+        x_ev = [x for x, _ in paired]
+        y_sorted = [y for _, y in paired]
+        metadata["original_x_unit"] = x_unit or "nm"
+        metadata["x_unit"] = "eV"
+        metadata["x_conversion"] = "eV = 1239.8419843320026 / nm"
+        if paired:
+            metadata["original_x_min_nm"] = min(x_values)
+            metadata["original_x_max_nm"] = max(x_values)
+        return x_ev, y_sorted, metadata
+
+    metadata["x_unit"] = x_unit or "eV"
+    return x_values, y_values, metadata
+
+
 def _force_pl_modality(records: list[SpectrumRecord]) -> list[SpectrumRecord]:
-    return [
-        SpectrumRecord(
-            spectrum_id=s.spectrum_id,
-            x=s.x,
-            y=s.y,
-            modality="pl",
-            metadata={**dict(s.metadata), "modality": "pl"},
+    patched: list[SpectrumRecord] = []
+    for spectrum in records:
+        x_values, y_values, metadata = _convert_nm_to_ev_if_needed(spectrum)
+        patched.append(
+            SpectrumRecord(
+                spectrum_id=spectrum.spectrum_id,
+                x=x_values,
+                y=y_values,
+                modality="pl",
+                metadata={**metadata, "modality": "pl"},
+            )
         )
-        for s in records
-    ]
+    return patched
 
 
 def _run_single(

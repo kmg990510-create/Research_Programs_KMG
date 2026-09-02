@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 from gui.components import data_bin as _data_bin  # noqa: E402
 
 STAGES = ("fit", "select", "review")
+SPECTRUM_EXTENSIONS = ("*.txt", "*.asc")
 START_RE = re.compile(r"^\[(fit|select|review)\]\s+start:\s+(\d+)\s+spectra\s*$")
 FIT_SELECT_RE = re.compile(
     r"^\[(fit|select)\]\s+(\d+)/(\d+)\s+\|\s+valid=(\d+)\s+attention=(\d+)\s+invalid=(\d+)\s+\|\s+elapsed=([0-9.]+)s\s*$"
@@ -56,7 +57,7 @@ def _discover_txt_folders(base_dir: str) -> list[str]:
 
     found: list[str] = []
     try:
-        if any(root.glob("*.txt")):
+        if any(any(root.glob(pattern)) for pattern in SPECTRUM_EXTENSIONS):
             found.append(str(root))
     except OSError:
         pass
@@ -65,7 +66,7 @@ def _discover_txt_folders(base_dir: str) -> list[str]:
         if not path.is_dir():
             continue
         try:
-            if any(path.glob("*.txt")):
+            if any(any(path.glob(pattern)) for pattern in SPECTRUM_EXTENSIONS):
                 found.append(str(path))
         except OSError:
             # Ignore transient filesystem access issues and continue scanning.
@@ -86,11 +87,11 @@ def _discover_batch_parent_folders(base_dir: str) -> list[str]:
             parents.add(str(parent))
 
     try:
-        has_direct_txt_subdir = any(
-            child.is_dir() and any(child.glob("*.txt"))
+        has_direct_spectrum_subdir = any(
+            child.is_dir() and any(any(child.glob(pattern)) for pattern in SPECTRUM_EXTENSIONS)
             for child in root.iterdir()
         )
-        if has_direct_txt_subdir:
+        if has_direct_spectrum_subdir:
             parents.add(str(root))
     except OSError:
         pass
@@ -586,13 +587,13 @@ run_mode = st.radio(
     options=["single", "batch_subdirs"],
     format_func=lambda value: "Single folder" if value == "single" else "Batch (immediate subfolders)",
     horizontal=True,
-    help="Batch mode runs one pipeline per immediate subfolder that contains TXT files.",
+    help="Batch mode runs one pipeline per immediate subfolder that contains matching spectrum files.",
 )
 
 if run_mode == "single":
     known_folders = _discover_txt_folders(str(base_raw_dir))
     if not known_folders:
-        st.warning(f"No TXT-containing folders found under: {base_raw_dir}")
+        st.warning(f"No spectrum folders (*.txt, *.asc) found under: {base_raw_dir}")
 else:
     known_folders = _discover_batch_parent_folders(str(base_raw_dir))
     if not known_folders:
@@ -625,17 +626,17 @@ st.code(str(selected_folder), language="text")
 txt_count = 0
 if selected_folder.exists() and selected_folder.is_dir():
     if run_mode == "single":
-        txt_count = sum(1 for _ in selected_folder.glob("*.txt"))
-        st.caption(f"TXT files in selected folder: {txt_count}")
+        txt_count = sum(sum(1 for _ in selected_folder.glob(pattern)) for pattern in SPECTRUM_EXTENSIONS)
+        st.caption(f"Spectrum files (*.txt, *.asc) in selected folder: {txt_count}")
     else:
         batch_targets = []
         try:
             for subdir in selected_folder.iterdir():
-                if subdir.is_dir() and any(subdir.glob("*.txt")):
+                if subdir.is_dir() and any(any(subdir.glob(pattern)) for pattern in SPECTRUM_EXTENSIONS):
                     batch_targets.append(subdir)
         except OSError:
             batch_targets = []
-        st.caption(f"Batch targets (immediate subfolders with TXT): {len(batch_targets)}")
+        st.caption(f"Batch targets (immediate subfolders with spectra): {len(batch_targets)}")
 else:
     st.caption("Selected folder is not available.")
 
@@ -647,7 +648,8 @@ if st.session_state.get("run_analysis_run_id_source") != source_key:
 
 st.subheader("Step 3. Execution Options")
 run_id = st.text_input("Run ID", key="run_analysis_run_id_value", disabled=(run_mode == "batch_subdirs"))
-pattern = st.text_input("Pattern", value="*.txt")
+pattern_default = "*.txt" if modality == "raman" else "*.asc"
+pattern = st.text_input("Pattern", value=pattern_default)
 progress_every = st.number_input("Progress every N files", min_value=1, max_value=1000, value=1, step=1)
 default_workers = max((os.cpu_count() or 2) - 1, 1)
 fit_workers = st.number_input(
