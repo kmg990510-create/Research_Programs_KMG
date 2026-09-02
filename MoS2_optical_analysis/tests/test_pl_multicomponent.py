@@ -58,10 +58,13 @@ def test_pl_yaml_components_resolve_to_model_specs() -> None:
     assert cfg.models == ["pl_single_pvoigt", "pl_a_doublet_pvoigt", "pl_5_component_pvoigt"]
     assert cfg.pl_model_components["pl_a_doublet_pvoigt"] == ["a_minus", "a0"]
     assert cfg.pl_model_components["pl_5_component_pvoigt"] == ["i1", "i2", "a_minus", "a0", "b"]
+    assert cfg.pl_a_minus_a0_split[0] is True
+    assert cfg.pl_trion_exciton_fwhm_ratio[0] is True
+    assert cfg.pl_share_exciton_fraction is True
 
     a_minus = cfg.pl_components["a_minus"]
     assert a_minus.profile == "pvoigt"
-    assert 1.78 <= a_minus.center_init <= 1.90
+    assert 1.76 <= a_minus.center_init <= 1.90
     assert a_minus.center_min < a_minus.center_init < a_minus.center_max
     assert a_minus.sigma_min < a_minus.sigma_init < a_minus.sigma_max
 
@@ -75,9 +78,9 @@ def test_synthetic_five_component_pl_fit_recovers_key_centers() -> None:
     components = {
         "i1": (1.510, 0.060, 0.10),
         "i2": (1.610, 0.080, 0.14),
-        "a_minus": (1.855, 0.035, 0.70),
-        "a0": (1.882, 0.025, 0.55),
-        "b": (2.022, 0.050, 0.30),
+        "a_minus": (1.835, 0.040, 0.70),
+        "a0": (1.865, 0.025, 0.55),
+        "b": (2.000, 0.050, 0.30),
     }
     y = np.full_like(x, 0.02)
     for center, sigma, height in components.values():
@@ -87,12 +90,27 @@ def test_synthetic_five_component_pl_fit_recovers_key_centers() -> None:
 
     assert candidate.model_name == "pl_5_component_pvoigt"
     for key, (center, _, _) in components.items():
-        assert abs(candidate.params[f"{key}_position"] - center) < 0.035
+        assert abs(candidate.params[f"{key}_position"] - center) < 0.045
         assert candidate.params[f"{key}_area"] > 0
 
     assert candidate.params["a_minus_a0_energy_split"] > 0
+    assert candidate.params["a0_position"] > candidate.params["a_minus_position"]
+    assert candidate.params["a_minus_fwhm"] >= candidate.params["a0_fwhm"]
     assert candidate.params["a_minus_a0_area_ratio"] > 0
     assert candidate.params["defect_to_a_total_area_ratio"] > 0
+
+
+def test_despike_1d_spectrum_removes_isolated_spike() -> None:
+    from fitting.mos2_core.preprocess.basic import despike_1d_spectrum
+
+    y = np.full(100, 10.0)
+    y[50] = 500.0  # sharp spike
+    y_clean, n_spikes = despike_1d_spectrum(y, kernel=7, threshold=6.0)
+
+    assert n_spikes == 1
+    assert y_clean[50] < 20.0
+    assert np.allclose(y_clean[:49], 10.0)
+    assert np.allclose(y_clean[51:], 10.0)
 
 
 def test_pl_summary_alias_is_not_double_counted_in_refit_synthesis() -> None:

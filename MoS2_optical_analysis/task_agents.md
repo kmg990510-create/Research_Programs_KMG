@@ -677,17 +677,24 @@
   - `gui/Main.py`
   - `gui/components/review_table.py`
   - `gui/components/parameter_editor.py`
-  - `gui/desktop_editor/plot_widget.py`
+### TASK-026: PL Multi-Component Parameter Coupling & Despiking
+- Description: Fix $A^-/A^0$ peak identity flipping, peak collapse to zero, $I_2$ boundary hits, and spike noise distortion in PL multi-component deconvolution.
+- Assigned: raman_pl_agent
+- Related Files:
+  - `fitting/mos2_pl/config/pl.yaml`
+  - `fitting/mos2_raman/config/pl.yaml`
+  - `fitting/mos2_core/preprocess/basic.py`
   - `fitting/mos2_core/fitting/raman_lmfit.py`
+  - `tests/test_pl_multicomponent.py`
 - Status: Done
-- Impact: medium (GUI rendering + PL UX)
+- Impact: high (PL scientific deconvolution accuracy & robustness)
 - Sub-steps:
-  1. Add PL component styling token to `_DEFAULT_PEAK_STYLE`.
-  2. Add PL modality detection in spectrum overlay (title `PL Peak: ... nm`, X-axis `Wavelength (nm)`).
-  3. Update `_auto_view_window` and All Spectra Viewer to auto-zoom on `pl_position` when present.
-  4. Add PL columns to preferred candidate lists in `Map_Viewer.py`, `Main.py`, `review_table.py`, and `parameter_editor.py`.
-  5. Add PL X-axis label and range resolution to `desktop_editor/plot_widget.py`.
-  6. Support fallback model name resolution in `raman_lmfit.py` for single-spectrum refit.
+  1. Add rolling-MAD despiking filter in `basic.py` to remove cosmic-ray spikes.
+  2. Implement center coupling ($A^0 = A^- + \Delta E$) in `_fit_pl_component_model`.
+  3. Implement FWHM broadening coupling ($\text{FWHM}(A^-) \ge 1.05\times \text{FWHM}(A^0)$).
+  4. Implement fraction sharing ($\eta_{A0} = \eta_{A-}$).
+  5. Expand $I_2$ center upper bound to 1.76 eV.
+  6. Re-run PL pipeline on Treatment and Pristine datasets, verifying $R^2 \ge 0.992$ and clean physical progression across all temperatures.
 
 ## Execution Notes (2026-05-20)
 

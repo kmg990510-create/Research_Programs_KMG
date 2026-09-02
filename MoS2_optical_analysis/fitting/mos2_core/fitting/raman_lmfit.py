@@ -55,6 +55,9 @@ class RamanFitConfig:
     model_windows: dict[str, NPeakWindowSpec]
     pl_components: dict[str, "PLComponentSpec"]
     pl_model_components: dict[str, list[str]]
+    pl_a_minus_a0_split: tuple[bool, float, float, float]
+    pl_trion_exciton_fwhm_ratio: tuple[bool, float, float, float]
+    pl_share_exciton_fraction: bool
 
 
 @dataclass(slots=True)
@@ -722,6 +725,26 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             _finite(auto_refine_cfg.get("min_rmse_improvement", 0.01), 0.01),
             0.0,
         )
+        a_minus_a0_split_cfg = fit_cfg.get("a_minus_a0_split", {})
+        if not isinstance(a_minus_a0_split_cfg, dict):
+            a_minus_a0_split_cfg = {}
+        split_enabled = bool(a_minus_a0_split_cfg.get("enabled", is_pl))
+        split_min = _finite(a_minus_a0_split_cfg.get("min", 0.015), 0.015)
+        split_max = _finite(a_minus_a0_split_cfg.get("max", 0.055), 0.055)
+        split_init = _finite(a_minus_a0_split_cfg.get("init", 0.030), 0.030)
+        pl_a_minus_a0_split = (split_enabled, split_min, split_max, split_init)
+
+        fwhm_ratio_cfg = fit_cfg.get("trion_exciton_fwhm_ratio", {})
+        if not isinstance(fwhm_ratio_cfg, dict):
+            fwhm_ratio_cfg = {}
+        ratio_enabled = bool(fwhm_ratio_cfg.get("enabled", is_pl))
+        ratio_min = _finite(fwhm_ratio_cfg.get("min", 1.05), 1.05)
+        ratio_max = _finite(fwhm_ratio_cfg.get("max", 2.50), 2.50)
+        ratio_init = _finite(fwhm_ratio_cfg.get("init", 1.35), 1.35)
+        pl_trion_exciton_fwhm_ratio = (ratio_enabled, ratio_min, ratio_max, ratio_init)
+
+        pl_share_exciton_fraction = bool(fit_cfg.get("share_exciton_fraction", is_pl))
+
         return RamanFitConfig(
             models=models,
             x_min=x_min,
@@ -773,6 +796,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             ),
             pl_components=_resolve_pl_components(fit_cfg.get("components", fit_cfg.get("pl_components", {}))),
             pl_model_components=_resolve_pl_model_components(fit_cfg.get("model_components", {})),
+            pl_a_minus_a0_split=pl_a_minus_a0_split,
+            pl_trion_exciton_fwhm_ratio=pl_trion_exciton_fwhm_ratio,
+            pl_share_exciton_fraction=pl_share_exciton_fraction,
         )
 
     @staticmethod
@@ -1140,6 +1166,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 fraction_guess=fraction_guess,
             )
 
+            amplitude_floor = max(spec.amplitude_min, area_guess_lmfit * 0.01, 1.0e-3)
             params[f"{prefix}center"].set(
                 value=center_guess,
                 min=spec.center_min,
@@ -1153,8 +1180,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 vary=spec.vary_sigma,
             )
             params[f"{prefix}amplitude"].set(
-                value=max(area_guess_lmfit, spec.amplitude_min, 1.0e-6),
-                min=spec.amplitude_min,
+                value=max(area_guess_lmfit, amplitude_floor),
+                min=amplitude_floor,
                 vary=spec.vary_amplitude,
             )
             if f"{prefix}fraction" in params:
@@ -1164,6 +1191,24 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     max=1.0,
                     vary=spec.vary_fraction,
                 )
+
+        has_a_minus = any(s.key == "a_minus" for s in selected_components)
+        has_a0 = any(s.key == "a0" for s in selected_components)
+
+        if has_a_minus and has_a0:
+            split_enabled, split_min, split_max, split_init = cfg.pl_a_minus_a0_split
+            if split_enabled and "a0_center" in params and "a_minus_center" in params:
+                params.add("d_a0_from_a_minus", value=split_init, min=split_min, max=split_max, vary=True)
+                params["a0_center"].set(expr="a_minus_center + d_a0_from_a_minus")
+
+            ratio_enabled, ratio_min, ratio_max, ratio_init = cfg.pl_trion_exciton_fwhm_ratio
+            if ratio_enabled and "a_minus_sigma" in params and "a0_sigma" in params:
+                params.add("ratio_trion_sigma", value=ratio_init, min=ratio_min, max=ratio_max, vary=True)
+                params["a_minus_sigma"].set(expr="a0_sigma * ratio_trion_sigma")
+
+            if cfg.pl_share_exciton_fraction:
+                if "a0_fraction" in params and "a_minus_fraction" in params:
+                    params["a0_fraction"].set(expr="a_minus_fraction")
 
         fit_result = model.fit(y_fit, params, x=x_fit, nan_policy="omit")
         y_pred_full = model.eval(fit_result.params, x=x_full)

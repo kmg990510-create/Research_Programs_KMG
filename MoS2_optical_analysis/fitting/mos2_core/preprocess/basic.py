@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 import numpy as np
 from scipy.optimize import OptimizeWarning, curve_fit
+from scipy.signal import medfilt
 from typing import Sequence
 
 from ..core.interfaces import PreprocessingStage
@@ -98,8 +99,39 @@ def get_si_calibration_offset(
         return _offset_from_center(float(x_fit[peak_idx]))
 
 
+def despike_1d_spectrum(
+    y: Sequence[float],
+    kernel: int = 7,
+    threshold: float = 6.0,
+) -> tuple[list[float], int]:
+    """Detect and replace sharp single-point/two-point positive spikes using rolling MAD."""
+    y_arr = np.asarray(y, dtype=float)
+    if y_arr.size < 5:
+        return [float(v) for v in y_arr], 0
+    k = max(3, int(kernel))
+    if k % 2 == 0:
+        k += 1
+    if k > y_arr.size:
+        k = y_arr.size if y_arr.size % 2 == 1 else y_arr.size - 1
+    if k < 3:
+        return [float(v) for v in y_arr], 0
+
+    med = medfilt(y_arr, k)
+    diff = y_arr - med
+    mad = float(np.median(np.abs(diff - np.median(diff))))
+    if mad < 1.0e-6:
+        mad = float(np.std(diff))
+    spike_mask = diff > float(threshold) * max(mad, 1.0e-6)
+    n_spikes = int(np.sum(spike_mask))
+    if n_spikes > 0:
+        y_clean = y_arr.copy()
+        y_clean[spike_mask] = med[spike_mask]
+        return [float(v) for v in y_clean], n_spikes
+    return [float(v) for v in y_arr], 0
+
+
 class IdentityPreprocessing(PreprocessingStage):
-    """Pass-through preprocessing with float casting."""
+    """Pass-through preprocessing with float casting, calibration, and PL despiking."""
 
     def run(
         self,
@@ -113,6 +145,16 @@ class IdentityPreprocessing(PreprocessingStage):
         if not isinstance(cal_cfg, dict):
             cal_cfg = {}
 
+        pl_cfg = context.config.get("pl", {}) if isinstance(context.config, dict) else {}
+        if not isinstance(pl_cfg, dict):
+            pl_cfg = {}
+        despike_cfg = pl_cfg.get("despike", {})
+        if not isinstance(despike_cfg, dict):
+            despike_cfg = {}
+        despike_enabled = bool(despike_cfg.get("enabled", True))
+        despike_kernel = int(despike_cfg.get("kernel", 7))
+        despike_threshold = float(despike_cfg.get("threshold", 6.0))
+
         calibration_enabled = bool(cal_cfg.get("enabled", True))
         window_min = float(cal_cfg.get("window_min", 510.0))
         window_max = float(cal_cfg.get("window_max", 530.0))
@@ -123,20 +165,36 @@ class IdentityPreprocessing(PreprocessingStage):
 
         offsets: list[float] = []
         success_count = 0
+        despiked_spectra_count = 0
 
-        def _metadata(record: SpectrumRecord, offset: float, success: bool, si_area: float) -> dict[str, object]:
+        def _metadata(
+            record: SpectrumRecord,
+            offset: float,
+            success: bool,
+            si_area: float,
+            n_spikes: int,
+        ) -> dict[str, object]:
             meta = dict(record.metadata)
             meta.setdefault("modality", record.modality)
             meta["calibration_offset"] = float(offset)
             meta["calibration_success"] = bool(success)
             meta["si_target_peak"] = float(target_peak)
             meta["si_area"] = float(si_area)
+            if n_spikes > 0:
+                meta["despiked_points"] = int(n_spikes)
             return meta
 
         output: list[PreprocessedSpectrum] = []
         for s in spectra:
             x = [float(v) for v in s.x]
             y = [float(v) for v in s.y]
+
+            is_pl = str(s.modality).lower() == "pl" or str(s.metadata.get("modality", "")).lower() == "pl"
+            n_spikes = 0
+            if is_pl and despike_enabled:
+                y, n_spikes = despike_1d_spectrum(y, kernel=despike_kernel, threshold=despike_threshold)
+                if n_spikes > 0:
+                    despiked_spectra_count += 1
 
             offset = 0.0
             success = False
@@ -171,7 +229,7 @@ class IdentityPreprocessing(PreprocessingStage):
                     spectrum_id=s.spectrum_id,
                     x=x_shifted,
                     y=y,
-                    metadata=_metadata(s, offset=offset, success=success, si_area=si_area),
+                    metadata=_metadata(s, offset=offset, success=success, si_area=si_area, n_spikes=n_spikes),
                 )
             )
         
@@ -179,4 +237,5 @@ class IdentityPreprocessing(PreprocessingStage):
         context.state["si_calibration_enabled"] = calibration_enabled
         context.state["si_calibration_success_count"] = success_count
         context.state["si_calibration_mean_offset"] = float(np.mean(offsets)) if offsets else 0.0
+        context.state["pl_despiked_spectra_count"] = despiked_spectra_count
         return output
