@@ -1,4 +1,4 @@
-﻿"""Page for map-level parameter and quality visualization."""
+"""Page for map-level parameter and quality visualization."""
 
 from __future__ import annotations
 
@@ -115,6 +115,10 @@ with st.sidebar.expander("3) Ratio Builder", expanded=False):
             st.caption(f"Added ratio column: {custom_ratio_col} = {ratio_num} / {ratio_den}")
 
 preferred_candidates = [
+    "pl_position",
+    "pl_height",
+    "pl_fwhm",
+    "pl_area",
     "delta_e2g_a1g",
     "e2g_a1g_area_ratio",
     "e2g_position",

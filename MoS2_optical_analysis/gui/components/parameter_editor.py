@@ -1,4 +1,4 @@
-﻿"""Manual parameter review/editing component."""
+"""Manual parameter review/editing component."""
 
 from __future__ import annotations
 
@@ -16,6 +16,9 @@ def render_parameter_editor(df: pd.DataFrame, key: str = "param_editor") -> pd.D
     editable_cols = [
         col
         for col in [
+            "pl_position",
+            "pl_height",
+            "pl_fwhm",
             "e2g_position",
             "a1g_position",
             "delta_e2g_a1g",

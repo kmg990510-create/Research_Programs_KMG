@@ -1,4 +1,4 @@
-﻿"""Tabular review component for spectra quality triage."""
+"""Tabular review component for spectra quality triage."""
 
 from __future__ import annotations
 
@@ -19,6 +19,10 @@ def render_review_table(df: pd.DataFrame, title: str = "Review Table") -> None:
         "selected_model",
         "fit_status",
         "reason",
+        "pl_position",
+        "pl_height",
+        "pl_fwhm",
+        "pl_area",
         "e2g_position",
         "a1g_position",
         "delta_e2g_a1g",

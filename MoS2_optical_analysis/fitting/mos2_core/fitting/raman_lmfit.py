@@ -1235,6 +1235,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             normalized_model = {
                 "signal_tracking_stub": "pl_single_gaussian",
                 "flat_stub": "pl_single_pvoigt",
+                "fallback_signal_tracking": "pl_single_gaussian",
+                "fallback_flat": "pl_single_pvoigt",
+                "fallback": "pl_single_gaussian",
             }.get(model_name, model_name)
             if normalized_model in {"pl_single_gaussian", "pl_single_pvoigt"}:
                 return self._fit_pl_model(normalized_model, x_full, y_corr, cfg)

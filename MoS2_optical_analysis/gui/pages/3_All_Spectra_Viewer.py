@@ -1,4 +1,4 @@
-﻿"""Page for browsing all spectra with raw/fitted overlays."""
+"""Page for browsing all spectra with raw/fitted overlays."""
 
 from __future__ import annotations
 
@@ -449,13 +449,24 @@ except (TypeError, ValueError):
     cal_offset = 0.0
 x_for_plot = [xv + cal_offset for xv in x_raw]
 
-e2g = display_row.get("e2g_position")
-a1g = display_row.get("a1g_position")
-try:
-    auto_min = min(float(e2g), float(a1g)) - peak_padding
-    auto_max = max(float(e2g), float(a1g)) + peak_padding
-except (TypeError, ValueError):
-    auto_min, auto_max = fallback_x_min, fallback_x_max
+modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
+pl_pos = display_row.get("pl_position")
+if modality == "pl" or (pl_pos is not None and str(pl_pos).strip() != ""):
+    try:
+        pl_val = float(pl_pos)
+        auto_min = max(float(min(x_for_plot)), pl_val - max(peak_padding, 60.0))
+        auto_max = min(float(max(x_for_plot)), pl_val + max(peak_padding, 60.0))
+    except (TypeError, ValueError):
+        auto_min = float(min(x_for_plot))
+        auto_max = float(max(x_for_plot))
+else:
+    e2g = display_row.get("e2g_position")
+    a1g = display_row.get("a1g_position")
+    try:
+        auto_min = min(float(e2g), float(a1g)) - peak_padding
+        auto_max = max(float(e2g), float(a1g)) + peak_padding
+    except (TypeError, ValueError):
+        auto_min, auto_max = fallback_x_min, fallback_x_max
 
 xcols = st.columns([1, 1, 2])
 x_min = xcols[0].number_input("X min", value=float(auto_min), step=1.0)

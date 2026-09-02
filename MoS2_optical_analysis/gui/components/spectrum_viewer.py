@@ -1,4 +1,4 @@
-﻿"""Spectrum-level plotting and helpers for raw/fitted overlays."""
+"""Spectrum-level plotting and helpers for raw/fitted overlays."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .plot_theme import apply_plotly_theme
 apply_plotly_theme()
 
 _DEFAULT_PEAK_STYLE: dict[str, dict[str, Any]] = {
+    "pl": {"label": "PL", "color": "#E60000", "fill": True},
     "lo": {"label": "LO", "color": "#CC00CC", "fill": True},
     "e2g": {"label": "E2g", "color": "#0066FF", "fill": False},
     "a1g": {"label": "A1g", "color": "#00A651", "fill": False},
@@ -241,7 +242,12 @@ def _auto_view_window(
     e2g_pos: float,
     a1g_pos: float,
     padding: float = 18.0,
+    pl_pos: float = np.nan,
 ) -> tuple[float, float]:
+    if np.isfinite(pl_pos):
+        lo = pl_pos - max(padding, 60.0)
+        hi = pl_pos + max(padding, 60.0)
+        return max(lo, float(np.min(x))), min(hi, float(np.max(x)))
     if np.isfinite(e2g_pos) and np.isfinite(a1g_pos):
         lo = min(e2g_pos, a1g_pos) - padding
         hi = max(e2g_pos, a1g_pos) + padding
@@ -274,9 +280,10 @@ def render_spectrum_overlay(
 
     e2g_c = _to_float(row.get("e2g_position"))
     a1g_c = _to_float(row.get("a1g_position"))
+    pl_c = _to_float(row.get("pl_position"))
 
     if x_view_min is None or x_view_max is None:
-        x_view_min, x_view_max = _auto_view_window(x, e2g_c, a1g_c)
+        x_view_min, x_view_max = _auto_view_window(x, e2g_c, a1g_c, pl_pos=pl_c)
 
     x_min = max(float(np.min(x)), float(min(x_view_min, x_view_max)))
     x_max = min(float(np.max(x)), float(max(x_view_min, x_view_max)))
@@ -398,12 +405,22 @@ def render_spectrum_overlay(
             )
         )
 
-    delta_text = row.get("delta_e2g_a1g", "NA")
-    title = f"{spectrum_id} | Delta(E2g-A1g): {delta_text}"
+    modality = str(row.get("modality", "")).strip().lower()
+    is_pl = modality == "pl" or np.isfinite(pl_c)
+    if is_pl:
+        pl_pos = row.get("pl_position")
+        pl_text = f"{float(pl_pos):.1f} nm" if isinstance(pl_pos, (int, float)) and np.isfinite(float(pl_pos)) else str(pl_pos or "NA")
+        title = f"{spectrum_id} | PL Peak: {pl_text}"
+        xaxis_title = "Wavelength (nm)"
+    else:
+        delta_text = row.get("delta_e2g_a1g", "NA")
+        title = f"{spectrum_id} | Delta(E2g-A1g): {delta_text}"
+        xaxis_title = "Raman Shift (cm^-1)"
+
     fig.update_layout(
         template="plotly_white",
         title=title,
-        xaxis_title="Raman Shift (cm^-1)",
+        xaxis_title=xaxis_title,
         yaxis_title="Intensity",
         hovermode="x unified",
         legend={
@@ -442,24 +459,32 @@ def render_fit_summary(
             f = float(v)
         except (TypeError, ValueError):
             return "(!)"
-        return "(!)" if (f < 3.0 or f >= 20.0) else ""
+        return "(!)" if (f < 3.0 or f >= 60.0) else ""
+
+    modality = str(row.get("modality", "")).strip().lower()
+    is_pl = modality == "pl" or "pl_position" in row
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Model", str(row.get("selected_model", "NA")))
-    c2.metric("Delta(E2g-A1g)", _fmt(row.get("delta_e2g_a1g"), 2))
+    if is_pl:
+        c2.metric("PL Peak (nm)", _fmt(row.get("pl_position"), 2))
+    else:
+        c2.metric("Delta(E2g-A1g)", _fmt(row.get("delta_e2g_a1g"), 2))
     c3.metric("RMSE", _fmt(row.get("rmse"), 3))
     c4.metric("AIC / BIC", f"{_fmt(row.get('aic'),1)} / {_fmt(row.get('bic'),1)}")
 
     peak_rows: list[dict[str, str]] = []
-    for key, label in [("lo", "LO"), ("e2g", "E2g"), ("a1g", "A1g"), ("zo", "ZO"), ("la", "LA")]:
+    unit_label = "nm" if is_pl else "cm^-1"
+    peak_keys = [("pl", "PL")] if is_pl else [("lo", "LO"), ("e2g", "E2g"), ("a1g", "A1g"), ("zo", "ZO"), ("la", "LA")]
+    for key, label in peak_keys:
         pos = row.get(f"{key}_position")
         if pos is None:
             continue
         peak_rows.append(
             {
                 "Peak": label,
-                "Position (cm^-1)": _fmt(pos, 2),
-                "FWHM (cm^-1)": _fmt(row.get(f"{key}_fwhm"), 2),
+                f"Position ({unit_label})": _fmt(pos, 2),
+                f"FWHM ({unit_label})": _fmt(row.get(f"{key}_fwhm"), 2),
                 "Flag": _fwhm_warn(row.get(f"{key}_fwhm")),
             }
         )
@@ -468,11 +493,13 @@ def render_fit_summary(
         st.caption("Peak Parameters")
         st.dataframe(peak_rows, width="stretch", hide_index=True)
 
-    aux_lines = [
-        f"- Si calibration offset: {_fmt(row.get('calibration_offset'),4)} (success={row.get('calibration_success')})",
+    aux_lines = []
+    if not is_pl:
+        aux_lines.append(f"- Si calibration offset: {_fmt(row.get('calibration_offset'),4)} (success={row.get('calibration_success')})")
+    aux_lines.extend([
         f"- Fit status: {row.get('fit_status', 'valid')}",
         f"- Decision: {row.get('review_decision', 'auto')}",
-    ]
+    ])
     st.markdown("\n".join(aux_lines))
 
     fit_status = str(row.get("fit_status", "valid")).strip().lower()

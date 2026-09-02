@@ -367,6 +367,12 @@ class SpectrumPlotWidget(QWidget):
         self._line_profile = self._resolve_line_profile(self._row_snapshot)
         self._sync_baseline_params(self._row_snapshot)
 
+        is_pl = str(self._row_snapshot.get("modality", "")).lower() == "pl" or "pl_position" in self._row_snapshot
+        if is_pl:
+            self.plot.setLabel("bottom", "Wavelength (nm)")
+        else:
+            self.plot.setLabel("bottom", "Raman Shift (cm^-1)")
+
         if self._x.size > 0:
             self._x_min = float(np.min(self._x))
             self._x_max = float(np.max(self._x))
@@ -453,14 +459,18 @@ class SpectrumPlotWidget(QWidget):
             x_data_max = float(self._x_window_cfg["fallback_max"])
 
         peak_padding = float(self._x_window_cfg["peak_padding"])
+        pl_pos = _to_float(self._row_snapshot.get("pl_position"), np.nan)
         e2g = _to_float(self._row_snapshot.get("e2g_position"), np.nan)
         a1g = _to_float(self._row_snapshot.get("a1g_position"), np.nan)
-        if np.isfinite(e2g) and np.isfinite(a1g):
+        if np.isfinite(pl_pos):
+            x_min = pl_pos - max(peak_padding, 60.0)
+            x_max = pl_pos + max(peak_padding, 60.0)
+        elif np.isfinite(e2g) and np.isfinite(a1g):
             x_min = min(float(e2g), float(a1g)) - peak_padding
             x_max = max(float(e2g), float(a1g)) + peak_padding
         else:
-            x_min = float(self._x_window_cfg["fallback_min"])
-            x_max = float(self._x_window_cfg["fallback_max"])
+            x_min = x_data_min
+            x_max = x_data_max
         if not np.isfinite(x_min) or not np.isfinite(x_max) or x_max <= x_min:
             x_min, x_max = x_data_min, x_data_max
         return float(x_min), float(x_max)

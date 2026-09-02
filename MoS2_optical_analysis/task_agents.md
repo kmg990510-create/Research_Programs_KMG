@@ -1,4 +1,4 @@
-﻿# Task Agents (Current Work Tracking)
+# Task Agents (Current Work Tracking)
 
 ## Purpose
 `task_agents.md` is a tool for centrally managing current tasks and agent responsibilities. It records status for each task and specifies links to `agents.md` policies and `architecture.md` impacts.
@@ -625,6 +625,69 @@
   - least-squares path reproduces current outputs within accepted numeric tolerance.
   - Model-selection and review outcomes remain stable on validation datasets.
   - Runtime improvement is confirmed versus current lmfit wrapper path.
+
+### TASK-022: Modernize Configuration Management with Pydantic
+- Description: Replace manual dict validation in `config_loader.py` with schema-driven Pydantic models to improve type safety, maintainability, and developer experience.
+- Assigned: refactoring_agent
+- Related Files:
+  - `fitting/mos2_core/io/config_loader.py`
+  - `fitting/mos2_core/io/models.py` (New)
+- Status: Todo
+- Impact: high
+- Sub-steps:
+  1. Define Pydantic models for Raman, PL, Baseline, and Graph configs.
+  2. Implement a new loader that returns these model instances.
+  3. Update downstream modules to use dot-notation (config.fit.x_min) instead of keys.
+  4. Run validation on existing YAML files.
+
+### TASK-023: Decompose `raman_lmfit.py` God Object
+- Description: Split the oversized `raman_lmfit.py` (1,800+ lines) into modular, single-responsibility files (e.g., `engine.py`, `model_factory.py`, `parallel_executor.py`).
+- Assigned: refactoring_agent
+- Related Files:
+  - `fitting/mos2_core/fitting/raman_lmfit.py`
+- Status: Todo
+- Impact: high
+- Sub-steps:
+  1. Extract peak model creation to `model_factory.py`.
+  2. Move pre-fit evaluation logic to `prefit_gate.py`.
+  3. Relocate multiprocessing worker logic to `parallel_executor.py`.
+  4. Refactor `LmfitRamanModelEnsembleFitting` to orchestrate these new modules.
+
+### TASK-024: Separate GUI and Business Logic via Service Layer
+- Description: Extract data processing and report merging logic from `report_loader.py` into a pure-Python `report_service.py` to enable unit testing and reduce Streamlit dependency.
+- Assigned: refactoring_agent
+- Related Files:
+  - `gui/components/report_loader.py`
+  - `fitting/mos2_core/analysis/report_service.py` (New)
+- Status: Todo
+- Impact: medium
+- Sub-steps:
+  1. Create `report_service.py` to handle JSON loading and override merging.
+  2. Move `apply_manual_overrides_to_payload` logic to the new service.
+  3. Update `report_loader.py` to call the service layer.
+  4. Verify GUI pages function correctly with the new separation.
+
+### TASK-025: Improve PL visualization and GUI support
+- Description: Enhance GUI pages and spectrum components to properly display, zoom, and review PL spectra.
+- Assigned: raman_pl_agent
+- Related Files:
+  - `gui/components/spectrum_viewer.py`
+  - `gui/pages/3_All_Spectra_Viewer.py`
+  - `gui/pages/4_Map_Viewer.py`
+  - `gui/Main.py`
+  - `gui/components/review_table.py`
+  - `gui/components/parameter_editor.py`
+  - `gui/desktop_editor/plot_widget.py`
+  - `fitting/mos2_core/fitting/raman_lmfit.py`
+- Status: Done
+- Impact: medium (GUI rendering + PL UX)
+- Sub-steps:
+  1. Add PL component styling token to `_DEFAULT_PEAK_STYLE`.
+  2. Add PL modality detection in spectrum overlay (title `PL Peak: ... nm`, X-axis `Wavelength (nm)`).
+  3. Update `_auto_view_window` and All Spectra Viewer to auto-zoom on `pl_position` when present.
+  4. Add PL columns to preferred candidate lists in `Map_Viewer.py`, `Main.py`, `review_table.py`, and `parameter_editor.py`.
+  5. Add PL X-axis label and range resolution to `desktop_editor/plot_widget.py`.
+  6. Support fallback model name resolution in `raman_lmfit.py` for single-spectrum refit.
 
 ## Execution Notes (2026-05-20)
 

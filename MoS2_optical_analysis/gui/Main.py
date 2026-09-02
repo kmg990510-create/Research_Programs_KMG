@@ -1,4 +1,4 @@
-﻿"""Main entry point for Streamlit review application."""
+"""Main entry point for Streamlit review application."""
 
 from __future__ import annotations
 
@@ -55,6 +55,9 @@ with left:
         for c in [
             "spectrum_id",
             "selected_model",
+            "pl_position",
+            "pl_fwhm",
+            "pl_height",
             "e2g_position",
             "a1g_position",
             "delta_e2g_a1g",
