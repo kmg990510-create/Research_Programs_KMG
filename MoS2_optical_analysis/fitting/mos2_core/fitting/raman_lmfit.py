@@ -53,6 +53,8 @@ class RamanFitConfig:
     auto_refine_min_rmse_improvement: float
     prefit: "PreFitConfig"
     model_windows: dict[str, NPeakWindowSpec]
+    pl_components: dict[str, "PLComponentSpec"]
+    pl_model_components: dict[str, list[str]]
 
 
 @dataclass(slots=True)
@@ -94,6 +96,28 @@ class NPeakSpec:
     right_base: tuple[float, float]
     center_tolerance: float
     lock_baseline: bool
+
+
+@dataclass(slots=True)
+class PLComponentSpec:
+    """One configured PL emission component."""
+
+    key: str
+    label: str
+    profile: str
+    center_init: float
+    center_min: float
+    center_max: float
+    sigma_init: float
+    sigma_min: float
+    sigma_max: float
+    height_scale: float
+    amplitude_min: float
+    fraction_init: float
+    vary_center: bool
+    vary_sigma: bool
+    vary_amplitude: bool
+    vary_fraction: bool
 
 
 @dataclass(slots=True)
@@ -189,6 +213,170 @@ def _resolve_sigma_bounds_by_peak(raw: Any) -> dict[str, tuple[float, float]]:
 
         if np.isfinite(sigma_min) and np.isfinite(sigma_max) and sigma_max > sigma_min:
             resolved[peak_name.lower()] = (float(sigma_min), float(sigma_max))
+    return resolved
+
+
+def _pl_component_key(name: str) -> str:
+    normalized = str(name).strip().lower().replace("-", "_minus")
+    normalized = normalized.replace("+", "_plus")
+    normalized = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in normalized)
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    return normalized.strip("_") or "component"
+
+
+def _fwhm_to_sigma(fwhm: float, profile: str) -> float:
+    fwhm_value = max(float(fwhm), 1.0e-9)
+    return fwhm_value / 2.354820045 if profile == "gaussian" else fwhm_value / 2.0
+
+
+def _resolve_pl_components(raw: Any) -> dict[str, PLComponentSpec]:
+    defaults: dict[str, dict[str, Any]] = {
+        "pl": {
+            "label": "PL",
+            "profile": "pvoigt",
+            "center_init": 1.85,
+            "center_min": 1.50,
+            "center_max": 2.15,
+            "fwhm_init": 0.12,
+            "fwhm_min": 0.004,
+            "fwhm_max": 0.40,
+            "height_scale": 1.00,
+        },
+        "i1": {
+            "label": "I1",
+            "profile": "pvoigt",
+            "center_init": 1.51,
+            "center_min": 1.43,
+            "center_max": 1.58,
+            "fwhm_init": 0.13,
+            "fwhm_min": 0.03,
+            "fwhm_max": 0.24,
+            "height_scale": 0.15,
+        },
+        "i2": {
+            "label": "I2",
+            "profile": "pvoigt",
+            "center_init": 1.61,
+            "center_min": 1.54,
+            "center_max": 1.70,
+            "fwhm_init": 0.20,
+            "fwhm_min": 0.04,
+            "fwhm_max": 0.32,
+            "height_scale": 0.20,
+        },
+        "a_minus": {
+            "label": "A-",
+            "profile": "pvoigt",
+            "center_init": 1.855,
+            "center_min": 1.78,
+            "center_max": 1.90,
+            "fwhm_init": 0.085,
+            "fwhm_min": 0.02,
+            "fwhm_max": 0.18,
+            "height_scale": 1.00,
+        },
+        "a0": {
+            "label": "A0",
+            "profile": "pvoigt",
+            "center_init": 1.882,
+            "center_min": 1.84,
+            "center_max": 1.93,
+            "fwhm_init": 0.045,
+            "fwhm_min": 0.01,
+            "fwhm_max": 0.12,
+            "height_scale": 0.30,
+        },
+        "b": {
+            "label": "B",
+            "profile": "pvoigt",
+            "center_init": 2.022,
+            "center_min": 1.94,
+            "center_max": 2.10,
+            "fwhm_init": 0.125,
+            "fwhm_min": 0.03,
+            "fwhm_max": 0.24,
+            "height_scale": 0.25,
+        },
+    }
+
+    entries = {**defaults, **raw} if isinstance(raw, dict) else defaults
+    resolved: dict[str, PLComponentSpec] = {}
+    for raw_name, raw_spec in entries.items():
+        if not isinstance(raw_spec, dict):
+            continue
+        key = _pl_component_key(str(raw_spec.get("key", raw_name)))
+        default = defaults.get(key, {})
+        label = str(raw_spec.get("label", default.get("label", key))).strip() or key
+        profile = str(raw_spec.get("profile", default.get("profile", "pvoigt"))).strip().lower()
+        if profile not in {"pvoigt", "gaussian"}:
+            profile = "pvoigt"
+
+        center_init = _finite(raw_spec.get("center_init", default.get("center_init")), 1.85)
+        center_min = _finite(raw_spec.get("center_min", default.get("center_min")), center_init - 0.05)
+        center_max = _finite(raw_spec.get("center_max", default.get("center_max")), center_init + 0.05)
+        if center_max <= center_min:
+            center_min, center_max = center_init - 0.05, center_init + 0.05
+
+        sigma_init_raw = raw_spec.get("sigma_init")
+        sigma_min_raw = raw_spec.get("sigma_min")
+        sigma_max_raw = raw_spec.get("sigma_max")
+        if sigma_init_raw is None:
+            sigma_init = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_init", default.get("fwhm_init")), 0.1), profile)
+        else:
+            sigma_init = _finite(sigma_init_raw, 0.05)
+        if sigma_min_raw is None:
+            sigma_min = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_min", default.get("fwhm_min")), 0.01), profile)
+        else:
+            sigma_min = _finite(sigma_min_raw, 0.005)
+        if sigma_max_raw is None:
+            sigma_max = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_max", default.get("fwhm_max")), 0.25), profile)
+        else:
+            sigma_max = _finite(sigma_max_raw, 0.125)
+        if sigma_max <= sigma_min:
+            sigma_min, sigma_max = 0.002, 0.20
+        sigma_init = float(np.clip(sigma_init, sigma_min, sigma_max))
+
+        resolved[key] = PLComponentSpec(
+            key=key,
+            label=label,
+            profile=profile,
+            center_init=float(np.clip(center_init, center_min, center_max)),
+            center_min=float(center_min),
+            center_max=float(center_max),
+            sigma_init=float(sigma_init),
+            sigma_min=float(sigma_min),
+            sigma_max=float(sigma_max),
+            height_scale=max(_finite(raw_spec.get("height_scale", default.get("height_scale")), 1.0), 0.0),
+            amplitude_min=max(_finite(raw_spec.get("amplitude_min", default.get("amplitude_min", 0.0)), 0.0), 0.0),
+            fraction_init=float(np.clip(_finite(raw_spec.get("fraction_init", default.get("fraction_init", 0.5)), 0.5), 0.0, 1.0)),
+            vary_center=bool(raw_spec.get("vary_center", default.get("vary_center", True))),
+            vary_sigma=bool(raw_spec.get("vary_sigma", default.get("vary_sigma", True))),
+            vary_amplitude=bool(raw_spec.get("vary_amplitude", default.get("vary_amplitude", True))),
+            vary_fraction=bool(raw_spec.get("vary_fraction", default.get("vary_fraction", True))),
+        )
+
+    if not resolved:
+        return _resolve_pl_components(defaults)
+    return resolved
+
+
+def _resolve_pl_model_components(raw: Any) -> dict[str, list[str]]:
+    defaults = {
+        "pl_single_pvoigt": ["pl"],
+        "pl_single_gaussian": ["pl"],
+        "pl_a_doublet_pvoigt": ["a_minus", "a0"],
+        "pl_5_component_pvoigt": ["i1", "i2", "a_minus", "a0", "b"],
+    }
+    if not isinstance(raw, dict):
+        return defaults
+    resolved = dict(defaults)
+    for model_name, components in raw.items():
+        if not isinstance(model_name, str) or not isinstance(components, list):
+            continue
+        keys = [_pl_component_key(str(item)) for item in components if str(item).strip()]
+        if keys:
+            resolved[model_name] = keys
     return resolved
 
 
@@ -458,6 +646,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
     Supported model names in `pl.models`:
     - pl_single_gaussian
     - pl_single_pvoigt
+    - pl_a_doublet_pvoigt
+    - pl_5_component_pvoigt
     """
 
     def __init__(
@@ -469,7 +659,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         self.default_models = list(
             default_models or ["peak_2_model", "peak_3_model", "peak_4_model", "peak_5_model"]
         )
-        self.pl_models = list(pl_models or ["pl_single_gaussian", "pl_single_pvoigt"])
+        self.pl_models = list(
+            pl_models or ["pl_single_pvoigt", "pl_a_doublet_pvoigt", "pl_5_component_pvoigt"]
+        )
         self.enable_pl = bool(enable_pl)
 
     def _resolve_fit_config(self, context: PipelineContext, modality: str) -> RamanFitConfig:
@@ -484,15 +676,15 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         is_pl = modality == "pl"
         default_models = self.pl_models if is_pl else self.default_models
         models = _resolve_models(section.get("models", default_models), default_models)
-        x_min_default = 520.0 if is_pl else 340.0
-        x_max_default = 780.0 if is_pl else 430.0
+        x_min_default = 1.38 if is_pl else 340.0
+        x_max_default = 2.33 if is_pl else 430.0
         x_min = _finite(fit_cfg.get("x_min", x_min_default), x_min_default)
         x_max = _finite(fit_cfg.get("x_max", x_max_default), x_max_default)
-        center_init_default = 650.0 if is_pl else 384.0
-        center_min_default = x_min + 5.0 if is_pl else 370.0
-        center_max_default = x_max - 5.0 if is_pl else 392.0
-        sigma_min_default = 1.0 if is_pl else 0.5
-        sigma_max_default = 30.0 if is_pl else 20.0
+        center_init_default = 1.85 if is_pl else 384.0
+        center_min_default = x_min + 0.05 if is_pl else 370.0
+        center_max_default = x_max - 0.05 if is_pl else 392.0
+        sigma_min_default = 0.002 if is_pl else 0.5
+        sigma_max_default = 0.20 if is_pl else 20.0
         prefit_cfg = (
             {
                 "enabled": False,
@@ -579,6 +771,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 global_x_min=x_min,
                 global_x_max=x_max,
             ),
+            pl_components=_resolve_pl_components(fit_cfg.get("components", fit_cfg.get("pl_components", {}))),
+            pl_model_components=_resolve_pl_model_components(fit_cfg.get("model_components", {})),
         )
 
     @staticmethod
@@ -670,7 +864,17 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             if not np.isfinite(metric_value):
                 reasons.append(f"invalid_metric_{metric_key}_non_finite")
 
-        for peak_name in ("pl", "lo", "e2g", "a1g", "zo", "la"):
+        peak_names = {
+            str(key[: -len("_fwhm")])
+            for key in candidate.params
+            if isinstance(key, str) and key.endswith("_fwhm")
+        }
+        peak_names.update(
+            str(key[: -len("_area")])
+            for key in candidate.params
+            if isinstance(key, str) and key.endswith("_area")
+        )
+        for peak_name in sorted(peak_names):
             fwhm_value = candidate.params.get(f"{peak_name}_fwhm")
             area_value = candidate.params.get(f"{peak_name}_area")
 
@@ -791,6 +995,16 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         y_corr: np.ndarray,
         cfg: RamanFitConfig,
     ) -> FitCandidate:
+        component_keys = cfg.pl_model_components.get(model_name)
+        if component_keys:
+            return self._fit_pl_component_model(
+                model_name=model_name,
+                component_keys=component_keys,
+                x_full=x_full,
+                y_corr=y_corr,
+                cfg=cfg,
+            )
+
         mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
@@ -855,6 +1069,105 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             y_pred_full=np.asarray(y_pred_full, dtype=float),
             peak_labels=["PL"],
             prefix_for_label={"PL": "pl_"},
+        )
+
+    def _fit_pl_component_model(
+        self,
+        model_name: str,
+        component_keys: Sequence[str],
+        x_full: np.ndarray,
+        y_corr: np.ndarray,
+        cfg: RamanFitConfig,
+    ) -> FitCandidate:
+        mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
+        x_fit = x_full[mask]
+        y_fit = y_corr[mask]
+        if x_fit.size < 20:
+            raise ValueError(f"Insufficient ROI points for PL model {model_name}")
+
+        selected_components: list[PLComponentSpec] = []
+        for key in component_keys:
+            spec = cfg.pl_components.get(_pl_component_key(key))
+            if spec is not None:
+                selected_components.append(spec)
+        if not selected_components:
+            raise ValueError(f"No configured PL components for model {model_name}")
+
+        model = LinearModel(prefix="bg_")
+        for spec in selected_components:
+            prefix = f"{spec.key}_"
+            if spec.profile == "gaussian":
+                model = model + GaussianModel(prefix=prefix)
+            else:
+                model = model + PseudoVoigtModel(prefix=prefix)
+
+        params = model.make_params()
+        left_base, right_base = _default_baseline_windows_from_roi(cfg.x_min, cfg.x_max)
+        baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
+            x_fit, y_fit, left_base, right_base
+        )
+        params["bg_slope"].set(value=baseline_slope)
+        params["bg_intercept"].set(value=baseline_intercept)
+
+        y_low = float(np.percentile(y_fit, 20))
+        dynamic_height = max(float(np.max(y_fit) - y_low), 1.0e-6)
+        for spec in selected_components:
+            prefix = f"{spec.key}_"
+            local_half_width = max(float(spec.sigma_max * 2.0), 0.02)
+            local_height, local_center = _window_peak_height(
+                x_fit,
+                y_fit,
+                center=spec.center_init,
+                half_width=local_half_width,
+            )
+            height_guess = max(local_height, dynamic_height * spec.height_scale, 1.0e-6)
+            center_guess = float(np.clip(local_center, spec.center_min, spec.center_max))
+            sigma_guess = float(np.clip(spec.sigma_init, spec.sigma_min, spec.sigma_max))
+            fraction_guess = float(np.clip(spec.fraction_init, 0.0, 1.0))
+            area_guess_lmfit = _height_guess_to_lmfit_area(
+                height_guess=height_guess,
+                sigma_guess=sigma_guess,
+                fraction_guess=fraction_guess,
+            )
+
+            params[f"{prefix}center"].set(
+                value=center_guess,
+                min=spec.center_min,
+                max=spec.center_max,
+                vary=spec.vary_center,
+            )
+            params[f"{prefix}sigma"].set(
+                value=sigma_guess,
+                min=spec.sigma_min,
+                max=spec.sigma_max,
+                vary=spec.vary_sigma,
+            )
+            params[f"{prefix}amplitude"].set(
+                value=max(area_guess_lmfit, spec.amplitude_min, 1.0e-6),
+                min=spec.amplitude_min,
+                vary=spec.vary_amplitude,
+            )
+            if f"{prefix}fraction" in params:
+                params[f"{prefix}fraction"].set(
+                    value=fraction_guess,
+                    min=0.0,
+                    max=1.0,
+                    vary=spec.vary_fraction,
+                )
+
+        fit_result = model.fit(y_fit, params, x=x_fit, nan_policy="omit")
+        y_pred_full = model.eval(fit_result.params, x=x_full)
+        peak_labels = [spec.key for spec in selected_components]
+        return self._candidate_from_result(
+            model_name=model_name,
+            fit_result=fit_result,
+            x_fit=x_fit,
+            y_fit=y_fit,
+            x_full=x_full,
+            y_pred_full=np.asarray(y_pred_full, dtype=float),
+            peak_labels=peak_labels,
+            prefix_for_label={spec.key: f"{spec.key}_" for spec in selected_components},
+            profile_for_label={spec.key: spec.profile for spec in selected_components},
         )
 
     def _mask_roi(self, x_full: np.ndarray, x_min: float, x_max: float) -> np.ndarray:
@@ -928,6 +1241,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         y_pred_full: np.ndarray,
         peak_labels: Sequence[str],
         prefix_for_label: Mapping[str, str],
+        profile_for_label: Mapping[str, str] | None = None,
     ) -> FitCandidate:
         y_best = fit_result.best_fit
         rmse, r2 = self._fit_quality(y_fit, y_best)
@@ -939,6 +1253,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             "peak_5_model",
             "mos2_double_pvoigt",
             "pl_single_pvoigt",
+            "pl_a_doublet_pvoigt",
+            "pl_5_component_pvoigt",
         }:
             line_profile = "pvoigt"
         elif model_name == "mos2_double_lorentz":
@@ -958,6 +1274,11 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         for label in peak_labels:
             key = label.lower()
             prefix = prefix_for_label[label]
+            component_profile = (
+                str(profile_for_label.get(label, line_profile)).strip().lower()
+                if profile_for_label is not None
+                else line_profile
+            )
 
             center = _safe_param(fit_result.params, f"{prefix}center")
             fwhm = _safe_param(fit_result.params, f"{prefix}fwhm")
@@ -972,6 +1293,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             params_out[f"{key}_area"] = area
             params_out[f"{key}_sigma"] = sigma
             params_out[f"{key}_fraction"] = fraction
+            params_out[f"{key}_line_profile"] = component_profile  # type: ignore[assignment]
             peak_heights.append((label, center, height))
 
         e2g_pos = params_out.get("e2g_position")
@@ -988,6 +1310,40 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             params_out["peak_amplitude"] = float(max(params_out["e2g_height"], params_out["a1g_height"]))
         elif peak_heights:
             params_out["peak_amplitude"] = float(max(h for _, _, h in peak_heights))
+
+        area_a_minus = params_out.get("a_minus_area")
+        area_a0 = params_out.get("a0_area")
+        area_b = params_out.get("b_area")
+        area_i1 = params_out.get("i1_area")
+        area_i2 = params_out.get("i2_area")
+        pos_a_minus = params_out.get("a_minus_position")
+        pos_a0 = params_out.get("a0_position")
+        if area_a_minus is not None and area_a0 is not None:
+            a_total = float(area_a_minus + area_a0)
+            params_out["a_total_area"] = a_total
+            if abs(a_total) > 1.0e-12:
+                a0_fraction = float(area_a0 / a_total)
+                if abs(float(area_a0)) > max(1.0e-12, abs(a_total) * 1.0e-4):
+                    params_out["a_minus_a0_area_ratio"] = float(area_a_minus / area_a0)
+                params_out["a0_fraction_of_a_total"] = a0_fraction
+                if area_b is not None:
+                    params_out["b_to_a_total_area_ratio"] = float(area_b / a_total)
+                defect_total = float((area_i1 or 0.0) + (area_i2 or 0.0))
+                params_out["defect_total_area"] = defect_total
+                params_out["defect_to_a_total_area_ratio"] = float(defect_total / a_total)
+        if pos_a_minus is not None and pos_a0 is not None:
+            params_out["a_minus_a0_energy_split"] = float(pos_a0 - pos_a_minus)
+
+        if peak_heights and "pl_position" not in params_out:
+            dominant_label, dominant_center, dominant_height = max(peak_heights, key=lambda t: t[2])
+            dominant_key = dominant_label.lower()
+            params_out["dominant_component"] = dominant_key  # type: ignore[assignment]
+            params_out["pl_position"] = float(dominant_center)
+            params_out["pl_height"] = float(dominant_height)
+            for suffix in ("fwhm", "area", "sigma", "fraction"):
+                source_key = f"{dominant_key}_{suffix}"
+                if source_key in params_out:
+                    params_out[f"pl_{suffix}"] = params_out[source_key]
 
         metrics_out = {
             "aic": _finite(fit_result.aic, 1.0e12),
@@ -1239,7 +1595,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 "fallback_flat": "pl_single_pvoigt",
                 "fallback": "pl_single_gaussian",
             }.get(model_name, model_name)
-            if normalized_model in {"pl_single_gaussian", "pl_single_pvoigt"}:
+            if normalized_model in cfg.pl_model_components or normalized_model in {"pl_single_gaussian", "pl_single_pvoigt"}:
                 return self._fit_pl_model(normalized_model, x_full, y_corr, cfg)
             raise ValueError(f"Unsupported PL model: {model_name}")
 

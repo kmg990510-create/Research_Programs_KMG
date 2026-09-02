@@ -1,8 +1,11 @@
 # Photoluminescence (PL) analysis configuration
 models:
-  - pl_single_gaussian
   - pl_single_pvoigt
+  - pl_a_doublet_pvoigt
+  - pl_5_component_pvoigt
 selection_metric: hybrid
+intensity_density_correction:
+  enabled: false
 fit:
   x_unit: eV
   x_min: 1.38
@@ -14,6 +17,77 @@ fit:
   pl_center_max: 2.15
   pl_sigma_min: 0.002
   pl_sigma_max: 0.20
+  model_components:
+    pl_single_pvoigt: [pl]
+    pl_a_doublet_pvoigt: [a_minus, a0]
+    pl_5_component_pvoigt: [i1, i2, a_minus, a0, b]
+  components:
+    pl:
+      label: PL
+      profile: pvoigt
+      center_init: 1.85
+      center_min: 1.50
+      center_max: 2.15
+      fwhm_init: 0.12
+      fwhm_min: 0.004
+      fwhm_max: 0.40
+      height_scale: 1.0
+      fraction_init: 0.5
+    i1:
+      label: I1
+      profile: pvoigt
+      center_init: 1.51
+      center_min: 1.43
+      center_max: 1.58
+      fwhm_init: 0.13
+      fwhm_min: 0.03
+      fwhm_max: 0.24
+      height_scale: 0.15
+      fraction_init: 0.5
+    i2:
+      label: I2
+      profile: pvoigt
+      center_init: 1.61
+      center_min: 1.54
+      center_max: 1.70
+      fwhm_init: 0.20
+      fwhm_min: 0.04
+      fwhm_max: 0.32
+      height_scale: 0.20
+      fraction_init: 0.5
+    a_minus:
+      label: A-
+      profile: pvoigt
+      center_init: 1.855
+      center_min: 1.78
+      center_max: 1.90
+      fwhm_init: 0.085
+      fwhm_min: 0.02
+      fwhm_max: 0.18
+      height_scale: 1.0
+      fraction_init: 0.5
+    a0:
+      label: A0
+      profile: pvoigt
+      center_init: 1.882
+      center_min: 1.84
+      center_max: 1.93
+      fwhm_init: 0.045
+      fwhm_min: 0.01
+      fwhm_max: 0.12
+      height_scale: 0.30
+      fraction_init: 0.5
+    b:
+      label: B
+      profile: pvoigt
+      center_init: 2.022
+      center_min: 1.94
+      center_max: 2.10
+      fwhm_init: 0.125
+      fwhm_min: 0.03
+      fwhm_max: 0.24
+      height_scale: 0.25
+      fraction_init: 0.5
 
 report_export:
   include_selected_fitted_y: false

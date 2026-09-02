@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -90,6 +91,140 @@ def _error(values: np.ndarray, how: str) -> float:
         q25, q75 = np.percentile(values, [25, 75])
         return float((q75 - q25) / 2.0)
     return float("nan")
+
+
+def _is_pl_frame(frame: pd.DataFrame) -> bool:
+    if frame.empty:
+        return False
+    if "modality" in frame.columns and frame["modality"].astype(str).str.lower().eq("pl").any():
+        return True
+    return any(col in frame.columns for col in ("a_minus_position", "a0_position", "pl_position"))
+
+
+def _temperature_from_row(row: pd.Series) -> float | None:
+    value = row.get("temperature_k")
+    try:
+        number = float(value)
+        if np.isfinite(number):
+            return number
+    except (TypeError, ValueError):
+        pass
+    source = str(row.get("source_file", ""))
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*K(?![A-Za-z])", source, flags=re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _treatment_from_row(row: pd.Series, sample_name: str) -> str:
+    for value in (row.get("treatment_label"), sample_name, row.get("source_file")):
+        text = str(value or "")
+        lower = text.lower()
+        if "pristine" in lower:
+            return "Pristine"
+        if "treatment" in lower:
+            return "Treatment"
+        if "4atp" in lower or "atp" in lower:
+            return "4ATP"
+    return sample_name
+
+
+def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
+    metric_candidates = [
+        "a_minus_position",
+        "a0_position",
+        "a_minus_a0_energy_split",
+        "a_minus_a0_area_ratio",
+        "a0_fraction_of_a_total",
+        "b_to_a_total_area_ratio",
+        "defect_to_a_total_area_ratio",
+        "a_minus_fwhm",
+        "a0_fwhm",
+        "b_position",
+        "pl_position",
+        "pl_fwhm",
+        "rmse",
+        "r2",
+    ]
+
+    rows: list[pd.DataFrame] = []
+    for sample_name, frame in sample_frames.items():
+        work = frame.copy()
+        work["sample"] = sample_name
+        work["temperature_k"] = work.apply(_temperature_from_row, axis=1)
+        work["treatment_label"] = work.apply(lambda row: _treatment_from_row(row, sample_name), axis=1)
+        rows.append(work)
+    combined = pd.concat(rows, ignore_index=True)
+    combined = combined[pd.to_numeric(combined["temperature_k"], errors="coerce").notna()].copy()
+    combined["temperature_k"] = pd.to_numeric(combined["temperature_k"], errors="coerce")
+
+    available_metrics = [
+        col
+        for col in metric_candidates
+        if col in combined.columns and pd.to_numeric(combined[col], errors="coerce").notna().any()
+    ]
+    if not available_metrics:
+        st.warning("No PL comparison metrics found in the selected reports.")
+        return
+
+    st.subheader("PL Temperature / Treatment Comparison")
+    selected_metric = st.selectbox("PL metric", options=available_metrics, index=0)
+    plot_df = combined[["sample", "treatment_label", "temperature_k", selected_metric]].copy()
+    plot_df[selected_metric] = pd.to_numeric(plot_df[selected_metric], errors="coerce")
+    plot_df = plot_df.dropna(subset=["temperature_k", selected_metric]).sort_values(["treatment_label", "temperature_k"])
+
+    fig = px.line(
+        plot_df,
+        x="temperature_k",
+        y=selected_metric,
+        color="treatment_label",
+        markers=True,
+        hover_data=["sample"],
+    )
+    fig.update_layout(xaxis_title="Temperature (K)", yaxis_title=selected_metric)
+    st.plotly_chart(fig, width="stretch")
+
+    table_cols = ["sample", "treatment_label", "temperature_k", *available_metrics]
+    st.dataframe(
+        combined[table_cols].sort_values(["temperature_k", "treatment_label"]),
+        width="stretch",
+        hide_index=True,
+    )
+
+    pair_metrics = [
+        metric
+        for metric in [
+            "a_minus_position",
+            "a0_position",
+            "a_minus_a0_area_ratio",
+            "a0_fraction_of_a_total",
+            "a_minus_fwhm",
+            "a0_fwhm",
+            "b_to_a_total_area_ratio",
+            "defect_to_a_total_area_ratio",
+        ]
+        if metric in available_metrics
+    ]
+    labels = set(combined["treatment_label"].astype(str))
+    if {"Pristine", "Treatment"}.issubset(labels) and pair_metrics:
+        paired_rows: list[dict[str, float | str]] = []
+        for temp, group in combined.groupby("temperature_k"):
+            pristine = group[group["treatment_label"].astype(str) == "Pristine"]
+            treatment = group[group["treatment_label"].astype(str) == "Treatment"]
+            if pristine.empty or treatment.empty:
+                continue
+            out: dict[str, float | str] = {"temperature_k": float(temp)}
+            p_row = pristine.iloc[0]
+            t_row = treatment.iloc[0]
+            for metric in pair_metrics:
+                p_val = pd.to_numeric(pd.Series([p_row.get(metric)]), errors="coerce").iloc[0]
+                t_val = pd.to_numeric(pd.Series([t_row.get(metric)]), errors="coerce").iloc[0]
+                if pd.notna(p_val) and pd.notna(t_val):
+                    out[f"{metric}_treatment_minus_pristine"] = float(t_val - p_val)
+            paired_rows.append(out)
+        if paired_rows:
+            st.subheader("Matched Treatment - Pristine")
+            st.dataframe(pd.DataFrame(paired_rows).sort_values("temperature_k"), width="stretch", hide_index=True)
 
 
 def _compute_eps_n(
@@ -702,6 +837,14 @@ for sample_id, frame in raw_sample_frames.items():
 
 if duplicate_name_resolved:
     st.sidebar.caption("Duplicate display names were auto-suffixed (e.g., '(2)').")
+
+pl_flags = [_is_pl_frame(frame) for frame in sample_frames.values()]
+if any(pl_flags):
+    if not all(pl_flags):
+        st.warning("Select either PL reports or Raman reports, not both, for Sample Comparison.")
+        st.stop()
+    _render_pl_comparison(sample_frames)
+    st.stop()
 
 with st.sidebar.expander("4) Advanced Model Params", expanded=False):
     st.caption("Defaults are placeholders. Use calibrated values when available.")

@@ -212,13 +212,14 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray
     baseline = bg_slope * x + bg_intercept
     y_fit = baseline.copy()
 
-    for peak in ("pl", "lo", "e2g", "a1g", "zo", "la"):
+    for peak in ("i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la"):
         center = _to_float(params.get(f"{peak}_position"))
         area = _to_float(params.get(f"{peak}_area"))
         sigma = _to_float(params.get(f"{peak}_sigma"))
         height = _to_float(params.get(f"{peak}_height"))
         fwhm = _to_float(params.get(f"{peak}_fwhm"))
         fraction = _to_float(params.get(f"{peak}_fraction"), 0.0) or 0.0
+        peak_profile = str(params.get(f"{peak}_line_profile", profile)).strip().lower()
         if center is None:
             continue
         if area is not None and sigma is not None and sigma > 0:
@@ -227,7 +228,7 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray
                 center=float(center),
                 area=float(max(area, 0.0)),
                 sigma=float(sigma),
-                line_profile=profile,
+                line_profile=peak_profile,
                 fraction=float(fraction),
             )
             continue
@@ -238,7 +239,7 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray
             center=float(center),
             height=float(max(height, 0.0)),
             fwhm=float(max(fwhm, 1.0e-6)),
-            line_profile=profile,
+            line_profile=peak_profile,
             fraction=float(fraction),
         )
     return y_fit
@@ -287,7 +288,7 @@ class SingleSpectrumRefitAPI:
         line_profile = str(params.get("line_profile", "pvoigt")).strip().lower()
         for peak_row in request.peaks:
             peak = peak_row.peak
-            if peak not in {"pl", "lo", "e2g", "a1g", "zo", "la"}:
+            if peak not in {"i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la"}:
                 warnings.append(f"ignored_unknown_peak:{peak}")
                 continue
             if peak_row.center is not None:

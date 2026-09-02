@@ -133,7 +133,19 @@ def _build_display_row_for_candidate(row: dict, candidate: dict) -> dict:
         "r2_fit",
         "comparison_n",
     }
-    peak_prefixes = ("pl_", "lo_", "e2g_", "a1g_", "zo_", "la_")
+    peak_prefixes = (
+        "pl_",
+        "i1_",
+        "i2_",
+        "a_minus_",
+        "a0_",
+        "b_",
+        "lo_",
+        "e2g_",
+        "a1g_",
+        "zo_",
+        "la_",
+    )
 
     for key in list(display.keys()):
         if key in fit_scalar_keys or key.startswith(peak_prefixes):
@@ -443,19 +455,32 @@ if selected_candidate is not None:
         st.rerun()
 
 x_raw, y_raw = load_raw_xy(str(source_path))
+modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
 try:
     cal_offset = float(display_row.get("calibration_offset", 0.0) or 0.0)
 except (TypeError, ValueError):
     cal_offset = 0.0
 x_for_plot = [xv + cal_offset for xv in x_raw]
+if modality == "pl" and str(display_row.get("x_unit", "")).strip().lower() == "ev" and x_for_plot and max(x_for_plot) > 100.0:
+    converted_pairs = sorted(
+        (
+            (1239.8419843320026 / float(xv), float(yv))
+            for xv, yv in zip(x_for_plot, y_raw)
+            if float(xv) > 0.0
+        ),
+        key=lambda item: item[0],
+    )
+    x_for_plot = [xv for xv, _ in converted_pairs]
+    y_raw = [yv for _, yv in converted_pairs]
 
-modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
 pl_pos = display_row.get("pl_position")
 if modality == "pl" or (pl_pos is not None and str(pl_pos).strip() != ""):
     try:
         pl_val = float(pl_pos)
-        auto_min = max(float(min(x_for_plot)), pl_val - max(peak_padding, 60.0))
-        auto_max = min(float(max(x_for_plot)), pl_val + max(peak_padding, 60.0))
+        x_span = float(max(x_for_plot) - min(x_for_plot))
+        pl_padding = max(0.08, min(0.25, x_span * 0.25)) if x_span <= 10.0 else max(peak_padding, 60.0)
+        auto_min = max(float(min(x_for_plot)), pl_val - pl_padding)
+        auto_max = min(float(max(x_for_plot)), pl_val + pl_padding)
     except (TypeError, ValueError):
         auto_min = float(min(x_for_plot))
         auto_max = float(max(x_for_plot))
@@ -469,8 +494,9 @@ else:
         auto_min, auto_max = fallback_x_min, fallback_x_max
 
 xcols = st.columns([1, 1, 2])
-x_min = xcols[0].number_input("X min", value=float(auto_min), step=1.0)
-x_max = xcols[1].number_input("X max", value=float(auto_max), step=1.0)
+x_step = 0.01 if modality == "pl" else 1.0
+x_min = xcols[0].number_input("X min", value=float(auto_min), step=x_step)
+x_max = xcols[1].number_input("X max", value=float(auto_max), step=x_step)
 show_full = xcols[2].checkbox("Show full spectrum", value=False)
 
 if show_full:

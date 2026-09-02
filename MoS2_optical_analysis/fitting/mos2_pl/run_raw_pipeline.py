@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import re
 from pathlib import Path
 from typing import NamedTuple
 
@@ -51,8 +52,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--peak-n-mode",
         type=str,
         default="auto",
-        choices=["auto", "peak_2_model", "peak_3_model", "peak_4_model", "peak_5_model"],
-        help="Override Raman-model ensemble list for shared fit config. 'auto' keeps config defaults.",
+        choices=["auto", "pl_single_pvoigt", "pl_a_doublet_pvoigt", "pl_5_component_pvoigt"],
+        help="Override PL model ensemble list. 'auto' keeps config defaults.",
     )
     parser.add_argument(
         "--distance-outlier",
@@ -99,7 +100,33 @@ def _discover_subdir_targets(parent_dir: Path, pattern: str) -> list[tuple[Path,
     return targets
 
 
-def _convert_nm_to_ev_if_needed(spectrum: SpectrumRecord) -> tuple[list[float], list[float], dict[str, object]]:
+def _infer_temperature_k(source_file: object) -> int | None:
+    name = Path(str(source_file or "")).name
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*K(?![A-Za-z])", name, flags=re.IGNORECASE)
+    if not match:
+        return None
+    value = float(match.group(1))
+    return int(value) if value.is_integer() else int(round(value))
+
+
+def _infer_treatment_label(metadata: dict[str, object]) -> str:
+    source = str(metadata.get("source_file", ""))
+    dataset = str(metadata.get("dataset", ""))
+    haystack = f"{dataset} {source}".lower()
+    if "pristine" in haystack:
+        return "Pristine"
+    if "treatment" in haystack:
+        return "Treatment"
+    if "4atp" in haystack or "atp" in haystack:
+        return "4ATP"
+    return dataset.strip() or "unknown"
+
+
+def _convert_nm_to_ev_if_needed(
+    spectrum: SpectrumRecord,
+    *,
+    intensity_density_correction: bool = False,
+) -> tuple[list[float], list[float], dict[str, object]]:
     x_values = [float(v) for v in spectrum.x]
     y_values = [float(v) for v in spectrum.y]
     metadata = dict(spectrum.metadata)
@@ -113,12 +140,20 @@ def _convert_nm_to_ev_if_needed(spectrum: SpectrumRecord) -> tuple[list[float], 
         converted = [NM_TO_EV / value for value in x_values if value > 0.0]
         if len(converted) != len(x_values):
             raise ValueError(f"Cannot convert non-positive wavelength values to eV: {spectrum.spectrum_id}")
+        if intensity_density_correction:
+            y_values = [
+                intensity * (NM_TO_EV / (energy_ev * energy_ev))
+                for intensity, energy_ev in zip(y_values, converted)
+            ]
         paired = sorted(zip(converted, y_values), key=lambda item: item[0])
         x_ev = [x for x, _ in paired]
         y_sorted = [y for _, y in paired]
         metadata["original_x_unit"] = x_unit or "nm"
         metadata["x_unit"] = "eV"
         metadata["x_conversion"] = "eV = 1239.8419843320026 / nm"
+        metadata["intensity_density_correction"] = bool(intensity_density_correction)
+        if intensity_density_correction:
+            metadata["intensity_conversion"] = "I_eV = I_nm * abs(d_nm/d_eV)"
         if paired:
             metadata["original_x_min_nm"] = min(x_values)
             metadata["original_x_max_nm"] = max(x_values)
@@ -128,10 +163,25 @@ def _convert_nm_to_ev_if_needed(spectrum: SpectrumRecord) -> tuple[list[float], 
     return x_values, y_values, metadata
 
 
-def _force_pl_modality(records: list[SpectrumRecord]) -> list[SpectrumRecord]:
+def _pl_intensity_density_correction_enabled(config: dict) -> bool:
+    pl_cfg = config.get("pl", {}) if isinstance(config, dict) else {}
+    if not isinstance(pl_cfg, dict):
+        return False
+    correction_cfg = pl_cfg.get("intensity_density_correction", {})
+    if not isinstance(correction_cfg, dict):
+        return False
+    return bool(correction_cfg.get("enabled", False))
+
+
+def _force_pl_modality(records: list[SpectrumRecord], *, intensity_density_correction: bool = False) -> list[SpectrumRecord]:
     patched: list[SpectrumRecord] = []
     for spectrum in records:
-        x_values, y_values, metadata = _convert_nm_to_ev_if_needed(spectrum)
+        x_values, y_values, metadata = _convert_nm_to_ev_if_needed(
+            spectrum,
+            intensity_density_correction=intensity_density_correction,
+        )
+        metadata["temperature_k"] = _infer_temperature_k(metadata.get("source_file"))
+        metadata["treatment_label"] = _infer_treatment_label(metadata)
         patched.append(
             SpectrumRecord(
                 spectrum_id=spectrum.spectrum_id,
@@ -157,7 +207,10 @@ def _run_single(
     if not raw_spectra:
         raise FileNotFoundError(f"No spectra found. raw_dir={raw_dir} | pattern={pattern}")
 
-    patched = _force_pl_modality(raw_spectra)
+    patched = _force_pl_modality(
+        raw_spectra,
+        intensity_density_correction=_pl_intensity_density_correction_enabled(runtime_config),
+    )
     context = build_default_context(
         run_id=run_id,
         artifact_dir=project_root,
@@ -202,12 +255,17 @@ def _apply_runtime_overrides(
     si_calibration: str,
 ) -> dict:
     config = copy.deepcopy(base_config)
-    raman_cfg = config.get("raman")
-    if not isinstance(raman_cfg, dict):
+    pl_cfg = config.get("pl")
+    if not isinstance(pl_cfg, dict):
         return config
 
     if peak_n_mode != "auto":
-        raman_cfg["models"] = [peak_n_mode]
+        pl_cfg["models"] = [peak_n_mode]
+
+    raman_cfg = config.get("raman")
+    if not isinstance(raman_cfg, dict):
+        config["pl"] = pl_cfg
+        return config
 
     qc_cfg = raman_cfg.get("post_selection_qc")
     if not isinstance(qc_cfg, dict):
@@ -236,6 +294,7 @@ def _apply_runtime_overrides(
 
     raman_cfg["post_selection_qc"] = qc_cfg
     config["raman"] = raman_cfg
+    config["pl"] = pl_cfg
     return config
 
 

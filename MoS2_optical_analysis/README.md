@@ -51,6 +51,10 @@ Note:
 - `--workers` controls spectrum-level fit multiprocessing (`1` = sequential). In restricted environments, pipeline auto-falls back to sequential and logs the reason.
 - PL raw runs default to `*.asc`. Headerless ASC files containing numeric `wavelength_nm,intensity` rows are supported.
 - PL wavelengths that look like nm are converted before fitting with `eV = 1239.8419843320026 / nm`; PL fit config values are therefore in eV.
+- PL intensity density correction is available as `pl.intensity_density_correction.enabled` and defaults to `false`.
+- PL fitting uses PL-specific candidate models by default: `pl_single_pvoigt`, `pl_a_doublet_pvoigt`, and `pl_5_component_pvoigt`.
+- PL component seeds/bounds live in `fitting/mos2_pl/config/pl.yaml` under `fit.components`; the default components are `I1`, `I2`, `A_minus`, `A0`, and `B`.
+- PL report rows include component positions/FWHM/heights/areas/fractions plus derived comparison metrics such as `a_minus_a0_area_ratio`, `a0_fraction_of_a_total`, `b_to_a_total_area_ratio`, and `defect_to_a_total_area_ratio`.
 
 ## Experimental Fitting Guardrail
 
@@ -192,6 +196,7 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
   - permanently delete later from Bin with explicit confirmation
 - `Progress every N files` controls log update frequency from pipeline
 - `Pattern` defaults to `*.txt` for Raman and `*.asc` for PL.
+- `PL Model Options` can keep the YAML model ensemble (`auto`) or force `pl_single_pvoigt`, `pl_a_doublet_pvoigt`, or `pl_5_component_pvoigt`.
 - `Raman Advanced Options` in Run Analysis:
   - `peak_n_mode`: choose auto or fixed model (`peak_2_model` ~ `peak_5_model`)
   - `distance_outlier`: config/enabled/disabled
@@ -209,6 +214,9 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
 - report JSON `spectra[]` rows now include full selected-fit details:
   - flattened selected `params` + `metrics`
   - nested snapshots as `fit_params` and `fit_metrics`
+  - PL metadata fields `temperature_k` and `treatment_label` when they can be inferred from folder/file names
+  - PL intensity-conversion metadata when intensity density correction is enabled
+  - `all_candidates` for preserving non-selected PL candidates such as the A-/A0 doublet alongside the five-component fit
 
 ## Report Discovery Rule (GUI)
 

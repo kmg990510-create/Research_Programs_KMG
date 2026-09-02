@@ -17,6 +17,11 @@ apply_plotly_theme()
 
 _DEFAULT_PEAK_STYLE: dict[str, dict[str, Any]] = {
     "pl": {"label": "PL", "color": "#E60000", "fill": True},
+    "i1": {"label": "I1", "color": "#7A5195", "fill": True},
+    "i2": {"label": "I2", "color": "#BC5090", "fill": True},
+    "a_minus": {"label": "A-", "color": "#EF5675", "fill": True},
+    "a0": {"label": "A0", "color": "#FFA600", "fill": True},
+    "b": {"label": "B", "color": "#2F4B7C", "fill": True},
     "lo": {"label": "LO", "color": "#CC00CC", "fill": True},
     "e2g": {"label": "E2g", "color": "#0066FF", "fill": False},
     "a1g": {"label": "A1g", "color": "#00A651", "fill": False},
@@ -43,6 +48,7 @@ _DEFAULT_FIT_CURVE_CFG: dict[str, Any] = {
     "smooth_factor": 5,
     "max_points": 4000,
 }
+NM_TO_EV = 1239.8419843320026
 
 
 def resolve_source_file(source_value: Any, project_root: Path) -> Path | None:
@@ -86,7 +92,7 @@ def _component_from_model_params(
     center = _to_float(row.get(f"{key}_position"))
     area = _to_float(row.get(f"{key}_area"))
     sigma = _to_float(row.get(f"{key}_sigma"))
-    profile = str(row.get("line_profile", "pvoigt")).strip().lower()
+    profile = str(row.get(f"{key}_line_profile", row.get("line_profile", "pvoigt"))).strip().lower()
 
     if np.isfinite(center) and np.isfinite(area) and np.isfinite(sigma) and sigma > 0:
         prefix = f"{key}_"
@@ -245,8 +251,13 @@ def _auto_view_window(
     pl_pos: float = np.nan,
 ) -> tuple[float, float]:
     if np.isfinite(pl_pos):
-        lo = pl_pos - max(padding, 60.0)
-        hi = pl_pos + max(padding, 60.0)
+        x_span = float(np.max(x) - np.min(x))
+        if x_span <= 10.0:
+            pl_padding = max(0.08, min(0.25, x_span * 0.25))
+        else:
+            pl_padding = max(padding, 60.0)
+        lo = pl_pos - pl_padding
+        hi = pl_pos + pl_padding
         return max(lo, float(np.min(x))), min(hi, float(np.max(x)))
     if np.isfinite(e2g_pos) and np.isfinite(a1g_pos):
         lo = min(e2g_pos, a1g_pos) - padding
@@ -270,6 +281,16 @@ def render_spectrum_overlay(
     if x.size == 0 or y.size == 0:
         st.warning("Raw spectrum is empty.")
         return
+
+    modality = str(row.get("modality", "")).strip().lower()
+    is_pl_row = modality == "pl" or str(row.get("x_unit", "")).strip().lower() == "ev"
+    if is_pl_row and x.size == y.size and np.nanmax(x) > 100.0:
+        valid = np.isfinite(x) & np.isfinite(y) & (x > 0.0)
+        x = NM_TO_EV / x[valid]
+        y = y[valid]
+        order = np.argsort(x)
+        x = x[order]
+        y = y[order]
 
     style = _resolve_overlay_style(style_cfg)
     fit_cfg = _resolve_fit_curve_cfg(fit_curve_cfg)
@@ -405,13 +426,12 @@ def render_spectrum_overlay(
             )
         )
 
-    modality = str(row.get("modality", "")).strip().lower()
     is_pl = modality == "pl" or np.isfinite(pl_c)
     if is_pl:
         pl_pos = row.get("pl_position")
-        pl_text = f"{float(pl_pos):.1f} nm" if isinstance(pl_pos, (int, float)) and np.isfinite(float(pl_pos)) else str(pl_pos or "NA")
+        pl_text = f"{float(pl_pos):.4f} eV" if isinstance(pl_pos, (int, float)) and np.isfinite(float(pl_pos)) else str(pl_pos or "NA")
         title = f"{spectrum_id} | PL Peak: {pl_text}"
-        xaxis_title = "Wavelength (nm)"
+        xaxis_title = "Energy (eV)"
     else:
         delta_text = row.get("delta_e2g_a1g", "NA")
         title = f"{spectrum_id} | Delta(E2g-A1g): {delta_text}"
@@ -459,6 +479,8 @@ def render_fit_summary(
             f = float(v)
         except (TypeError, ValueError):
             return "(!)"
+        if str(row.get("modality", "")).strip().lower() == "pl":
+            return "(!)" if (f <= 0.0 or f >= 0.5) else ""
         return "(!)" if (f < 3.0 or f >= 60.0) else ""
 
     modality = str(row.get("modality", "")).strip().lower()
@@ -467,15 +489,19 @@ def render_fit_summary(
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Model", str(row.get("selected_model", "NA")))
     if is_pl:
-        c2.metric("PL Peak (nm)", _fmt(row.get("pl_position"), 2))
+        c2.metric("PL Peak (eV)", _fmt(row.get("pl_position"), 4))
     else:
         c2.metric("Delta(E2g-A1g)", _fmt(row.get("delta_e2g_a1g"), 2))
     c3.metric("RMSE", _fmt(row.get("rmse"), 3))
     c4.metric("AIC / BIC", f"{_fmt(row.get('aic'),1)} / {_fmt(row.get('bic'),1)}")
 
     peak_rows: list[dict[str, str]] = []
-    unit_label = "nm" if is_pl else "cm^-1"
-    peak_keys = [("pl", "PL")] if is_pl else [("lo", "LO"), ("e2g", "E2g"), ("a1g", "A1g"), ("zo", "ZO"), ("la", "LA")]
+    unit_label = "eV" if is_pl else "cm^-1"
+    peak_keys = (
+        [("i1", "I1"), ("i2", "I2"), ("a_minus", "A-"), ("a0", "A0"), ("b", "B"), ("pl", "PL")]
+        if is_pl
+        else [("lo", "LO"), ("e2g", "E2g"), ("a1g", "A1g"), ("zo", "ZO"), ("la", "LA")]
+    )
     for key, label in peak_keys:
         pos = row.get(f"{key}_position")
         if pos is None:
@@ -483,8 +509,8 @@ def render_fit_summary(
         peak_rows.append(
             {
                 "Peak": label,
-                f"Position ({unit_label})": _fmt(pos, 2),
-                f"FWHM ({unit_label})": _fmt(row.get(f"{key}_fwhm"), 2),
+                f"Position ({unit_label})": _fmt(pos, 4 if is_pl else 2),
+                f"FWHM ({unit_label})": _fmt(row.get(f"{key}_fwhm"), 4 if is_pl else 2),
                 "Flag": _fwhm_warn(row.get(f"{key}_fwhm")),
             }
         )
@@ -494,7 +520,16 @@ def render_fit_summary(
         st.dataframe(peak_rows, width="stretch", hide_index=True)
 
     aux_lines = []
-    if not is_pl:
+    if is_pl:
+        aux_lines.extend(
+            [
+                f"- Temperature: {row.get('temperature_k', 'NA')} K",
+                f"- Treatment: {row.get('treatment_label', 'NA')}",
+                f"- A-/A0 area ratio: {_fmt(row.get('a_minus_a0_area_ratio'), 3)}",
+                f"- A0 fraction of A total: {_fmt(row.get('a0_fraction_of_a_total'), 3)}",
+            ]
+        )
+    else:
         aux_lines.append(f"- Si calibration offset: {_fmt(row.get('calibration_offset'),4)} (success={row.get('calibration_success')})")
     aux_lines.extend([
         f"- Fit status: {row.get('fit_status', 'valid')}",

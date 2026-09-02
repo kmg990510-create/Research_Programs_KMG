@@ -713,7 +713,21 @@ if modality == "raman":
         help="Controls Si calibration offset (x-axis shift) before fitting.",
     )
 else:
-    st.caption("Raman advanced options (`peak_n_mode`, outlier overrides, `si_calibration`) are available in Raman modality.")
+    st.markdown("**PL Model Options**")
+    pl_model_options = {
+        "auto": "Auto (configured PL models)",
+        "pl_single_pvoigt": "Single PL band",
+        "pl_a_doublet_pvoigt": "A-/A0 doublet",
+        "pl_5_component_pvoigt": "I1/I2/A-/A0/B components",
+    }
+    peak_n_mode = st.selectbox(
+        "PL model mode",
+        options=list(pl_model_options.keys()),
+        format_func=lambda key: pl_model_options[key],
+        index=0,
+        help="Choose a fixed PL component model or keep the YAML model ensemble.",
+    )
+    st.caption("Raman outlier and Si calibration overrides are only applied in Raman modality.")
 
 pipeline_exe = _frozen_tool_executable(runner_stem)
 if pipeline_exe is not None:

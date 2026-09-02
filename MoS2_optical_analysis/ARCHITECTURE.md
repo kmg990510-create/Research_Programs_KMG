@@ -33,6 +33,12 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - default PL pattern is `*.asc`
   - simple numeric `wavelength_nm,intensity` ASC files are parsed
   - nm x-values are converted to eV before PL fitting with `eV = 1239.8419843320026 / nm`
+  - optional intensity density conversion is available behind `pl.intensity_density_correction.enabled` and defaults off
+- PL multi-component fitting:
+  - default model ensemble is `pl_single_pvoigt`, `pl_a_doublet_pvoigt`, and `pl_5_component_pvoigt`
+  - component seeds/bounds are configured in `fitting/mos2_pl/config/pl.yaml`
+  - default components are `I1`, `I2`, `A_minus`, `A0`, and `B`
+  - A-/A0, B/A-total, and defect/A-total area ratios are emitted for Pristine/Treatment comparison
 - GUI:
   - `python -m streamlit run gui/Main.py`
 - Experimental TASK-021 least-squares guardrail:
@@ -134,6 +140,9 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - `fit_status` values remain limited to `valid`, `attention`, `invalid`.
 - Raman and PL both produce JSON/CSV report pairs.
 - PL report rows include x-axis unit conversion metadata when nm input is converted (`x_unit`, `original_x_unit`, `x_conversion`).
+- PL report rows include intensity-conversion metadata when optional density correction is enabled.
+- PL report rows include inferred `temperature_k` and `treatment_label` metadata when file/folder names contain values such as `77K`, `Pristine`, `Treatment`, or `4ATP`.
+- PL report rows flatten the selected model's component metrics, while JSON `all_candidates` keeps the full candidate ensemble for later inspection.
 - Batch scope is immediate subdirectories only (not recursive multi-level batch).
 - Manual refit request contract:
   - `gui/components/manual_refit_contract.py` (`manual_refit_request.v1`)
