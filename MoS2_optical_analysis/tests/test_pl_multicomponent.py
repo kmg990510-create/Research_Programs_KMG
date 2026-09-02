@@ -7,6 +7,7 @@ import numpy as np
 from fitting.mos2_core.core.types import PipelineContext, SpectrumRecord
 from fitting.mos2_core.fitting.raman_lmfit import LmfitRamanModelEnsembleFitting
 from fitting.mos2_core.io import load_pipeline_config
+from fitting.mos2_core.review.refit_api import _synthesize_fitted_y
 from fitting.mos2_pl.run_raw_pipeline import NM_TO_EV, _convert_nm_to_ev_if_needed
 
 
@@ -92,3 +93,29 @@ def test_synthetic_five_component_pl_fit_recovers_key_centers() -> None:
     assert candidate.params["a_minus_a0_energy_split"] > 0
     assert candidate.params["a_minus_a0_area_ratio"] > 0
     assert candidate.params["defect_to_a_total_area_ratio"] > 0
+
+
+def test_pl_summary_alias_is_not_double_counted_in_refit_synthesis() -> None:
+    x = np.linspace(1.7, 1.95, 200)
+    params = {
+        "line_profile": "pvoigt",
+        "bg_slope": 0.0,
+        "bg_intercept": 1.0,
+        "a_minus_position": 1.84,
+        "a_minus_area": 2.0,
+        "a_minus_sigma": 0.04,
+        "a_minus_fraction": 0.5,
+        "a_minus_line_profile": "pvoigt",
+        "pl_position": 1.84,
+        "pl_area": 2.0,
+        "pl_sigma": 0.04,
+        "pl_fraction": 0.5,
+        "pl_line_profile": "pvoigt",
+    }
+
+    with_alias = dict(params)
+    without_alias = dict(params)
+    for key in ("pl_position", "pl_area", "pl_sigma", "pl_fraction", "pl_line_profile"):
+        without_alias.pop(key)
+
+    assert np.allclose(_synthesize_fitted_y(x, with_alias), _synthesize_fitted_y(x, without_alias))

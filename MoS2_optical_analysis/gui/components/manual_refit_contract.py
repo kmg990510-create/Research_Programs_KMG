@@ -60,7 +60,13 @@ def _json_safe(value: Any) -> Any:
 def extract_peak_rows_from_row(row: dict[str, Any]) -> list[dict[str, Any]]:
     peaks: list[dict[str, Any]] = []
     default_fraction = _default_fraction_for_row(row)
+    has_explicit_pl_components = any(
+        _to_float(row.get(f"{peak}_position")) is not None
+        for peak in ("i1", "i2", "a_minus", "a0", "b")
+    )
     for peak in PEAK_ORDER:
+        if peak == "pl" and has_explicit_pl_components:
+            continue
         center = _to_float(row.get(f"{peak}_position"))
         if center is None:
             continue

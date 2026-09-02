@@ -367,10 +367,14 @@ def render_spectrum_overlay(
             if key in peak_style and isinstance(color, str) and color.strip():
                 peak_style[key]["color"] = color.strip()
 
+    pl_component_keys = ("i1", "i2", "a_minus", "a0", "b")
+    has_explicit_pl_components = any(np.isfinite(_to_float(row.get(f"{key}_position"))) for key in pl_component_keys)
     used_component_approx = False
     component_sum_dense = np.zeros_like(x_dense, dtype=float)
     component_count = 0
     for key, peak_info in peak_style.items():
+        if key == "pl" and has_explicit_pl_components:
+            continue
         center = _to_float(row.get(f"{key}_position"))
         if not np.isfinite(center):
             continue

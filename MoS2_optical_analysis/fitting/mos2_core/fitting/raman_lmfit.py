@@ -905,7 +905,13 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         if fit_invalid_reasons:
             invalid_reasons.extend(fit_invalid_reasons)
         invalid_reasons = list(dict.fromkeys(invalid_reasons))
-        attention_reasons = list(dict.fromkeys(prefit_eval.attention_reasons))
+        attention_reasons = list(prefit_eval.attention_reasons)
+        candidate_attention = candidate.params.get("attention_reasons")
+        if isinstance(candidate_attention, list):
+            attention_reasons.extend(str(item) for item in candidate_attention if str(item).strip())
+        elif isinstance(candidate_attention, str) and candidate_attention.strip():
+            attention_reasons.append(candidate_attention.strip())
+        attention_reasons = list(dict.fromkeys(attention_reasons))
 
         if invalid_reasons:
             fit_status = "invalid"
@@ -1113,7 +1119,11 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         dynamic_height = max(float(np.max(y_fit) - y_low), 1.0e-6)
         for spec in selected_components:
             prefix = f"{spec.key}_"
-            local_half_width = max(float(spec.sigma_max * 2.0), 0.02)
+            local_half_width = max(
+                float(spec.center_init - spec.center_min),
+                float(spec.center_max - spec.center_init),
+                0.02,
+            )
             local_height, local_center = _window_peak_height(
                 x_fit,
                 y_fit,
@@ -1357,6 +1367,24 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             "nfev": _finite(fit_result.nfev, 0.0),
             "n_params": _finite(getattr(fit_result, "nvarys", 1), 1.0),
         }
+
+        if model_name.startswith("pl_"):
+            residual = np.asarray(y_fit, dtype=float) - np.asarray(y_best, dtype=float)
+            if residual.size:
+                resid_med = float(np.median(residual))
+                resid_mad = float(np.median(np.abs(residual - resid_med)))
+                resid_sigma = max(1.4826 * resid_mad, 1.0e-9)
+                positive_resid = float(np.max(residual))
+                y_span = float(np.percentile(y_fit, 95) - np.percentile(y_fit, 5))
+                spike_threshold = max(12.0 * resid_sigma, 0.60 * max(y_span, 1.0e-9))
+                metrics_out["pl_max_positive_residual"] = positive_resid
+                metrics_out["pl_residual_robust_sigma"] = resid_sigma
+                if positive_resid > spike_threshold:
+                    reasons = params_out.get("attention_reasons")
+                    if not isinstance(reasons, list):
+                        reasons = []
+                    reasons.append("possible_narrow_spike_artifact")
+                    params_out["attention_reasons"] = list(dict.fromkeys(str(item) for item in reasons))
 
         return FitCandidate(
             model_name=model_name,

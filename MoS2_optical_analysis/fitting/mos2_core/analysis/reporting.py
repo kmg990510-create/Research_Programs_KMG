@@ -76,6 +76,23 @@ def _resolve_sigma_bounds_by_peak_from_config(
     if not isinstance(fit_cfg, dict):
         return {}
 
+    if modality == "pl":
+        components = fit_cfg.get("components", {})
+        parsed_components: dict[str, tuple[float, float]] = {}
+        if isinstance(components, dict):
+            for peak_name, spec in components.items():
+                if not isinstance(peak_name, str) or not isinstance(spec, dict):
+                    continue
+                fwhm_min = _to_float(spec.get("fwhm_min"))
+                fwhm_max = _to_float(spec.get("fwhm_max"))
+                if fwhm_min is None or fwhm_max is None or fwhm_max <= fwhm_min:
+                    continue
+                profile = str(spec.get("profile", "pvoigt")).strip().lower()
+                factor = 2.354820045 if profile == "gaussian" else 2.0
+                parsed_components[peak_name.lower()] = (fwhm_min / factor, fwhm_max / factor)
+        if parsed_components:
+            return parsed_components
+
     sigma_default_min = _to_float(fit_cfg.get("sigma_min"))
     sigma_default_max = _to_float(fit_cfg.get("sigma_max"))
     if sigma_default_min is None:
@@ -258,7 +275,7 @@ class RamanFitReportGenerator(ReportGenerationStage):
             modality=run_modality,
         )
         fwhm_normal_band = _fwhm_normal_band_by_peak(sigma_bounds_by_peak, margin_ratio=0.10)
-        peak_names_for_band = ["pl"] if run_modality == "pl" else ["lo", "e2g", "a1g", "zo", "la"]
+        pl_qc_component_names = ["a_minus", "a0"]
 
         attention_count = 0
         invalid_count = 0
@@ -276,6 +293,15 @@ class RamanFitReportGenerator(ReportGenerationStage):
                 flags.append("rmse_outlier_vs_dataset")
             if r2 is not None and r2 < 0.95:
                 flags.append("low_r2")
+
+            if run_modality == "pl":
+                has_component_fwhm = any(
+                    _to_float(row.get(f"{name}_fwhm")) is not None
+                    for name in pl_qc_component_names
+                )
+                peak_names_for_band = pl_qc_component_names if has_component_fwhm else ["pl"]
+            else:
+                peak_names_for_band = ["lo", "e2g", "a1g", "zo", "la"]
 
             for peak_name in peak_names_for_band:
                 key = f"{peak_name}_fwhm"

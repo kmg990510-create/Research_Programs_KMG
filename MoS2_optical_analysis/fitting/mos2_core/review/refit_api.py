@@ -212,7 +212,14 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray
     baseline = bg_slope * x + bg_intercept
     y_fit = baseline.copy()
 
+    pl_component_peaks = ("i1", "i2", "a_minus", "a0", "b")
+    has_explicit_pl_components = any(
+        _to_float(params.get(f"{peak}_position")) is not None
+        for peak in pl_component_peaks
+    )
     for peak in ("i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la"):
+        if peak == "pl" and has_explicit_pl_components:
+            continue
         center = _to_float(params.get(f"{peak}_position"))
         area = _to_float(params.get(f"{peak}_area"))
         sigma = _to_float(params.get(f"{peak}_sigma"))
