@@ -43,6 +43,7 @@ load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
 sidebar_filters_header = getattr(_report_loader, "sidebar_filters_header", lambda: None)
 
 _POINT_TOKEN_RE = re.compile(r"Y(?P<y>\d+)-X(?P<x>\d+)", re.IGNORECASE)
+PL_DEFAULT_VIEW_MIN_EV = 1.4
 
 
 def _sanitize_filename(value: str) -> str:
@@ -479,7 +480,7 @@ if modality == "pl" or (pl_pos is not None and str(pl_pos).strip() != ""):
         pl_val = float(pl_pos)
         x_span = float(max(x_for_plot) - min(x_for_plot))
         pl_padding = max(0.08, min(0.25, x_span * 0.25)) if x_span <= 10.0 else max(peak_padding, 60.0)
-        auto_min = max(float(min(x_for_plot)), pl_val - pl_padding)
+        auto_min = max(float(min(x_for_plot)), min(PL_DEFAULT_VIEW_MIN_EV, pl_val - pl_padding))
         auto_max = min(float(max(x_for_plot)), pl_val + pl_padding)
     except (TypeError, ValueError):
         auto_min = float(min(x_for_plot))

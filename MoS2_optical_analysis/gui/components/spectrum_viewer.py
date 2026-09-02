@@ -49,6 +49,7 @@ _DEFAULT_FIT_CURVE_CFG: dict[str, Any] = {
     "max_points": 4000,
 }
 NM_TO_EV = 1239.8419843320026
+PL_DEFAULT_VIEW_MIN_EV = 1.4
 
 
 def resolve_source_file(source_value: Any, project_root: Path) -> Path | None:
@@ -256,7 +257,7 @@ def _auto_view_window(
             pl_padding = max(0.08, min(0.25, x_span * 0.25))
         else:
             pl_padding = max(padding, 60.0)
-        lo = pl_pos - pl_padding
+        lo = min(PL_DEFAULT_VIEW_MIN_EV, pl_pos - pl_padding)
         hi = pl_pos + pl_padding
         return max(lo, float(np.min(x))), min(hi, float(np.max(x)))
     if np.isfinite(e2g_pos) and np.isfinite(a1g_pos):
