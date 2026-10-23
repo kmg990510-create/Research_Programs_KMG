@@ -196,8 +196,8 @@ class MahalanobisPostSelectionQC(PostSelectionQCStage):
         # ---- Rule 2: Delta outlier vs dataset (typically set to attention) ----
         delta_cfg = qc_cfg.get("delta_outlier", {}) if isinstance(qc_cfg, dict) else {}
         delta_enabled = bool(delta_cfg.get("enabled", True))
-        delta_sigma_k = float(delta_cfg.get("sigma_k", 3.0))
-        delta_fallback_abs = float(delta_cfg.get("fallback_abs", 1.2))
+        delta_sigma_k = float(delta_cfg.get("sigma_k", 6.0))
+        delta_fallback_abs = float(delta_cfg.get("fallback_abs", 3.0))
         delta_absolute_cfg = (
             delta_cfg.get("absolute_range", {})
             if isinstance(delta_cfg, dict)

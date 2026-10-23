@@ -386,10 +386,6 @@ class RamanFitReportGenerator(ReportGenerationStage):
             "fit_status",
             "invalid_reasons",
             "attention_reasons",
-            "pl_position",
-            "pl_fwhm",
-            "pl_area",
-            "pl_height",
             "lo_position",
             "e2g_position",
             "a1g_position",
@@ -427,6 +423,9 @@ class RamanFitReportGenerator(ReportGenerationStage):
             "reviewed",
             "review_decision",
         ]
+        if run_modality == "pl":
+            insert_at = fieldnames.index("attention_reasons") + 1
+            fieldnames[insert_at:insert_at] = ["pl_position", "pl_fwhm", "pl_area", "pl_height"]
         reserved_for_json_only = {"all_candidates", "fit_params", "fit_metrics", "fitted_y"}
         known_fields = set(fieldnames)
         extra_fieldnames = sorted(

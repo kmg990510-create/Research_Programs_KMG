@@ -475,7 +475,7 @@ if modality == "pl" and str(display_row.get("x_unit", "")).strip().lower() == "e
     y_raw = [yv for _, yv in converted_pairs]
 
 pl_pos = display_row.get("pl_position")
-if modality == "pl" or (pl_pos is not None and str(pl_pos).strip() != ""):
+if modality == "pl" or (modality != "raman" and pl_pos is not None and str(pl_pos).strip() != ""):
     try:
         pl_val = float(pl_pos)
         x_span = float(max(x_for_plot) - min(x_for_plot))

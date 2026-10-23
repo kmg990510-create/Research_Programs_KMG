@@ -302,7 +302,7 @@ def render_spectrum_overlay(
 
     e2g_c = _to_float(row.get("e2g_position"))
     a1g_c = _to_float(row.get("a1g_position"))
-    pl_c = _to_float(row.get("pl_position"))
+    pl_c = _to_float(row.get("pl_position")) if modality != "raman" else float("nan")
 
     if x_view_min is None or x_view_max is None:
         x_view_min, x_view_max = _auto_view_window(x, e2g_c, a1g_c, pl_pos=pl_c)
@@ -374,6 +374,10 @@ def render_spectrum_overlay(
     component_sum_dense = np.zeros_like(x_dense, dtype=float)
     component_count = 0
     for key, peak_info in peak_style.items():
+        if modality == "raman" and key in {"i1", "i2", "a_minus", "a0", "b", "pl"}:
+            continue
+        if modality == "pl" and key in {"lo", "e2g", "a1g", "zo", "la"}:
+            continue
         if key == "pl" and has_explicit_pl_components:
             continue
         center = _to_float(row.get(f"{key}_position"))
@@ -431,7 +435,7 @@ def render_spectrum_overlay(
             )
         )
 
-    is_pl = modality == "pl" or np.isfinite(pl_c)
+    is_pl = modality == "pl" or (modality != "raman" and np.isfinite(pl_c))
     if is_pl:
         pl_pos = row.get("pl_position")
         pl_text = f"{float(pl_pos):.4f} eV" if isinstance(pl_pos, (int, float)) and np.isfinite(float(pl_pos)) else str(pl_pos or "NA")
@@ -489,7 +493,7 @@ def render_fit_summary(
         return "(!)" if (f < 3.0 or f >= 60.0) else ""
 
     modality = str(row.get("modality", "")).strip().lower()
-    is_pl = modality == "pl" or "pl_position" in row
+    is_pl = modality == "pl" or (modality != "raman" and "pl_position" in row)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Model", str(row.get("selected_model", "NA")))

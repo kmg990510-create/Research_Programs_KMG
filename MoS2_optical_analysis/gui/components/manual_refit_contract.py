@@ -11,6 +11,8 @@ REQUEST_SCHEMA_VERSION = "manual_refit_request.v1"
 RESPONSE_SCHEMA_VERSION = "manual_refit_response.v1"
 
 PEAK_ORDER = ("i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la")
+_PL_PEAK_KEYS = frozenset({"i1", "i2", "a_minus", "a0", "b", "pl"})
+_RAMAN_PEAK_KEYS = frozenset({"lo", "e2g", "a1g", "zo", "la"})
 
 
 def _to_float(value: Any) -> float | None:
@@ -64,7 +66,12 @@ def extract_peak_rows_from_row(row: dict[str, Any]) -> list[dict[str, Any]]:
         _to_float(row.get(f"{peak}_position")) is not None
         for peak in ("i1", "i2", "a_minus", "a0", "b")
     )
+    row_modality = str(row.get("modality", "")).strip().lower()
     for peak in PEAK_ORDER:
+        if row_modality == "raman" and peak in _PL_PEAK_KEYS:
+            continue
+        if row_modality == "pl" and peak in _RAMAN_PEAK_KEYS:
+            continue
         if peak == "pl" and has_explicit_pl_components:
             continue
         center = _to_float(row.get(f"{peak}_position"))

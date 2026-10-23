@@ -96,8 +96,12 @@ def _error(values: np.ndarray, how: str) -> float:
 def _is_pl_frame(frame: pd.DataFrame) -> bool:
     if frame.empty:
         return False
-    if "modality" in frame.columns and frame["modality"].astype(str).str.lower().eq("pl").any():
-        return True
+    if "modality" in frame.columns:
+        modalities = frame["modality"].astype(str).str.lower()
+        if modalities.eq("pl").any():
+            return True
+        if modalities.eq("raman").any():
+            return False
     return any(col in frame.columns for col in ("a_minus_position", "a0_position", "pl_position"))
 
 

@@ -205,7 +205,11 @@ def _component_curve_from_area_sigma(
     )
 
 
-def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray:
+_PL_PEAKS = ("i1", "i2", "a_minus", "a0", "b", "pl")
+_RAMAN_PEAKS = ("lo", "e2g", "a1g", "zo", "la")
+
+
+def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any], modality: str = "") -> np.ndarray:
     profile = str(params.get("line_profile", "pvoigt")).strip().lower()
     bg_slope = _to_float(params.get("bg_slope"), 0.0) or 0.0
     bg_intercept = _to_float(params.get("bg_intercept"), 0.0) or 0.0
@@ -217,7 +221,14 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any]) -> np.ndarray
         _to_float(params.get(f"{peak}_position")) is not None
         for peak in pl_component_peaks
     )
-    for peak in ("i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la"):
+    modality_key = str(modality or params.get("modality", "")).strip().lower()
+    if modality_key == "raman":
+        peak_names = _RAMAN_PEAKS
+    elif modality_key == "pl":
+        peak_names = _PL_PEAKS
+    else:
+        peak_names = _PL_PEAKS + _RAMAN_PEAKS
+    for peak in peak_names:
         if peak == "pl" and has_explicit_pl_components:
             continue
         center = _to_float(params.get(f"{peak}_position"))
@@ -326,7 +337,7 @@ class SingleSpectrumRefitAPI:
             if e2g is not None and a1g is not None:
                 params["delta_e2g_a1g"] = float(a1g - e2g)
 
-        y_fit = _synthesize_fitted_y(x_arr, params)
+        y_fit = _synthesize_fitted_y(x_arr, params, modality)
         base_candidate.params = params
         base_candidate.fitted_y = [float(v) for v in y_fit]
         fitter._recompute_metrics_on_window(  # noqa: SLF001
@@ -398,7 +409,7 @@ class SingleSpectrumRefitAPI:
         params = dict(auto_candidate.params)
         y_fit = np.asarray(auto_candidate.fitted_y, dtype=float)
         if y_fit.size != x_arr.size:
-            y_fit = _synthesize_fitted_y(x_arr, params)
+            y_fit = _synthesize_fitted_y(x_arr, params, modality)
         params["fit_status"] = "attention"
         reasons = params.get("attention_reasons", [])
         if not isinstance(reasons, list):

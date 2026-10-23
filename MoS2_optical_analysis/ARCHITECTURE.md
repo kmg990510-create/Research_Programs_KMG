@@ -215,3 +215,9 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - desktop editor handle-role smoke: pass (`left=>fraction`, `top=>center/height`, `right=>FWHM`)
 - `python -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/sample_A --pattern Y1-X1.txt --run-id fraction_handle_single_smoke`: pass
 - `streamlit run gui/Main.py` with local HTTP check: pass (`200`, port `8516`)
+
+## Modality Separation and Delta Outlier (2026-10-23)
+
+- `pl_*` summary columns (`pl_position`, `pl_fwhm`, `pl_area`, `pl_height`) are written only for PL runs/models; Raman reports no longer contain them.
+- Peak review (`extract_peak_rows_from_row`, `_synthesize_fitted_y`, spectrum viewer, desktop editor) picks PL peaks (`i1,i2,a_minus,a0,b,pl`) or Raman peaks (`lo,e2g,a1g,zo,la`) by the row `modality`.
+- Raman delta outlier loosened in both `raman.yaml` files: `absolute_range` 15.0-27.0, `sigma_k` 6.0, `fallback_abs` 3.0 (was 16-25, 4.0, 1.2).

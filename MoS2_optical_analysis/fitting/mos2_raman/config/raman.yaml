@@ -119,12 +119,12 @@ post_selection_qc:
     enabled: true
     absolute_range:
       enabled: true
-      min: 16.0
-      max: 25.0
+      min: 15.0
+      max: 27.0
       apply_statuses: [valid, attention]
     reference_status: valid
     apply_statuses: [valid, attention]
     min_reference_samples: 30
-    sigma_k: 4.0
-    fallback_abs: 1.2
+    sigma_k: 6.0
+    fallback_abs: 3.0
     action: invalid

@@ -76,6 +76,8 @@ Run from workspace root (`MoS2_optical_analysis`):
 - CSV pairs: `*_fit_parameters.csv`
 - Manual override records: `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`
 - `fit_status` domain: `valid | attention | invalid`
+- Modality separation: `pl_position/pl_fwhm/pl_area/pl_height` exist only in PL reports; Raman rows carry only `lo/e2g/a1g/zo/la` peaks, and review/refit/viewer code selects peaks by `modality`.
+- Raman `post_selection_qc.delta_outlier` defaults: `absolute_range` 15-27, `sigma_k` 6.0, `fallback_abs` 3.0.
 
 ## Editing Rules
 

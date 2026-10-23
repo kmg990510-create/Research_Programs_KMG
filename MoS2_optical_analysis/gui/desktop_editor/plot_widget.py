@@ -367,7 +367,8 @@ class SpectrumPlotWidget(QWidget):
         self._line_profile = self._resolve_line_profile(self._row_snapshot)
         self._sync_baseline_params(self._row_snapshot)
 
-        is_pl = str(self._row_snapshot.get("modality", "")).lower() == "pl" or "pl_position" in self._row_snapshot
+        snapshot_modality = str(self._row_snapshot.get("modality", "")).lower()
+        is_pl = snapshot_modality == "pl" or (snapshot_modality != "raman" and "pl_position" in self._row_snapshot)
         if is_pl:
             self.plot.setLabel("bottom", "Wavelength (nm)")
         else:
@@ -459,7 +460,7 @@ class SpectrumPlotWidget(QWidget):
             x_data_max = float(self._x_window_cfg["fallback_max"])
 
         peak_padding = float(self._x_window_cfg["peak_padding"])
-        pl_pos = _to_float(self._row_snapshot.get("pl_position"), np.nan)
+        pl_pos = _to_float(self._row_snapshot.get("pl_position"), np.nan) if snapshot_modality != "raman" else np.nan
         e2g = _to_float(self._row_snapshot.get("e2g_position"), np.nan)
         a1g = _to_float(self._row_snapshot.get("a1g_position"), np.nan)
         if np.isfinite(pl_pos):

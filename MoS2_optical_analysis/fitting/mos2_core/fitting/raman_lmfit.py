@@ -1393,12 +1393,14 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             dominant_label, dominant_center, dominant_height = max(peak_heights, key=lambda t: t[2])
             dominant_key = dominant_label.lower()
             params_out["dominant_component"] = dominant_key  # type: ignore[assignment]
-            params_out["pl_position"] = float(dominant_center)
-            params_out["pl_height"] = float(dominant_height)
-            for suffix in ("fwhm", "area", "sigma", "fraction"):
-                source_key = f"{dominant_key}_{suffix}"
-                if source_key in params_out:
-                    params_out[f"pl_{suffix}"] = params_out[source_key]
+            # pl_* summary keys belong to PL models only; Raman rows keep lo/e2g/a1g/zo/la.
+            if model_name.startswith("pl_"):
+                params_out["pl_position"] = float(dominant_center)
+                params_out["pl_height"] = float(dominant_height)
+                for suffix in ("fwhm", "area", "sigma", "fraction"):
+                    source_key = f"{dominant_key}_{suffix}"
+                    if source_key in params_out:
+                        params_out[f"pl_{suffix}"] = params_out[source_key]
 
         metrics_out = {
             "aic": _finite(fit_result.aic, 1.0e12),
