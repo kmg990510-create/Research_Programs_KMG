@@ -221,3 +221,8 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - `pl_*` summary columns (`pl_position`, `pl_fwhm`, `pl_area`, `pl_height`) are written only for PL runs/models; Raman reports no longer contain them.
 - Peak review (`extract_peak_rows_from_row`, `_synthesize_fitted_y`, spectrum viewer, desktop editor) picks PL peaks (`i1,i2,a_minus,a0,b,pl`) or Raman peaks (`lo,e2g,a1g,zo,la`) by the row `modality`.
 - Raman delta outlier loosened in both `raman.yaml` files: `absolute_range` 15.0-27.0, `sigma_k` 6.0, `fallback_abs` 3.0 (was 16-25, 4.0, 1.2).
+
+## Raman Baseline Slope Bounds (2026-10-23)
+
+- Raman n-peak fits (`peak_2..5_model`) now search `bg_slope` in `estimate +/- max(2.0, 3*|estimate|)` instead of a fixed `[-2, 2]`. Steep fluorescence backgrounds (slope ~2, e.g. sample_G) were clamped at the bound and the optimizer stalled at the initial E2g=384 / A1g=403.
+- PL fits and the legacy `mos2_double_*` models keep the fixed bound.

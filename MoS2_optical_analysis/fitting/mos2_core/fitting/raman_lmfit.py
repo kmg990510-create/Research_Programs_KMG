@@ -512,6 +512,12 @@ def _estimate_linear_baseline_edges(
     return float(coeff[0]), float(coeff[1])
 
 
+def _bg_slope_bounds(baseline_slope: float) -> dict[str, float]:
+    """Slope search range centred on the edge estimate so steep backgrounds are not clamped."""
+    half_width = max(2.0, 3.0 * abs(baseline_slope))
+    return {"min": baseline_slope - half_width, "max": baseline_slope + half_width}
+
+
 def _noise_std_from_windows(
     x: np.ndarray,
     y: np.ndarray,
@@ -1542,7 +1548,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 max=baseline_intercept + b_eps,
             )
         else:
-            params["bg_slope"].set(value=baseline_slope, min=-2.0, max=2.0)
+            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope))
             params["bg_intercept"].set(value=baseline_intercept)
 
         anchor_mode = (
@@ -1726,7 +1732,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 max=baseline_intercept + b_eps,
             )
         else:
-            params["bg_slope"].set(value=baseline_slope, min=-2.0, max=2.0)
+            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope))
             params["bg_intercept"].set(value=baseline_intercept)
 
         for idx, label in enumerate(spec.peak_labels):
