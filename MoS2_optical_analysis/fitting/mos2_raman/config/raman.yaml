@@ -86,7 +86,7 @@ fit:
   prefit:
     enabled: true
     peak_window_half_width: 2.5
-    e2g_snr_hard_min: 3.0
+    e2g_snr_hard_min: 2.0
     e2g_snr_soft_min: 4.0
     a1g_snr_hard_min: 4.0
     a1g_snr_soft_min: 5.0

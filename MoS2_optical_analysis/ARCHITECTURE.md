@@ -226,3 +226,8 @@ This document describes the current workspace architecture after TASK-006~008 mi
 
 - Raman n-peak fits (`peak_2..5_model`) now search `bg_slope` in `estimate +/- max(2.0, 3*|estimate|)` instead of a fixed `[-2, 2]`. Steep fluorescence backgrounds (slope ~2, e.g. sample_G) were clamped at the bound and the optimizer stalled at the initial E2g=384 / A1g=403.
 - PL fits and the legacy `mos2_double_*` models keep the fixed bound.
+
+## Raman Prefit E2g SNR Gate (2026-10-26)
+
+- E2g SNR below `prefit.e2g_snr_hard_min` (now 2.0, was 3.0) no longer invalidates the spectrum: it is fitted normally and flagged `attention` with reason `prefit_e2g_snr_below_hard` (soft band keeps `prefit_e2g_snr_below_soft`).
+- A1g SNR below `a1g_snr_hard_min` still routes to the `prefit_gate_invalid` fallback.

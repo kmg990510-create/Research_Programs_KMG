@@ -859,15 +859,15 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
 
         invalid_reasons: list[str] = []
         attention_reasons: list[str] = []
+        # Weak E2g is common in pristine/thick regions: still fit it, but flag attention.
         if e2g_snr < prefit.e2g_snr_hard_min:
-            invalid_reasons.append("prefit_e2g_snr_below_hard")
+            attention_reasons.append("prefit_e2g_snr_below_hard")
+        elif e2g_snr < prefit.e2g_snr_soft_min:
+            attention_reasons.append("prefit_e2g_snr_below_soft")
         if a1g_snr < prefit.a1g_snr_hard_min:
             invalid_reasons.append("prefit_a1g_snr_below_hard")
-        if not invalid_reasons:
-            if e2g_snr < prefit.e2g_snr_soft_min:
-                attention_reasons.append("prefit_e2g_snr_below_soft")
-            if a1g_snr < prefit.a1g_snr_soft_min:
-                attention_reasons.append("prefit_a1g_snr_below_soft")
+        elif a1g_snr < prefit.a1g_snr_soft_min:
+            attention_reasons.append("prefit_a1g_snr_below_soft")
 
         status = "invalid" if invalid_reasons else ("attention" if attention_reasons else "valid")
         return PreFitEvaluation(
