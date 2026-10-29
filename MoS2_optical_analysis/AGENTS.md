@@ -80,7 +80,7 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Manual override records: `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`
 - `fit_status` domain: `valid | attention | invalid`
 - Modality separation: `pl_position/pl_fwhm/pl_area/pl_height` exist only in PL reports; Raman rows carry only `lo/e2g/a1g/zo/la` peaks, and review/refit/viewer code selects peaks by `modality`.
-- Raman `post_selection_qc.delta_outlier` defaults: `absolute_range` 15-27, `sigma_k` 6.0, `fallback_abs` 3.0.
+- Raman `post_selection_qc.delta_outlier` defaults (in `thresholds.yaml`): `absolute_range` 15-27, `sigma_k` 6.0, `fallback_abs` 3.0.
 
 ## Editing Rules
 
@@ -104,6 +104,9 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Keep `fit.two_stage_anchor` in nested form only (`enabled`, `window`).
 - Keep optional `fit.auto_refine` in nested form (`enabled`, `min_rmse_improvement`).
 - Keep `fitting/mos2_raman/config/raman.yaml` and `fitting/mos2_pl/config/raman.yaml` `fit` block ordering aligned.
+- Judgement thresholds (valid/attention/invalid cutoffs, QC limits, review/flag defaults) live only in the root
+  `thresholds.yaml`, deep-merged over the section YAMLs by `load_pipeline_config`. Do not re-add those keys to
+  `fitting/*/config/*.yaml`; add new user-tunable cutoffs to `thresholds.yaml` instead of hardcoding them.
 - In anchor mode docs/code, describe center coupling as anchor-centric:
   - `LO = E2g - d_lo_from_e2g`
   - `ZO = A1g + d_zo_from_a1g`

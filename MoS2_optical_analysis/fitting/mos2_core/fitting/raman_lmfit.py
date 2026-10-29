@@ -58,6 +58,8 @@ class RamanFitConfig:
     pl_a_minus_a0_split: tuple[bool, float, float, float]
     pl_trion_exciton_fwhm_ratio: tuple[bool, float, float, float]
     pl_share_exciton_fraction: bool
+    pl_spike_residual_sigma_k: float = 12.0
+    pl_spike_span_ratio: float = 0.60
 
 
 @dataclass(slots=True)
@@ -750,6 +752,11 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         pl_trion_exciton_fwhm_ratio = (ratio_enabled, ratio_min, ratio_max, ratio_init)
 
         pl_share_exciton_fraction = bool(fit_cfg.get("share_exciton_fraction", is_pl))
+        spike_check_cfg = fit_cfg.get("spike_check", {})
+        if not isinstance(spike_check_cfg, dict):
+            spike_check_cfg = {}
+        pl_spike_residual_sigma_k = _finite(spike_check_cfg.get("residual_sigma_k", 12.0), 12.0)
+        pl_spike_span_ratio = _finite(spike_check_cfg.get("span_ratio", 0.60), 0.60)
 
         return RamanFitConfig(
             models=models,
@@ -805,6 +812,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             pl_a_minus_a0_split=pl_a_minus_a0_split,
             pl_trion_exciton_fwhm_ratio=pl_trion_exciton_fwhm_ratio,
             pl_share_exciton_fraction=pl_share_exciton_fraction,
+            pl_spike_residual_sigma_k=pl_spike_residual_sigma_k,
+            pl_spike_span_ratio=pl_spike_span_ratio,
         )
 
     @staticmethod
@@ -1107,6 +1116,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             y_pred_full=np.asarray(y_pred_full, dtype=float),
             peak_labels=["PL"],
             prefix_for_label={"PL": "pl_"},
+            spike_residual_sigma_k=cfg.pl_spike_residual_sigma_k,
+            spike_span_ratio=cfg.pl_spike_span_ratio,
         )
 
     def _fit_pl_component_model(
@@ -1229,6 +1240,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             peak_labels=peak_labels,
             prefix_for_label={spec.key: f"{spec.key}_" for spec in selected_components},
             profile_for_label={spec.key: spec.profile for spec in selected_components},
+            spike_residual_sigma_k=cfg.pl_spike_residual_sigma_k,
+            spike_span_ratio=cfg.pl_spike_span_ratio,
         )
 
     def _mask_roi(self, x_full: np.ndarray, x_min: float, x_max: float) -> np.ndarray:
@@ -1303,6 +1316,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         peak_labels: Sequence[str],
         prefix_for_label: Mapping[str, str],
         profile_for_label: Mapping[str, str] | None = None,
+        spike_residual_sigma_k: float = 12.0,
+        spike_span_ratio: float = 0.60,
     ) -> FitCandidate:
         y_best = fit_result.best_fit
         rmse, r2 = self._fit_quality(y_fit, y_best)
@@ -1429,7 +1444,10 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 resid_sigma = max(1.4826 * resid_mad, 1.0e-9)
                 positive_resid = float(np.max(residual))
                 y_span = float(np.percentile(y_fit, 95) - np.percentile(y_fit, 5))
-                spike_threshold = max(12.0 * resid_sigma, 0.60 * max(y_span, 1.0e-9))
+                spike_threshold = max(
+                    spike_residual_sigma_k * resid_sigma,
+                    spike_span_ratio * max(y_span, 1.0e-9),
+                )
                 metrics_out["pl_max_positive_residual"] = positive_resid
                 metrics_out["pl_residual_robust_sigma"] = resid_sigma
                 if positive_resid > spike_threshold:

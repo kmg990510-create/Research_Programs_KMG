@@ -72,6 +72,7 @@ Distribute the whole `dist/mos2-analysis` folder, including:
 - `_internal/` (required runtime libraries/assets)
 - `PACKAGING_DIST_README.md` (minimal end-user usage note)
 - `data/raw/raman/`, `data/raw/pl/` (empty input folders, created by the spec)
+- `thresholds.yaml` (user-editable judgement thresholds, copied next to the exe by the spec)
 
 ## Packaging Compatibility Adjustments
 
@@ -93,6 +94,8 @@ Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
   `<exe folder>/fitting/mos2_raman/config` and failed in the packaged app.
 - `data/raw/raman` and `data/raw/pl` are shipped empty: the spec creates them after `COLLECT` with a
   `_PUT_SAMPLE_FOLDERS_HERE.md` placeholder (keeps them through zip/copy; `.md` is not a spectrum pattern).
+- `thresholds.yaml` resolves from the exe folder first (`runtime_paths.thresholds_path()`), then the bundled copy
+  in `_internal`. The spec bundles it as data and copies it next to the exe after `COLLECT`.
 
 ## Multiprocessing Workers in Frozen Mode
 

@@ -232,7 +232,21 @@ def _ensure_required_keys(section: str, payload: dict[str, Any], source_path: Pa
             )
 
 
-def load_pipeline_config(config_dir: str | Path) -> dict[str, Any]:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(current, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_pipeline_config(
+    config_dir: str | Path,
+    thresholds_path: str | Path | None = None,
+) -> dict[str, Any]:
     """
     Load pipeline config from YAML files only.
 
@@ -244,6 +258,10 @@ def load_pipeline_config(config_dir: str | Path) -> dict[str, Any]:
     - pl.yaml
     - baseline.yaml
     - review.yaml
+
+    Judgement thresholds live in one user-editable `thresholds.yaml`
+    (default: `runtime_paths.thresholds_path()`); its top-level keys are section
+    names and are deep-merged over the section files before key validation.
     """
 
     root = Path(config_dir)
@@ -252,11 +270,33 @@ def load_pipeline_config(config_dir: str | Path) -> dict[str, Any]:
     if not root.is_dir():
         raise NotADirectoryError(f"Config path is not a directory: {root}")
 
+    if thresholds_path is None:
+        # Local import: `core` imports this module at package import time.
+        from ..core.runtime_paths import thresholds_path as _default_thresholds_path
+
+        thresholds_path = _default_thresholds_path()
+    thresholds_file = Path(thresholds_path)
+    thresholds = _load_yaml_mapping(thresholds_file)
+    unknown = sorted(str(key) for key in thresholds if key not in _SECTION_FILES)
+    if unknown:
+        raise ValueError(
+            f"Unknown section(s) in {thresholds_file}: {', '.join(unknown)} "
+            f"(allowed: {', '.join(_SECTION_FILES)})"
+        )
+
     config: dict[str, Any] = {}
     for section, filename in _SECTION_FILES.items():
         source_path = root / filename
         loaded = _load_yaml_mapping(source_path)
-        _ensure_required_keys(section, loaded, source_path)
+        override = thresholds.get(section)
+        if override is not None:
+            if not isinstance(override, dict):
+                raise ValueError(f"'{section}' must be a mapping in {thresholds_file}")
+            loaded = _deep_merge(loaded, override)
+        try:
+            _ensure_required_keys(section, loaded, source_path)
+        except ValueError as exc:
+            raise ValueError(f"{exc} (after merging {thresholds_file})") from exc
         config[section] = loaded
 
     return config

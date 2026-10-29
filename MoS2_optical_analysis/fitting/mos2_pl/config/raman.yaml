@@ -82,46 +82,22 @@ fit:
 
   # 7) Prefit gate
   prefit:
-    enabled: true
+    # Thresholds (enabled, *_snr_*_min) live in thresholds.yaml at the workspace/app root.
     peak_window_half_width: 2.5
-    e2g_snr_hard_min: 2.0
-    e2g_snr_soft_min: 4.0
-    a1g_snr_hard_min: 4.0
-    a1g_snr_soft_min: 5.0
     noise_windows:
       left: [350.0, 360.0]
       right: [480.0, 490.0]
 si_calibration:
+  # Thresholds (min_points, max_abs_offset) live in thresholds.yaml at the workspace/app root.
   enabled: true
   window_min: 510.0
   window_max: 530.0
   target_peak: 520.0
-  min_points: 5
   initial_width: 3.0
-  max_abs_offset: 5.0
 
 report_export:
   include_selected_fitted_y: false
   include_all_candidates: true
   include_candidate_fitted_y: false
 
-post_selection_qc:
-  enabled: true
-  mahalanobis_outlier:
-    enabled: false
-  mahalanobis_distance_threshold: 3.0
-  min_reference_valid_samples: 30
-  covariance_regularization: 1.0e-6
-  delta_outlier:
-    enabled: true
-    absolute_range:
-      enabled: true
-      min: 15.0
-      max: 27.0
-      apply_statuses: [valid, attention]
-    reference_status: valid
-    apply_statuses: [valid, attention]
-    min_reference_samples: 30
-    sigma_k: 6.0
-    fallback_abs: 3.0
-    action: invalid
+# post_selection_qc (delta / mahalanobis outlier checks) lives in thresholds.yaml.

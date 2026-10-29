@@ -236,6 +236,18 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - Raman n-peak fits (`peak_2..5_model`) now search `bg_slope` in `estimate +/- max(2.0, 3*|estimate|)` instead of a fixed `[-2, 2]`. Steep fluorescence backgrounds (slope ~2, e.g. sample_G) were clamped at the bound and the optimizer stalled at the initial E2g=384 / A1g=403.
 - PL fits and the legacy `mos2_double_*` models keep the fixed bound.
 
+## Thresholds File (2026-10-30)
+
+- `thresholds.yaml` (workspace root; next to the exe when packaged) holds every judgement cutoff and is deep-merged
+  over the section YAMLs in `load_pipeline_config` before required-key validation.
+- Path: `runtime_paths.thresholds_path()` -> source: workspace root; frozen: exe folder, falling back to the bundled
+  `_internal/thresholds.yaml` if the user deleted it.
+- Former hardcoded cutoffs now read from config with the same defaults:
+  `{raman,pl}.quality_flags` (`r2_min` 0.95, `rmse_outlier_sigma_k` 3.0, `rmse_outlier_fallback_abs` 3.0,
+  `fwhm_band_margin_ratio` 0.10) in `analysis/reporting.py`; `pl.fit.spike_check` (`residual_sigma_k` 12.0,
+  `span_ratio` 0.60) in `raman_lmfit`.
+- Merged config was verified identical to the pre-move config apart from these new keys.
+
 ## Raman Prefit E2g SNR Gate (2026-10-26)
 
 - E2g SNR below `prefit.e2g_snr_hard_min` (now 2.0, was 3.0) no longer invalidates the spectrum: it is fitted normally and flagged `attention` with reason `prefit_e2g_snr_below_hard` (soft band keeps `prefit_e2g_snr_below_soft`).

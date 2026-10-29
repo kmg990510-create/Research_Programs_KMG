@@ -1385,3 +1385,14 @@
 - Still required after the next build: run the exe checks listed in `PACKAGING_PYINSTALLER.md` (frozen `--workers 4`, All Spectra manual refit).
 - Found during exe verification: desktop editor crashed on open (`NameError: snapshot_modality` in `plot_widget._resolve_main_x_range`, regression from `6bdec33`; source runs too). Fixed by resolving modality locally; regression test `tests/test_desktop_editor_plot.py`.
 - Ship input folders: `mos2_optical_analysis.spec` now creates `dist/mos2-analysis/data/raw/{raman,pl}` (with a `.md` placeholder) so the dist folder can be handed over without setup; `PACKAGING_DIST_README.md` updated.
+
+## Thresholds File (2026-10-30)
+
+- Scope: collect user-tunable judgement thresholds into one external file for packaged-app users.
+- New root `thresholds.yaml`, deep-merged over `fitting/{mos2_raman,mos2_pl}/config/*.yaml` by `load_pipeline_config` (path via `runtime_paths.thresholds_path()`).
+- Moved out of section YAMLs: `raman.fit.prefit` (`enabled`, SNR mins), `raman.si_calibration` (`min_points`, `max_abs_offset`), `raman.post_selection_qc`, `pl.despike.threshold`, `review.confidence_threshold`, `raman_graph.flagged_spectra.legacy_thresholds`.
+- Previously hardcoded, now configurable with identical defaults: `{raman,pl}.quality_flags` (`analysis/reporting.py`), `pl.fit.spike_check` (`raman_lmfit`).
+- Packaging: spec bundles `thresholds.yaml` into `_internal` (fallback) and copies it next to the exe.
+- Tests: `tests/test_thresholds_config.py` (merge, override, typo/missing-key errors, frozen path order, `r2_min` reaching the report).
+- Validation: merged config diff vs pre-change = only the new keys; Raman/PL dummy, Raman single + batch, PL single (real data), GUI HTTP 200, All Spectra single-row AppTest, auto refit API smoke: pass. 17 tests pass.
+- Not covered by `confidence.py` `high_rmse` (0.2): label-only, does not change status; left hardcoded.

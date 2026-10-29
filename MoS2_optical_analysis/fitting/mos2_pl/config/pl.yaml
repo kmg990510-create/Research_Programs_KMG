@@ -7,9 +7,9 @@ selection_metric: hybrid
 intensity_density_correction:
   enabled: false
 despike:
+  # despike threshold lives in thresholds.yaml at the workspace/app root.
   enabled: true
   kernel: 7
-  threshold: 6.0
 fit:
   x_unit: eV
   x_min: 1.38

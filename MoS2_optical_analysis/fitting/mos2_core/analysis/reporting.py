@@ -36,11 +36,17 @@ def _mad(values: list[float], med: float) -> float:
     return _median(deviations)
 
 
-def _is_outlier(value: float | None, med: float, sigma: float, fallback_abs: float) -> bool:
+def _is_outlier(
+    value: float | None,
+    med: float,
+    sigma: float,
+    fallback_abs: float,
+    sigma_k: float = 3.0,
+) -> bool:
     if value is None:
         return False
     if sigma > 1.0e-9:
-        return abs(value - med) > max(fallback_abs, 3.0 * sigma)
+        return abs(value - med) > max(fallback_abs, sigma_k * sigma)
     return abs(value - med) > fallback_abs
 
 
@@ -274,7 +280,16 @@ class RamanFitReportGenerator(ReportGenerationStage):
             context.config,
             modality=run_modality,
         )
-        fwhm_normal_band = _fwhm_normal_band_by_peak(sigma_bounds_by_peak, margin_ratio=0.10)
+        # Quality-flag thresholds come from thresholds.yaml (`{modality}.quality_flags`).
+        modality_cfg = context.config.get(run_modality, {}) if isinstance(context.config, dict) else {}
+        quality_cfg = modality_cfg.get("quality_flags", {}) if isinstance(modality_cfg, dict) else {}
+        if not isinstance(quality_cfg, dict):
+            quality_cfg = {}
+        r2_min = float(quality_cfg.get("r2_min", 0.95))
+        rmse_sigma_k = float(quality_cfg.get("rmse_outlier_sigma_k", 3.0))
+        rmse_fallback_abs = float(quality_cfg.get("rmse_outlier_fallback_abs", 3.0))
+        fwhm_margin_ratio = float(quality_cfg.get("fwhm_band_margin_ratio", 0.10))
+        fwhm_normal_band = _fwhm_normal_band_by_peak(sigma_bounds_by_peak, margin_ratio=fwhm_margin_ratio)
         pl_qc_component_names = ["a_minus", "a0"]
 
         attention_count = 0
@@ -289,9 +304,9 @@ class RamanFitReportGenerator(ReportGenerationStage):
             invalid_reasons = _normalize_reason_list(row.get("invalid_reasons"))
             attention_reasons = _normalize_reason_list(row.get("attention_reasons"))
 
-            if _is_outlier(rmse, rmse_med, rmse_sigma, fallback_abs=3.0):
+            if _is_outlier(rmse, rmse_med, rmse_sigma, fallback_abs=rmse_fallback_abs, sigma_k=rmse_sigma_k):
                 flags.append("rmse_outlier_vs_dataset")
-            if r2 is not None and r2 < 0.95:
+            if r2 is not None and r2 < r2_min:
                 flags.append("low_r2")
 
             if run_modality == "pl":

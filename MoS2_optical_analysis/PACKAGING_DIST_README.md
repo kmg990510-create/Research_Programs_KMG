@@ -38,6 +38,16 @@ New-Item -ItemType Directory -Force data\raw\raman, data\raw\pl
 - `data\results\...` (reports) and `data\bin\...` (Result Bin) are created automatically.
 - A folder outside `data\raw` can also be used via the custom folder input in Run Analysis.
 
+## Adjusting Thresholds
+
+- `thresholds.yaml` (next to the `.exe` files) holds every judgement threshold: SNR gates, R2 / RMSE flags,
+  E2g-A1g delta range, Si calibration limits, PL spike checks, and Flagged Spectra slider defaults.
+- Open it in Notepad, change only the numbers / `true` / `false`, save, and run the analysis again.
+  Each value has a short comment explaining what it does.
+- Existing reports do not change; re-run the analysis to apply new thresholds.
+  Restart `mos2-analysis.exe` to refresh values shown in the UI.
+- If the file is deleted, the built-in defaults are used. Keep a copy before large edits.
+
 ## Quick Start (UI)
 
 1. Run `mos2-analysis.exe`.

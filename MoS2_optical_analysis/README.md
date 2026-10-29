@@ -118,7 +118,16 @@ Current guardrail status:
   4. Center bounds
   5. Width bounds
   6. Model priors
-  7. Prefit gate
+  7. Prefit gate (windows only)
+
+## Thresholds (`thresholds.yaml`)
+
+- All judgement cutoffs live in one root file, `thresholds.yaml` (copied next to the exe in the packaged app):
+  prefit SNR gates, Si calibration limits, quality flags (`r2_min`, RMSE outlier, FWHM band margin),
+  `post_selection_qc` (delta / Mahalanobis), PL despike and spike check, review confidence, Flagged slider defaults.
+- Top-level keys are config sections (`raman`, `pl`, `review`, `raman_graph`) and are deep-merged over
+  `fitting/*/config/*.yaml`, so both Raman and PL config dirs share the same thresholds.
+- Edits apply to the next analysis run; restart the GUI to refresh cached values.
 
 ## Run GUI
 

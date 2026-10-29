@@ -57,7 +57,4 @@ all_spectra_viewer:
       size: 11
 
 flagged_spectra:
-  legacy_thresholds:
-    rmse_threshold: 15.0
-    r2_lower_bound: 0.98
-    delta_max: 25.0
+  # legacy_thresholds (slider defaults) live in thresholds.yaml.
