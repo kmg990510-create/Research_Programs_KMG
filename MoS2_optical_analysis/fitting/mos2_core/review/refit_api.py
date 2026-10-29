@@ -11,6 +11,7 @@ import numpy as np
 from lmfit.models import LinearModel, PseudoVoigtModel
 
 from ..core.default_stages import build_default_context
+from ..core.runtime_paths import raman_config_dir
 from ..fitting import LmfitRamanModelEnsembleFitting
 from ..fitting.raman_lmfit import (
     _build_n_peak_spec,
@@ -268,7 +269,8 @@ class SingleSpectrumRefitAPI:
 
     def __init__(self, project_root: Path | None = None) -> None:
         self.project_root = (project_root or Path(__file__).resolve().parents[3]).resolve()
-        self.config_dir = self.project_root / "fitting" / "mos2_raman" / "config"
+        # Config is a bundled resource (inside `_internal` when frozen), not user data.
+        self.config_dir = raman_config_dir()
 
     def submit_refit(self, request: ManualRefitRequest) -> dict[str, Any]:
         return self.run_manual_refit(request).to_payload()

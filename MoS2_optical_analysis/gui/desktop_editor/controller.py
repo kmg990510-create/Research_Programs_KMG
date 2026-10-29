@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from fitting.mos2_core.core.runtime_paths import raman_config_dir
 from fitting.mos2_core.io import load_pipeline_config
 from fitting.mos2_core.review.refit_api import ManualRefitRequest, SingleSpectrumRefitAPI
 
@@ -239,9 +239,7 @@ class ManualEditorController:
 
     def _resolve_compare_window(self) -> tuple[float, float]:
         modality = str(self.request.modality or "raman").strip().lower()
-        root = Path(__file__).resolve().parents[2]
-        cfg_dir = root / "fitting" / "mos2_raman" / "config"
-        config = load_pipeline_config(cfg_dir)
+        config = load_pipeline_config(raman_config_dir())
         section = config.get(modality, {}) if isinstance(config, dict) else {}
         if not isinstance(section, dict):
             section = {}

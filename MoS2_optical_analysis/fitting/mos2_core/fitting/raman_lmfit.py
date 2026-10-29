@@ -2156,6 +2156,11 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                         spectrum_id = futures[future]
                         try:
                             fit_result = future.result()
+                        except concurrent.futures.BrokenExecutor:
+                            # Pool itself died (e.g. frozen exe children failed to start): every
+                            # pending future fails the same way, so hand the remaining spectra
+                            # to the sequential path instead of marking them invalid.
+                            raise
                         except Exception as exc:  # pragma: no cover - defensive fallback
                             modality = modality_by_spectrum.get(spectrum_id, "raman")
                             cfg = cfg_by_modality[modality]

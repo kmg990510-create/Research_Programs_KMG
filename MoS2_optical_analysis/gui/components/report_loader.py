@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from fitting.mos2_core.core.runtime_paths import raman_config_dir as _bundled_raman_config_dir
 from fitting.mos2_core.core.runtime_paths import runtime_project_root
 from fitting.mos2_core.review.manual_overrides import (
     apply_manual_overrides_to_payload,
@@ -28,7 +29,7 @@ def results_dir() -> Path:
 
 
 def raman_config_dir() -> Path:
-    return project_root() / "fitting" / "mos2_raman" / "config"
+    return _bundled_raman_config_dir()
 
 
 @st.cache_data(show_spinner=False)

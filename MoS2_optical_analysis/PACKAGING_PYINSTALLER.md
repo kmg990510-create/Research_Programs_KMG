@@ -80,3 +80,27 @@ Distribute the whole `dist/mos2-analysis` folder, including:
   - `mos2-desktop-editor(.exe)`
 
 Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
+
+## Frozen Path Rules (2026-10-29)
+
+- User data (`data/raw`, `data/results`, `data/bin`) resolves from the exe folder:
+  `runtime_project_root()`.
+- Bundled config YAML resolves from the PyInstaller bundle dir (`sys._MEIPASS`, i.e. `_internal`):
+  `runtime_resource_root()` / `raman_config_dir()` in `fitting/mos2_core/core/runtime_paths.py`.
+- GUI graph style, report loader graph config, `SingleSpectrumRefitAPI`, and the desktop editor all use
+  `raman_config_dir()`. Before this, All Spectra manual refit looked for
+  `<exe folder>/fitting/mos2_raman/config` and failed in the packaged app.
+- `data/raw` is not shipped; `PACKAGING_DIST_README.md` tells users to create `data\raw\raman` and `data\raw\pl`.
+
+## Multiprocessing Workers in Frozen Mode
+
+- `packaging/entry_run_raman.py` and `packaging/entry_run_pl.py` call `multiprocessing.freeze_support()`
+  before `main()`.
+- Needed for `--workers > 1`: `ProcessPoolExecutor` children re-launch the same exe with
+  `--multiprocessing-fork`; without `freeze_support()` they would run the CLI `main()` instead of the
+  worker loop and the pool would break.
+- If the pool still breaks (`BrokenExecutor`), `raman_lmfit` now finishes the remaining spectra on the
+  sequential path and logs `[fit] multiprocessing disabled; fallback to sequential (...)`.
+  Previously each pending spectrum was recorded as `invalid` (`fit_worker_exception`).
+- After a rebuild, verify with `mos2-run-raman.exe --raw-dir <folder> --run-id mp_check --workers 4`
+  and confirm the log does not contain `fallback to sequential`.

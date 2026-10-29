@@ -1367,3 +1367,19 @@
   - `README.md`
   - `ARCHITECTURE.md`
   - `AGENTS.md`
+
+## Packaging Pre-Build Fixes (2026-10-29)
+
+- Scope: prepare the PyInstaller package for a rebuild (no build run in this task).
+- Removed legacy leftovers `build/`, `build_progressfix/`, `dist_progressfix/`, and `dist/build` (user request).
+- Frozen config path fix:
+  - added `runtime_resource_root()` / `raman_config_dir()` to `fitting/mos2_core/core/runtime_paths.py`
+  - `SingleSpectrumRefitAPI`, `gui/components/graph_style.py`, `gui/components/report_loader.py`, and the desktop editor controller read config from the bundle (`_internal`) when frozen
+  - before: All Spectra manual refit used `<exe folder>/fitting/mos2_raman/config` and failed in the exe
+- Frozen multiprocessing fix:
+  - `packaging/entry_run_raman.py` / `entry_run_pl.py` call `multiprocessing.freeze_support()`
+  - `raman_lmfit` re-raises `BrokenExecutor` so a dead pool falls back to sequential instead of marking every pending spectrum `invalid`
+- `PACKAGING_DIST_README.md`: end-user `data\raw\raman` / `data\raw\pl` folder setup and `--workers` usage.
+- Tests: `tests/test_packaging_runtime.py` (frozen path simulation, broken-pool fallback).
+- Validation (source mode): Raman/PL dummy, Raman single + batch, GUI HTTP 200, All Spectra single-row AppTest, refit API smoke (source + simulated frozen layout), `packaging/entry_run_raman.py --workers 4` on 81 spectra (no fallback, 81 valid).
+- Still required after the next build: run the exe checks listed in `PACKAGING_PYINSTALLER.md` (frozen `--workers 4`, All Spectra manual refit).

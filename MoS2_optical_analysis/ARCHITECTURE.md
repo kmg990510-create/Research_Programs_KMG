@@ -77,12 +77,17 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `mos2-desktop-editor` -> `gui.desktop_editor.app`
 - Spec file:
   - `mos2_optical_analysis.spec`
+- Frozen path split (`fitting/mos2_core/core/runtime_paths.py`):
+  - user data (`data/raw`, `data/results`, `data/bin`): `runtime_project_root()` = exe folder
+  - bundled config YAML: `runtime_resource_root()` / `raman_config_dir()` = `sys._MEIPASS` (`_internal`)
+- `mos2-run-raman` / `mos2-run-pl` entry scripts call `multiprocessing.freeze_support()` so `--workers > 1` works in the exe.
+- If the fit process pool breaks (`BrokenExecutor`), remaining spectra fall back to the sequential fit path instead of being marked `invalid` (`fit_worker_exception`).
 
 ## Data and Report Routing
 
 - Pipeline reports are written under `data/results/{modality}/reports`.
 - GUI report loader reads from `data/results/{raman,pl}/reports`.
-- Graph config is loaded from `fitting/mos2_raman/config`.
+- Graph config is loaded from `raman_config_dir()` (`fitting/mos2_raman/config` in source runs, `_internal/...` when frozen).
 - Manual refit artifacts are stored under `data/results/{modality}/manual_refits`.
   - canonical override file per report: `{run_id}_manual_overrides.json`
 

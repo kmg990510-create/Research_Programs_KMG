@@ -138,6 +138,9 @@ Build from repository root:
 Copy-Item -Path PACKAGING_DIST_README.md -Destination dist/mos2-analysis/PACKAGING_DIST_README.md -Force
 ```
 
+Packaging details (frozen config paths, `--workers` in the exe, end-user `data\raw` setup):
+see `PACKAGING_PYINSTALLER.md` and `PACKAGING_DIST_README.md`.
+
 Packaging outputs:
 
 - distributable: `dist/mos2-analysis`
