@@ -46,6 +46,22 @@ python -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs
 ```
 
+## Raman Mapping CSV Input
+
+Some Raman exports (`FILETYPE=RAMAN SPECTRUM (MAPPING)`, e.g. CCD=Artemis) store a whole map in one CSV:
+KEY=VALUE header (`XAREA`/`YAREA` with `Count:`), a column row `X,Y,Z,XINDEX,YINDEX,ZINDEX,<raman shifts...>`,
+then one row per map point. The pipeline needs one TXT per point, so split the CSV first:
+
+```powershell
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.split_mapping_csv data/raw/raman/sample_I/*.CSV
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.split_mapping_csv <one.CSV> --out-dir data/raw/raman/<name>
+```
+
+- Output defaults to `<csv parent>/<csv stem>/Y###-X###.txt` (1-based from `YINDEX`/`XINDEX`, zero-padded to the grid size), in the `XYDATA=` TXT format with `XPOSITION`/`YPOSITION`/`SOURCE_CSV` header keys.
+- Truncated rows (scan stopped mid-row) are skipped; the summary prints written count and missing grid points.
+- Refuses to write into a folder that already has TXT files unless `--overwrite` is given.
+- Then run the folder(s) with `run_raw_pipeline` as usual (e.g. parent folder + `--batch-subdirs`).
+
 Note:
 - In single mode, if `--raw-dir` has no direct files matching `--pattern` but has matching immediate subfolders, `run_raw_pipeline` auto-switches to batch-subdirs mode.
 - `--workers` controls spectrum-level fit multiprocessing (`1` = sequential). In restricted environments, pipeline auto-falls back to sequential and logs the reason.

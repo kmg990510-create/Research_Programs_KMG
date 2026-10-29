@@ -29,6 +29,10 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `python -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id ...`
 - PL raw (batch by immediate subfolders):
   - `python -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs`
+- Raman mapping CSV pre-conversion (standalone, not called by the pipeline or GUI):
+  - `python -m fitting.mos2_raman.split_mapping_csv <map.CSV> [--out-dir ...] [--overwrite]`
+  - splits a one-row-per-point mapping CSV into `Y###-X###.txt` files that `raw_loader.parse_raman_txt` reads with `map_y`/`map_x`
+  - truncated rows are skipped and missing grid points are reported
 - PL ASC input:
   - default PL pattern is `*.asc`
   - simple numeric `wavelength_nm,intensity` ASC files are parsed

@@ -1355,3 +1355,15 @@
   - keep behavior-changing code/doc updates in same commit
   - respect explicit user override when no-commit/no-branch is requested
 
+
+## Raman Mapping CSV Splitter (2026-10-29)
+
+- Added `fitting/mos2_raman/split_mapping_csv.py` (`python -m fitting.mos2_raman.split_mapping_csv <map.CSV>`).
+- Purpose: convert mapping CSV exports (`FILETYPE=RAMAN SPECTRUM (MAPPING)`, one spectrum per row) into per-point `Y###-X###.txt` folders that the existing raw loader and `run_raw_pipeline` consume.
+- Standalone pre-processing tool only; pipeline/GUI behavior unchanged.
+- First use: `data/raw/raman/sample_I` (Before/After CSV pair). The After CSV is an incomplete scan (17180/18632 points; one truncated row skipped).
+- Tests: `tests/test_split_mapping_csv.py`.
+- Docs synced:
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `AGENTS.md`

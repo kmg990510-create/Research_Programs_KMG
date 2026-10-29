@@ -27,6 +27,9 @@ Run from workspace root (`MoS2_optical_analysis`):
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --batch-subdirs
 .\.venv\Scripts\python.exe -m fitting.mos2_raman.run_raw_pipeline --raw-dir data/raw/raman/... --run-id my_raman_mp --workers 4
 
+# Raman mapping CSV (one spectrum per row) -> per-point Y###-X###.txt folder
+.\.venv\Scripts\python.exe -m fitting.mos2_raman.split_mapping_csv data/raw/raman/.../map_spectrum.CSV
+
 # PL
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_dummy_pipeline
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id my_pl
