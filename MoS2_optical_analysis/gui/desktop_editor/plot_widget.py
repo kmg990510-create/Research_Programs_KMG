@@ -460,6 +460,7 @@ class SpectrumPlotWidget(QWidget):
             x_data_max = float(self._x_window_cfg["fallback_max"])
 
         peak_padding = float(self._x_window_cfg["peak_padding"])
+        snapshot_modality = str(self._row_snapshot.get("modality", "")).lower()
         pl_pos = _to_float(self._row_snapshot.get("pl_position"), np.nan) if snapshot_modality != "raman" else np.nan
         e2g = _to_float(self._row_snapshot.get("e2g_position"), np.nan)
         a1g = _to_float(self._row_snapshot.get("a1g_position"), np.nan)
