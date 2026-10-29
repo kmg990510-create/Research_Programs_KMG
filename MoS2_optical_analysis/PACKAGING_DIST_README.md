@@ -7,10 +7,10 @@
 - PL CLI runner: `mos2-run-pl.exe`
 - Desktop manual editor worker: `mos2-desktop-editor.exe`
 
-## First-Time Setup: Data Folders
+## Data Folders
 
 The app reads spectra from `data\raw\...` next to the `.exe` files. These folders are
-not shipped, so create them once before the first run:
+already included, so just drop sample folders in:
 
 ```
 mos2-analysis\
@@ -23,12 +23,14 @@ mos2-analysis\
       pl\         <- put PL sample folders here
 ```
 
-PowerShell (run inside the `mos2-analysis` folder):
+If they were lost (for example, by a copy tool that drops empty folders), recreate them
+in PowerShell inside the `mos2-analysis` folder:
 
 ```powershell
 New-Item -ItemType Directory -Force data\raw\raman, data\raw\pl
 ```
 
+- `_PUT_SAMPLE_FOLDERS_HERE.md` in each folder is only a placeholder and can be deleted.
 - Put one sample per folder, e.g. `data\raw\raman\SampleA\Y1-X1.txt, Y1-X2.txt, ...`.
 - Raman files default to `*.txt`; PL files default to `*.asc`.
 - For batch runs, group several sample folders under one parent folder

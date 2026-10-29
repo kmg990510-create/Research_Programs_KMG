@@ -1384,3 +1384,4 @@
 - Validation (source mode): Raman/PL dummy, Raman single + batch, GUI HTTP 200, All Spectra single-row AppTest, refit API smoke (source + simulated frozen layout), `packaging/entry_run_raman.py --workers 4` on 81 spectra (no fallback, 81 valid).
 - Still required after the next build: run the exe checks listed in `PACKAGING_PYINSTALLER.md` (frozen `--workers 4`, All Spectra manual refit).
 - Found during exe verification: desktop editor crashed on open (`NameError: snapshot_modality` in `plot_widget._resolve_main_x_range`, regression from `6bdec33`; source runs too). Fixed by resolving modality locally; regression test `tests/test_desktop_editor_plot.py`.
+- Ship input folders: `mos2_optical_analysis.spec` now creates `dist/mos2-analysis/data/raw/{raman,pl}` (with a `.md` placeholder) so the dist folder can be handed over without setup; `PACKAGING_DIST_README.md` updated.

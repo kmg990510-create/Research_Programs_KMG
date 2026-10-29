@@ -202,3 +202,16 @@ coll = COLLECT(
     upx_exclude=[],
     name="mos2-analysis",
 )
+
+
+# Ship empty input folders so the dist folder can be handed over as-is.
+# A placeholder file keeps them alive through zip/copy; `.md` is never matched
+# by the Raman (`*.txt`) or PL (`*.asc`) spectrum patterns.
+RAW_PLACEHOLDER = (
+    "Put one folder per sample here (e.g. SampleA/Y001-X001.txt ...).\n"
+    "See PACKAGING_DIST_README.md in the app folder.\n"
+)
+for modality in ("raman", "pl"):
+    raw_dir = Path(DISTPATH) / "mos2-analysis" / "data" / "raw" / modality
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "_PUT_SAMPLE_FOLDERS_HERE.md").write_text(RAW_PLACEHOLDER, encoding="utf-8")

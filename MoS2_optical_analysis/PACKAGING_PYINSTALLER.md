@@ -71,6 +71,7 @@ Distribute the whole `dist/mos2-analysis` folder, including:
 - `mos2-desktop-editor.exe`
 - `_internal/` (required runtime libraries/assets)
 - `PACKAGING_DIST_README.md` (minimal end-user usage note)
+- `data/raw/raman/`, `data/raw/pl/` (empty input folders, created by the spec)
 
 ## Packaging Compatibility Adjustments
 
@@ -90,7 +91,8 @@ Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
 - GUI graph style, report loader graph config, `SingleSpectrumRefitAPI`, and the desktop editor all use
   `raman_config_dir()`. Before this, All Spectra manual refit looked for
   `<exe folder>/fitting/mos2_raman/config` and failed in the packaged app.
-- `data/raw` is not shipped; `PACKAGING_DIST_README.md` tells users to create `data\raw\raman` and `data\raw\pl`.
+- `data/raw/raman` and `data/raw/pl` are shipped empty: the spec creates them after `COLLECT` with a
+  `_PUT_SAMPLE_FOLDERS_HERE.md` placeholder (keeps them through zip/copy; `.md` is not a spectrum pattern).
 
 ## Multiprocessing Workers in Frozen Mode
 
