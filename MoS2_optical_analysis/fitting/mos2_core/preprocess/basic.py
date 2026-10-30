@@ -10,6 +10,7 @@ from typing import Sequence
 
 from ..core.interfaces import PreprocessingStage
 from ..core.types import PipelineContext, PreprocessedSpectrum, SpectrumRecord
+from ..io import config_access as cfgx
 
 
 def lorentzian(x: np.ndarray, amp: float, cen: float, wid: float) -> np.ndarray:
@@ -19,9 +20,9 @@ def lorentzian(x: np.ndarray, amp: float, cen: float, wid: float) -> np.ndarray:
 def estimate_si_window_area(
     x: Sequence[float],
     y: Sequence[float],
-    window_min: float = 510.0,
-    window_max: float = 530.0,
-    min_points: int = 5,
+    window_min: float,
+    window_max: float,
+    min_points: int,
 ) -> float:
     x_arr = np.asarray(x, dtype=float)
     y_arr = np.asarray(y, dtype=float)
@@ -50,14 +51,14 @@ def estimate_si_window_area(
 def get_si_calibration_offset(
     x: Sequence[float],
     y: Sequence[float],
-    window_min: float = 510.0,
-    window_max: float = 530.0,
-    target_peak: float = 520.0,
-    min_points: int = 5,
-    initial_width: float = 3.0,
-    max_abs_offset: float = 5.0,
-    width_min: float = 0.1,
-    min_initial_width: float = 0.3,
+    window_min: float,
+    window_max: float,
+    target_peak: float,
+    min_points: int,
+    initial_width: float,
+    max_abs_offset: float,
+    width_min: float,
+    min_initial_width: float,
 ) -> tuple[float, bool]:
     x_arr = np.asarray(x, dtype=float)
     y_arr = np.asarray(y, dtype=float)
@@ -103,8 +104,8 @@ def get_si_calibration_offset(
 
 def despike_1d_spectrum(
     y: Sequence[float],
-    kernel: int = 7,
-    threshold: float = 6.0,
+    kernel: int,
+    threshold: float,
 ) -> tuple[list[float], int]:
     """Detect and replace sharp single-point/two-point positive spikes using rolling MAD."""
     y_arr = np.asarray(y, dtype=float)
@@ -140,32 +141,31 @@ class IdentityPreprocessing(PreprocessingStage):
         spectra: Sequence[SpectrumRecord],
         context: PipelineContext,
     ) -> list[PreprocessedSpectrum]:
-        raman_cfg = context.config.get("raman", {}) if isinstance(context.config, dict) else {}
-        if not isinstance(raman_cfg, dict):
-            raman_cfg = {}
-        cal_cfg = raman_cfg.get("si_calibration", {})
-        if not isinstance(cal_cfg, dict):
-            cal_cfg = {}
+        modalities = {str(s.modality).lower() for s in spectra}
 
-        pl_cfg = context.config.get("pl", {}) if isinstance(context.config, dict) else {}
-        if not isinstance(pl_cfg, dict):
-            pl_cfg = {}
-        despike_cfg = pl_cfg.get("despike", {})
-        if not isinstance(despike_cfg, dict):
-            despike_cfg = {}
-        despike_enabled = bool(despike_cfg.get("enabled", True))
-        despike_kernel = int(despike_cfg.get("kernel", 7))
-        despike_threshold = float(despike_cfg.get("threshold", 6.0))
+        # Only the sections for the modalities present are required.
+        calibration_enabled = False
+        if "raman" in modalities:
+            cal_path = "raman.si_calibration"
+            cal_cfg = cfgx.section(cfgx.section(context.config, "raman", ""), "si_calibration", "raman")
+            calibration_enabled = cfgx.flag(cal_cfg, "enabled", cal_path)
+            window_min = cfgx.number(cal_cfg, "window_min", cal_path)
+            window_max = cfgx.number(cal_cfg, "window_max", cal_path)
+            target_peak = cfgx.number(cal_cfg, "target_peak", cal_path)
+            min_points = cfgx.integer(cal_cfg, "min_points", cal_path)
+            initial_width = cfgx.number(cal_cfg, "initial_width", cal_path)
+            max_abs_offset = cfgx.number(cal_cfg, "max_abs_offset", cal_path)
+            width_min = cfgx.number(cal_cfg, "width_min", cal_path)
+            min_initial_width = cfgx.number(cal_cfg, "min_initial_width", cal_path)
+        else:
+            target_peak = float("nan")
 
-        calibration_enabled = bool(cal_cfg.get("enabled", True))
-        window_min = float(cal_cfg.get("window_min", 510.0))
-        window_max = float(cal_cfg.get("window_max", 530.0))
-        target_peak = float(cal_cfg.get("target_peak", 520.0))
-        min_points = int(cal_cfg.get("min_points", 5))
-        initial_width = float(cal_cfg.get("initial_width", 3.0))
-        max_abs_offset = float(cal_cfg.get("max_abs_offset", 5.0))
-        width_min = float(cal_cfg.get("width_min", 0.1))
-        min_initial_width = float(cal_cfg.get("min_initial_width", 0.3))
+        despike_enabled = False
+        if "pl" in modalities or any(str(s.metadata.get("modality", "")).lower() == "pl" for s in spectra):
+            despike_cfg = cfgx.section(cfgx.section(context.config, "pl", ""), "despike", "pl")
+            despike_enabled = cfgx.flag(despike_cfg, "enabled", "pl.despike")
+            despike_kernel = cfgx.integer(despike_cfg, "kernel", "pl.despike")
+            despike_threshold = cfgx.number(despike_cfg, "threshold", "pl.despike")
 
         offsets: list[float] = []
         success_count = 0
@@ -182,7 +182,8 @@ class IdentityPreprocessing(PreprocessingStage):
             meta.setdefault("modality", record.modality)
             meta["calibration_offset"] = float(offset)
             meta["calibration_success"] = bool(success)
-            meta["si_target_peak"] = float(target_peak)
+            if str(record.modality).lower() == "raman":
+                meta["si_target_peak"] = float(target_peak)
             meta["si_area"] = float(si_area)
             if n_spikes > 0:
                 meta["despiked_points"] = int(n_spikes)

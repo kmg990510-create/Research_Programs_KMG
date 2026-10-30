@@ -49,7 +49,9 @@ New-Item -ItemType Directory -Force data\raw\raman, data\raw\pl
   Each value has a short Korean comment explaining what it does.
 - Existing reports do not change; re-run the analysis to apply new settings.
   Restart `mos2-analysis.exe` to refresh values shown in the UI.
-- If the file is deleted, the built-in defaults are used. Keep a copy before large edits.
+- If a key is missing or misspelled, the analysis stops with a message naming that key
+  (e.g. `missing required key 'raman.fit.e2g_init'`). If the whole file is deleted, the copy bundled in
+  `_internal` is used. Keep a copy before large edits.
 
 ## Which Version Is This?
 
