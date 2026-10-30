@@ -670,9 +670,11 @@ def _add_absolute_isolines(
     d_a: float,
     eps_step: float = 0.5,
     n_step: float = 0.5,
+    eps_range: tuple[float, float] = (-2.0, 2.0),
+    n_range: tuple[float, float] = (-3.0, 3.0),
 ) -> None:
-    eps_vals = np.arange(-2.0, 2.0 + 1e-9, max(eps_step, 0.05))
-    n_vals = np.arange(-3.0, 3.0 + 1e-9, max(n_step, 0.05))
+    eps_vals = np.arange(eps_range[0], eps_range[1] + 1e-9, max(eps_step, 0.05))
+    n_vals = np.arange(n_range[0], n_range[1] + 1e-9, max(n_step, 0.05))
     n_line = np.linspace(float(n_vals.min()), float(n_vals.max()), 250)
     e_line = np.linspace(float(eps_vals.min()), float(eps_vals.max()), 250)
 
@@ -728,6 +730,20 @@ status_cfg = sample_cfg.get("status_filter", {}) if isinstance(sample_cfg, dict)
 coeff_cfg = sample_cfg.get("coefficients", {}) if isinstance(sample_cfg, dict) else {}
 isoline_cfg = sample_cfg.get("absolute_isolines", {}) if isinstance(sample_cfg, dict) else {}
 isoline_steps_cfg = isoline_cfg.get("steps", {}) if isinstance(isoline_cfg, dict) else {}
+
+
+def _isoline_range(key: str, default: tuple[float, float]) -> tuple[float, float]:
+    raw = isoline_cfg.get(key) if isinstance(isoline_cfg, dict) else None
+    try:
+        lo, hi = float(raw[0]), float(raw[1])
+    except (TypeError, ValueError, IndexError, KeyError):
+        return default
+    return (lo, hi) if hi > lo else default
+
+
+# Strain (%) and carrier density (1e13 cm^-2) grid spans (config.yaml `absolute_isolines`).
+isoline_eps_range = _isoline_range("eps_range", (-2.0, 2.0))
+isoline_n_range = _isoline_range("n_range", (-3.0, 3.0))
 
 report_files = list_report_json_files()
 if not report_files:
@@ -1167,6 +1183,8 @@ with tab_absolute:
                 d_a=float(d_a),
                 eps_step=eps_step,
                 n_step=n_step,
+                eps_range=isoline_eps_range,
+                n_range=isoline_n_range,
             )
         st.plotly_chart(fig, width="stretch")
     else:

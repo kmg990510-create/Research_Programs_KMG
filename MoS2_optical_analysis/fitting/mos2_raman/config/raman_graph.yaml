@@ -5,11 +5,7 @@ sample_comparison:
   status_filter:
     enabled_default: true
     allowed_default: ["valid", "attention"]
-  coefficients:
-    s_e: -6.48
-    s_a: -1.21
-    d_e: -0.33
-    d_a: -2.22
+  # coefficients (strain/doping model) live in the root config.yaml.
   center_metric_default: "mean"
   error_metric_default: "std"
   overlay_scatter_default: true
@@ -57,4 +53,4 @@ all_spectra_viewer:
       size: 11
 
 flagged_spectra:
-  # legacy_thresholds (slider defaults) live in thresholds.yaml.
+  # legacy_thresholds (slider defaults) live in the root config.yaml.

@@ -111,22 +111,25 @@ Current guardrail status:
   - `fit.auto_refine.enabled`
   - `fit.auto_refine.min_rmse_improvement` (fraction, `0.01` = 1%)
   - objective: `y_corr`, adopt refined candidate only when RMSE improves by threshold or more
-- `raman.yaml` `fit` section is organized in execution-order blocks:
+- `config.yaml` `raman.fit` is organized in execution-order blocks:
   1. ROI/comparison windows
-  2. Ordering/anchor policy
-  3. Anchor seeds/relative offsets
-  4. Center bounds
-  5. Width bounds
-  6. Model priors
-  7. Prefit gate (windows only)
+  2. Peak initial positions/offsets
+  3. Center bounds
+  4. Order/anchor policy and offset bounds
+  5. Widths (initial, bounds)
+  6. Height priors
+  7. Model windows
+  8. Linear baseline
+  9. Prefit SNR gate
 
-## Thresholds (`thresholds.yaml`)
+## Scientific Config (`config.yaml`)
 
-- All judgement cutoffs live in one root file, `thresholds.yaml` (copied next to the exe in the packaged app):
-  prefit SNR gates, Si calibration limits, quality flags (`r2_min`, RMSE outlier, FWHM band margin),
-  `post_selection_qc` (delta / Mahalanobis), PL despike and spike check, review confidence, Flagged slider defaults.
+- Every scientifically meaningful value lives in one root file, `config.yaml` (copied next to the exe in the
+  packaged app): models and selection metric, peak positions/bounds/initial widths, fit and baseline windows,
+  offset bounds, prefit SNR gate, Si calibration, PL components, despike/spike check, quality flags,
+  post-selection QC, review thresholds, and strain/doping coefficients. Each key has a Korean comment.
 - Top-level keys are config sections (`raman`, `pl`, `review`, `raman_graph`) and are deep-merged over
-  `fitting/*/config/*.yaml`, so both Raman and PL config dirs share the same thresholds.
+  `fitting/*/config/*.yaml`, which now only hold non-scientific settings (report export, GUI style).
 - Edits apply to the next analysis run; restart the GUI to refresh cached values.
 
 ## Run GUI

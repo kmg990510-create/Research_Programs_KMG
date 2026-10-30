@@ -476,7 +476,14 @@ def render_fit_summary(
     row: dict[str, Any],
     *,
     download_key: str | None = None,
+    fwhm_warn_cfg: dict[str, Any] | None = None,
 ) -> None:
+    # Plausible FWHM ranges (config.yaml `raman_graph.all_spectra_viewer.fwhm_warn`).
+    warn_cfg = fwhm_warn_cfg if isinstance(fwhm_warn_cfg, dict) else {}
+    raman_fwhm_min = _style_float(warn_cfg.get("raman_min"), 3.0)
+    raman_fwhm_max = _style_float(warn_cfg.get("raman_max"), 60.0)
+    pl_fwhm_max = _style_float(warn_cfg.get("pl_max"), 0.5)
+
     def _fmt(v: Any, digits: int = 3) -> str:
         try:
             return f"{float(v):.{digits}f}"
@@ -489,8 +496,8 @@ def render_fit_summary(
         except (TypeError, ValueError):
             return "(!)"
         if str(row.get("modality", "")).strip().lower() == "pl":
-            return "(!)" if (f <= 0.0 or f >= 0.5) else ""
-        return "(!)" if (f < 3.0 or f >= 60.0) else ""
+            return "(!)" if (f <= 0.0 or f >= pl_fwhm_max) else ""
+        return "(!)" if (f < raman_fwhm_min or f >= raman_fwhm_max) else ""
 
     modality = str(row.get("modality", "")).strip().lower()
     is_pl = modality == "pl" or (modality != "raman" and "pl_position" in row)

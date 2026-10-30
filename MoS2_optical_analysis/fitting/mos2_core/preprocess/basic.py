@@ -56,6 +56,8 @@ def get_si_calibration_offset(
     min_points: int = 5,
     initial_width: float = 3.0,
     max_abs_offset: float = 5.0,
+    width_min: float = 0.1,
+    min_initial_width: float = 0.3,
 ) -> tuple[float, bool]:
     x_arr = np.asarray(x, dtype=float)
     y_arr = np.asarray(y, dtype=float)
@@ -68,7 +70,7 @@ def get_si_calibration_offset(
     y_fit = y_arr[mask]
     y_min = float(np.min(y_fit))
     y_max = float(np.max(y_fit))
-    p0 = [0.0, y_min, max(y_max - y_min, 1.0), target_peak, max(initial_width, 0.3)]
+    p0 = [0.0, y_min, max(y_max - y_min, 1.0), target_peak, max(initial_width, min_initial_width)]
 
     def _offset_from_center(center: float) -> tuple[float, bool]:
         if not np.isfinite(center):
@@ -78,8 +80,8 @@ def get_si_calibration_offset(
             return 0.0, False
         return offset, True
 
-    lower_bounds = [-np.inf, -np.inf, 0.0, float(window_min), 0.1]
-    upper_bounds = [np.inf, np.inf, np.inf, float(window_max), float(max(window_max - window_min, 0.3))]
+    lower_bounds = [-np.inf, -np.inf, 0.0, float(window_min), float(width_min)]
+    upper_bounds = [np.inf, np.inf, np.inf, float(window_max), float(max(window_max - window_min, min_initial_width))]
     try:
         with warnings.catch_warnings():
             # Some spectra fit numerically but covariance is unstable; treat this as non-reliable fit.
@@ -162,6 +164,8 @@ class IdentityPreprocessing(PreprocessingStage):
         min_points = int(cal_cfg.get("min_points", 5))
         initial_width = float(cal_cfg.get("initial_width", 3.0))
         max_abs_offset = float(cal_cfg.get("max_abs_offset", 5.0))
+        width_min = float(cal_cfg.get("width_min", 0.1))
+        min_initial_width = float(cal_cfg.get("min_initial_width", 0.3))
 
         offsets: list[float] = []
         success_count = 0
@@ -217,6 +221,8 @@ class IdentityPreprocessing(PreprocessingStage):
                     min_points=min_points,
                     initial_width=initial_width,
                     max_abs_offset=max_abs_offset,
+                    width_min=width_min,
+                    min_initial_width=min_initial_width,
                 )
 
             x_shifted = [v + offset for v in x]

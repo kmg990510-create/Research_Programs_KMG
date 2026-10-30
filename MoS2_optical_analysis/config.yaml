@@ -1,0 +1,390 @@
+# =============================================================================
+# MoS2 Raman / PL 분석 설정 (config.yaml)
+# =============================================================================
+# 과학적 의미가 있는 값(피크 위치·범위·초기값, 피팅 구간, 판정 기준, 계수)을
+# 모두 이 파일 하나에 모았습니다. 프로그램 안에 숨어 있던 숫자도 여기로 꺼냈습니다.
+#
+# 사용법
+# - 값을 고치고 저장한 뒤 분석을 다시 실행하면 적용됩니다.
+#   (GUI 화면에 보이는 값은 mos2-analysis.exe 를 껐다 켜야 바뀝니다.)
+# - 이미 만들어진 리포트는 바뀌지 않습니다. 다시 분석해야 반영됩니다.
+# - 들여쓰기(스페이스)와 키 이름은 그대로 두고 숫자 / true / false 만 바꾸세요.
+# - 이 파일을 지우면 프로그램에 들어 있는 기본값(지금 이 파일과 같은 값)을 씁니다.
+#   큰 수정 전에는 복사본을 남겨 두세요.
+#
+# 단위: Raman 은 cm-1, PL 은 eV.
+# sigma 는 pseudo-Voigt 반폭(HWHM)이며 FWHM = 2 x sigma 입니다.
+#
+# 판정 결과
+#   valid     : 정상
+#   attention : 피팅은 했지만 확인이 필요함 (Flagged Spectra 에 표시)
+#   invalid   : 결과를 쓰기 어려움 (모델 선택/통계에서 제외)
+# =============================================================================
+
+raman:
+  # ---------------------------------------------------------------------------
+  # 모델 선택
+  # ---------------------------------------------------------------------------
+  # 비교할 피크 모델: peak_2(E2g,A1g) / peak_3(+LO) / peak_4(+ZO) / peak_5(+LA)
+  models: [peak_2_model, peak_3_model, peak_4_model, peak_5_model]
+  selection_metric: aic          # 최종 모델 선택 기준: aic / bic / rmse / hybrid
+  hybrid_weights:                # selection_metric: hybrid 일 때 가중치 (정규화된 값의 합)
+    aic: 0.4
+    bic: 0.4
+    rmse: 0.2
+
+  fit:
+    # --- 1) 피팅 구간 -------------------------------------------------------
+    x_min: 340.0                 # 기본 피팅 구간 (모델별 구간은 아래 model_windows)
+    x_max: 430.0
+    compare_x_min: 350.0         # 모델끼리 RMSE/AIC 를 비교하는 구간
+    compare_x_max: 440.0
+    min_roi_points: 20           # 피팅 구간 안의 데이터 점이 이보다 적으면 그 모델은 피팅 안 함
+    min_spectrum_points: 20      # 스펙트럼 전체 점이 이보다 적으면 피팅 없이 attention
+
+    # --- 2) 피크 초기 위치 (cm-1) ------------------------------------------
+    e2g_init: 384.0              # E2g 시작 위치
+    a1g_init: 403.0              # A1g 시작 위치
+    lo_offset_from_e2g: -5.0     # LO  = E2g + (-5)  -> 379
+    zo_offset_from_a1g: 5.0      # ZO  = A1g + 5     -> 408
+    la_offset_from_a1g: 50.0     # LA  = A1g + 50    -> 453
+
+    # --- 3) 피크 위치 허용 범위 (cm-1) -------------------------------------
+    e2g_min: 370.0
+    e2g_max: 392.0
+    a1g_min: 395.0
+    a1g_max: 415.0
+    center_tolerance_by_model:   # LO/ZO/LA 는 시작 위치 +- 이 값 안에서만 움직임
+      peak_2_model: 2.5
+      peak_3_model: 2.5
+      peak_4_model: 2.5
+      peak_5_model: 2.5
+
+    # --- 4) 피크 순서 / anchor --------------------------------------------
+    enforce_peak_order: true     # LO < E2g < A1g < ZO < LA 순서 유지
+    two_stage_anchor:            # 먼저 peak_2 로 E2g/A1g 를 잡고, 3~5 피크 모델은 그 근처에서만 찾음
+      enabled: true
+      window: 2.0                # anchor 위치 +- window (cm-1)
+      fallback_half_window: 0.5  # 위 범위와 허용 범위가 안 겹칠 때 anchor +- 이 값
+    auto_refine:                 # 1차 피팅 결과로 한 번 더 피팅해서 RMSE 가 좋아지면 채택
+      enabled: true
+      min_rmse_improvement: 0.01 # 1% 이상 좋아져야 채택
+    offset_bounds:               # 피크 간격 허용 범위 (cm-1)
+      lo_from_e2g:               # E2g - LO 간격
+        min: 0.5
+        max: 10.0
+      zo_from_a1g:               # ZO - A1g 간격: 최대 = max(max_floor, 초기간격 + max_margin)
+        min: 0.5
+        max_floor: 20.0
+        max_margin: 10.0
+      la_from_a1g:               # LA - A1g 간격
+        min: 0.5
+        max_floor: 70.0
+        max_margin: 20.0
+      chain:                     # anchor 를 안 쓸 때 인접 피크 간격
+        guess_floor: 1.0
+        min: 0.5
+        max: 60.0
+
+    # --- 5) 피크 폭 (sigma, cm-1) -----------------------------------------
+    sigma_init_by_peak:          # 시작 폭
+      lo: 7.0
+      e2g: 3.0
+      a1g: 3.0
+      zo: 4.0
+      la: 8.0
+    sigma_min: 0.5               # 아래 피크별 범위가 없을 때 쓰는 전체 범위
+    sigma_max: 12.0
+    sigma_bounds_by_peak:        # 피크별 허용 범위 [최소, 최대]
+      lo: [2.5, 9.0]
+      e2g: [1.5, 6.0]
+      a1g: [1.5, 6.0]
+      zo: [2.5, 9.0]
+      la: [5.0, 20.0]
+    fraction_init: 0.0           # pseudo-Voigt Lorentzian 비율 시작값 (0 = 순수 Gaussian)
+
+    # --- 6) 피크 높이 시작값 (스펙트럼 최대-최소 대비 비율) ------------------
+    height_scales:               # 순서: [LO, E2g, A1g, ZO, LA] 중 모델에 있는 피크
+      peak_2_model: [0.50, 0.90]
+      peak_3_model: [0.12, 0.50, 0.90]
+      peak_4_model: [0.12, 0.50, 0.90, 0.20]
+      peak_5_model: [0.12, 0.50, 0.90, 0.20, 0.20]
+
+    # --- 7) 모델별 피팅 구간과 baseline 기준 구간 (cm-1) -------------------
+    model_windows:
+      peak_2_model:
+        x_min: 350.0
+        x_max: 440.0
+        left_base: [355.0, 360.0]
+        right_base: [430.0, 435.0]
+      peak_3_model:
+        x_min: 350.0
+        x_max: 440.0
+        left_base: [355.0, 360.0]
+        right_base: [430.0, 435.0]
+      peak_4_model:
+        x_min: 350.0
+        x_max: 440.0
+        left_base: [355.0, 360.0]
+        right_base: [430.0, 435.0]
+      peak_5_model:
+        x_min: 350.0
+        x_max: 483.0
+        left_base: [350.0, 360.0]
+        right_base: [477.0, 483.0]
+
+    # --- 8) 직선 baseline -------------------------------------------------
+    baseline:
+      lock_by_model:             # true: 양 끝 구간으로 정한 직선을 거의 고정 / false: 같이 피팅
+        peak_2_model: false
+        peak_3_model: true
+        peak_4_model: true
+        peak_5_model: true
+      locked_rel_tol: 0.01       # 고정할 때 기울기/절편 허용 변화 (+-1%)
+      slope_bounds:              # 같이 피팅할 때 기울기 범위 = 추정값 +- max(min_half_width, slope_multiplier x |추정값|)
+        min_half_width: 2.0
+        slope_multiplier: 3.0
+      manual_refit_slope_bound: 2.0  # 수동 재피팅(manual refit)에서 기울기 범위 +- 이 값
+      default_edge_fraction: 0.1 # model_windows 가 없을 때 baseline 구간 = 구간 양 끝 10%
+      default_edge_min: 1.0      # 위 구간의 최소 폭
+
+    # --- 9) 피팅 전 신호 세기(SNR) 검사 -------------------------------------
+    # SNR = 피크 높이 / 노이즈 표준편차
+    prefit:
+      enabled: true              # false 이면 SNR 검사를 하지 않음
+      min_points: 8              # 스펙트럼 점이 이보다 적으면 검사 생략
+      peak_window_half_width: 2.5  # 피크 높이를 찾는 범위: 초기 위치 +- 이 값
+      noise_windows:             # 노이즈를 재는 구간 (피크가 없는 곳)
+        left: [350.0, 360.0]
+        right: [480.0, 490.0]
+      e2g_snr_hard_min: 2.0      # E2g SNR 이 이보다 작으면 attention
+      e2g_snr_soft_min: 4.0      # E2g SNR 이 이보다 작으면 attention (약한 경고)
+      a1g_snr_hard_min: 4.0      # A1g SNR 이 이보다 작으면 invalid (피팅 안 함)
+      a1g_snr_soft_min: 5.0      # A1g SNR 이 이보다 작으면 attention
+
+  # ---------------------------------------------------------------------------
+  # Si 520 cm-1 피크로 x 축 보정
+  # ---------------------------------------------------------------------------
+  si_calibration:
+    enabled: true
+    target_peak: 520.0           # Si 기준 위치 (cm-1)
+    window_min: 510.0            # Si 피크를 찾는 구간
+    window_max: 530.0
+    initial_width: 3.0           # Lorentzian 시작 폭
+    min_initial_width: 0.3       # 시작 폭 최소값
+    width_min: 0.1               # 폭 최소값
+    min_points: 5                # 구간 안 점이 이보다 적으면 보정 생략
+    max_abs_offset: 5.0          # 보정량이 이보다 크면 보정 실패로 보고 적용 안 함
+
+  # ---------------------------------------------------------------------------
+  # 피팅 결과 품질 표시 (해당되면 attention)
+  # ---------------------------------------------------------------------------
+  quality_flags:
+    r2_min: 0.95                 # R2 가 이보다 작으면 low_r2
+    rmse_outlier_sigma_k: 3.0    # RMSE 가 데이터셋 중앙값에서 k*sigma 이상 벗어나면 rmse_outlier
+    rmse_outlier_fallback_abs: 3.0  # 위 판정의 최소 허용 차이 (절대값)
+    fwhm_band_margin_ratio: 0.10 # 피크 폭 허용 범위를 양끝에서 이 비율만큼 좁힌 '정상 대역' 밖이면 표시
+
+  # ---------------------------------------------------------------------------
+  # 모델 선택 후 이상치 검사
+  # ---------------------------------------------------------------------------
+  post_selection_qc:
+    enabled: true
+    mahalanobis_outlier:
+      enabled: false             # 피크 위치/폭 다변량 이상치 검사 (기본 꺼짐)
+    mahalanobis_distance_threshold: 3.0
+    min_reference_valid_samples: 30   # 기준 통계를 만들 최소 valid 스펙트럼 수
+    covariance_regularization: 1.0e-6
+    # E2g-A1g 피크 간격(delta, cm-1) 검사
+    delta_outlier:
+      enabled: true
+      absolute_range:            # delta 가 이 범위를 벗어나면 action 적용
+        enabled: true
+        min: 15.0
+        max: 27.0
+        apply_statuses: [valid, attention]
+      reference_status: valid    # 통계 기준으로 쓸 스펙트럼 상태
+      apply_statuses: [valid, attention]
+      min_reference_samples: 30  # 통계 검사에 필요한 최소 스펙트럼 수
+      sigma_k: 6.0               # 중앙값에서 k*sigma 이상 벗어나면 이상치
+      fallback_abs: 3.0          # 위 판정의 최소 허용 차이 (cm-1)
+      action: invalid            # 이상치일 때 바꿀 상태: invalid 또는 attention
+
+pl:
+  # ---------------------------------------------------------------------------
+  # 모델 선택
+  # ---------------------------------------------------------------------------
+  # pl_single_pvoigt: 피크 1개 / pl_a_doublet_pvoigt: A-, A0 / pl_5_component_pvoigt: I1, I2, A-, A0, B
+  models: [pl_single_pvoigt, pl_a_doublet_pvoigt, pl_5_component_pvoigt]
+  selection_metric: hybrid       # aic / bic / rmse / hybrid
+  hybrid_weights:
+    aic: 0.4
+    bic: 0.4
+    rmse: 0.2
+
+  intensity_density_correction:
+    enabled: false               # nm -> eV 변환 시 세기에 Jacobian(hc/E^2) 보정을 할지
+
+  despike:                       # 우주선 등 뾰족한 스파이크 제거
+    enabled: true
+    kernel: 7                    # 중앙값 필터 크기 (점 개수, 홀수)
+    threshold: 6.0               # 주변(중앙값 필터) 대비 MAD 의 이 배수 이상 튀는 점을 스파이크로 제거
+
+  fit:
+    x_unit: eV
+    x_min: 1.38                  # 피팅 구간 (eV)
+    x_max: 2.33
+    compare_x_min: 1.38          # 모델 비교 구간
+    compare_x_max: 2.33
+    min_roi_points: 20
+    min_spectrum_points: 20
+
+    # 단일 피크 모델(pl_single_*)에서 쓰는 범위
+    pl_center_init: 1.85
+    pl_center_min: 1.50
+    pl_center_max: 2.15
+    pl_sigma_min: 0.002
+    pl_sigma_max: 0.20
+
+    # A- (trion) / A0 (exciton) 관계
+    a_minus_a0_split:            # A0 - A- 에너지 차이 (eV)
+      enabled: true
+      init: 0.030
+      min: 0.015
+      max: 0.055
+    trion_exciton_fwhm_ratio:    # FWHM(A-) / FWHM(A0)
+      enabled: true
+      init: 1.35
+      min: 1.05
+      max: 2.50
+    share_exciton_fraction: true # A- 와 A0 의 pseudo-Voigt 비율을 같게 묶음
+
+    # 모델별로 쓰는 성분
+    model_components:
+      pl_single_pvoigt: [pl]
+      pl_a_doublet_pvoigt: [a_minus, a0]
+      pl_5_component_pvoigt: [i1, i2, a_minus, a0, b]
+
+    # 성분별 위치 / 폭 (eV). height_scale 은 높이 시작값(최대-하위20% 대비 비율)
+    components:
+      pl:
+        label: PL
+        profile: pvoigt
+        center_init: 1.85
+        center_min: 1.50
+        center_max: 2.15
+        fwhm_init: 0.12
+        fwhm_min: 0.004
+        fwhm_max: 0.40
+        height_scale: 1.0
+        fraction_init: 0.5
+      i1:
+        label: I1
+        profile: pvoigt
+        center_init: 1.51
+        center_min: 1.40
+        center_max: 1.58
+        fwhm_init: 0.13
+        fwhm_min: 0.03
+        fwhm_max: 0.28
+        height_scale: 0.15
+        fraction_init: 0.5
+      i2:
+        label: I2
+        profile: pvoigt
+        center_init: 1.63
+        center_min: 1.54
+        center_max: 1.76
+        fwhm_init: 0.18
+        fwhm_min: 0.04
+        fwhm_max: 0.35
+        height_scale: 0.20
+        fraction_init: 0.5
+      a_minus:
+        label: A-
+        profile: pvoigt
+        center_init: 1.835
+        center_min: 1.76
+        center_max: 1.88
+        fwhm_init: 0.095
+        fwhm_min: 0.035
+        fwhm_max: 0.16
+        height_scale: 1.0
+        fraction_init: 0.5
+      a0:
+        label: A0
+        profile: pvoigt
+        center_init: 1.865
+        center_min: 1.80
+        center_max: 1.93
+        fwhm_init: 0.055
+        fwhm_min: 0.020
+        fwhm_max: 0.095
+        height_scale: 0.30
+        fraction_init: 0.5
+      b:
+        label: B
+        profile: pvoigt
+        center_init: 2.000
+        center_min: 1.93
+        center_max: 2.10
+        fwhm_init: 0.135
+        fwhm_min: 0.04
+        fwhm_max: 0.28
+        height_scale: 0.25
+        fraction_init: 0.5
+
+    # 성분 높이 시작값을 정할 때 쓰는 값
+    seed:
+      baseline_percentile: 20.0  # 스펙트럼 하위 이 퍼센트 값을 바닥으로 봄
+      local_half_width_min: 0.02 # 성분 주변에서 피크를 찾는 최소 반폭 (eV)
+      amplitude_floor_fraction: 0.01  # 면적 하한 = 시작 면적 x 이 비율
+
+    # baseline 기준 구간 = 피팅 구간 양 끝 (default_edge_fraction), 최소 폭 default_edge_min
+    baseline:
+      default_edge_fraction: 0.1
+      default_edge_min: 1.0
+
+    # 피팅 후 남은 좁은 스파이크 의심 (해당되면 attention)
+    spike_check:
+      residual_sigma_k: 12.0     # 잔차가 잔차 노이즈의 k 배를 넘고
+      span_ratio: 0.60           # 동시에 신호 크기(5~95% 범위)의 이 비율도 넘으면 표시
+
+  quality_flags:
+    r2_min: 0.95
+    rmse_outlier_sigma_k: 3.0
+    rmse_outlier_fallback_abs: 3.0
+    fwhm_band_margin_ratio: 0.10
+    fwhm_check_components: [a_minus, a0]  # 폭 '정상 대역' 검사를 할 성분
+
+review:
+  confidence_threshold: 0.8      # 신뢰도 점수가 이보다 낮으면 검토 대상
+  high_rmse_threshold: 0.2       # RMSE 가 이보다 크면 high_rmse 표시 (판정은 안 바꿈)
+
+raman_graph:
+  sample_comparison:
+    # 변형(strain)/도핑 분리 선형 모델
+    #   dE2g = s_e * strain(%) + d_e * n(1e13 cm-2)
+    #   dA1g = s_a * strain(%) + d_a * n(1e13 cm-2)
+    # 문헌/보정 실험값으로 바꿔 쓰세요. (GUI 사이드바에서 임시로 바꿀 수도 있음)
+    coefficients:
+      s_e: -6.48                 # cm-1 / %
+      s_a: -1.21                 # cm-1 / %
+      d_e: -0.33                 # cm-1 / 1e13 cm-2
+      d_a: -2.22                 # cm-1 / 1e13 cm-2
+    absolute_isolines:
+      eps_range: [-2.0, 2.0]     # 그래프에 그리는 strain 범위 (%)
+      n_range: [-3.0, 3.0]       # 그래프에 그리는 도핑 범위 (1e13 cm-2)
+
+  all_spectra_viewer:
+    fwhm_warn:                   # 이 범위를 벗어난 FWHM 은 표에 (!) 표시
+      raman_min: 3.0             # cm-1
+      raman_max: 60.0            # cm-1
+      pl_max: 0.5                # eV
+
+  # Flagged Spectra 화면의 슬라이더 초기값 (화면에서 바로 바꿀 수도 있음)
+  flagged_spectra:
+    legacy_thresholds:
+      rmse_threshold: 15.0
+      r2_lower_bound: 0.98
+      delta_max: 25.0

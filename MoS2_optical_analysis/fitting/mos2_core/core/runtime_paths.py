@@ -37,19 +37,19 @@ def raman_config_dir() -> Path:
     return runtime_resource_root() / "fitting" / "mos2_raman" / "config"
 
 
-THRESHOLDS_FILENAME = "thresholds.yaml"
+USER_CONFIG_FILENAME = "config.yaml"
 
 
-def thresholds_path() -> Path:
+def user_config_path() -> Path:
     """
-    Resolve the user-editable thresholds file merged into every pipeline config.
+    Resolve the user-editable config.yaml merged over every pipeline config section.
 
-    - Source run: workspace root `thresholds.yaml`.
-    - Frozen run: `thresholds.yaml` next to the exe; if the user removed it,
+    - Source run: workspace root `config.yaml`.
+    - Frozen run: `config.yaml` next to the exe; if the user removed it,
       fall back to the bundled copy in `_internal`.
     """
     if getattr(sys, "frozen", False):
-        external = Path(sys.executable).resolve().parent / THRESHOLDS_FILENAME
+        external = Path(sys.executable).resolve().parent / USER_CONFIG_FILENAME
         if external.exists():
             return external
-    return runtime_resource_root() / THRESHOLDS_FILENAME
+    return runtime_resource_root() / USER_CONFIG_FILENAME

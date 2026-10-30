@@ -18,7 +18,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
 DIST_README = PROJECT_ROOT / "PACKAGING_DIST_README.md"
-THRESHOLDS = PROJECT_ROOT / "thresholds.yaml"
+USER_CONFIG = PROJECT_ROOT / "config.yaml"
 
 
 def _safe_collect_data_files(package: str, **kwargs):
@@ -54,9 +54,9 @@ datas += _safe_collect_data_files("streamlit")
 datas += _safe_collect_data_files("fitting.mos2_raman", includes=["config/*.yaml"])
 datas += _safe_collect_data_files("fitting.mos2_pl", includes=["config/*.yaml"])
 
-# Default thresholds bundled in `_internal` as the fallback when the user removes
-# the editable copy next to the exe (see runtime_paths.thresholds_path()).
-datas.append((str(THRESHOLDS), "."))
+# Default config.yaml bundled in `_internal` as the fallback when the user removes
+# the editable copy next to the exe (see runtime_paths.user_config_path()).
+datas.append((str(USER_CONFIG), "."))
 
 # Minimal user-facing usage note shipped in distribution root.
 if DIST_README.exists():
@@ -222,5 +222,5 @@ for modality in ("raman", "pl"):
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / "_PUT_SAMPLE_FOLDERS_HERE.md").write_text(RAW_PLACEHOLDER, encoding="utf-8")
 
-# User-editable thresholds next to the exe (read before the bundled copy).
-shutil.copy2(THRESHOLDS, Path(DISTPATH) / "mos2-analysis" / THRESHOLDS.name)
+# User-editable config.yaml next to the exe (read before the bundled copy).
+shutil.copy2(USER_CONFIG, Path(DISTPATH) / "mos2-analysis" / USER_CONFIG.name)

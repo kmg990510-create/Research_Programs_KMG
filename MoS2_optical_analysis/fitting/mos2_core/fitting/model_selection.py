@@ -63,13 +63,31 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
             return [0.0 for _ in values]
         return [(v - vmin) / (vmax - vmin) for v in values]
 
-    def _hybrid_score(self, candidate: FitCandidate, normalized_cache: dict[str, dict[str, float]]) -> float:
+    @staticmethod
+    def _hybrid_weights(modality: str, context: PipelineContext) -> tuple[float, float, float]:
+        # Default prioritizes information criteria while still penalizing residual error.
+        section = context.config.get(modality, {}) if isinstance(context.config, dict) else {}
+        weights = section.get("hybrid_weights", {}) if isinstance(section, dict) else {}
+        if not isinstance(weights, dict):
+            weights = {}
+        return (
+            float(weights.get("aic", 0.4)),
+            float(weights.get("bic", 0.4)),
+            float(weights.get("rmse", 0.2)),
+        )
+
+    def _hybrid_score(
+        self,
+        candidate: FitCandidate,
+        normalized_cache: dict[str, dict[str, float]],
+        weights: tuple[float, float, float] = (0.4, 0.4, 0.2),
+    ) -> float:
         name = candidate.model_name
         aic = normalized_cache["aic"].get(name, 1.0)
         bic = normalized_cache["bic"].get(name, 1.0)
         rmse = normalized_cache["rmse"].get(name, 1.0)
-        # prioritize information criteria while still penalizing residual error
-        return 0.4 * aic + 0.4 * bic + 0.2 * rmse
+        w_aic, w_bic, w_rmse = weights
+        return w_aic * aic + w_bic * bic + w_rmse * rmse
 
     def run(
         self,
@@ -100,6 +118,7 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
             ranked_pool = selectable_candidates if selectable_candidates else list(result.candidates)
 
             if metric_name == "hybrid":
+                weights = self._hybrid_weights(result.modality, context)
                 aic_values = [self._safe_metric(c, "aic") for c in ranked_pool]
                 bic_values = [self._safe_metric(c, "bic") for c in ranked_pool]
                 rmse_values = [self._safe_metric(c, "rmse") for c in ranked_pool]
@@ -115,12 +134,12 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
 
                 ranked = sorted(
                     ranked_pool,
-                    key=lambda c: self._hybrid_score(c, cache),
+                    key=lambda c: self._hybrid_score(c, cache, weights),
                 )
                 best = ranked[0]
                 rationale = (
                     "selected_by_hybrid_score:"
-                    f"{self._hybrid_score(best, cache):.6f}"
+                    f"{self._hybrid_score(best, cache, weights):.6f}"
                     f"(aic={self._safe_metric(best, 'aic'):.3f},"
                     f"bic={self._safe_metric(best, 'bic'):.3f},"
                     f"rmse={self._safe_metric(best, 'rmse'):.3f})"
@@ -129,7 +148,7 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
                 ranking_table[spectrum_id] = [
                     {
                         "model_name": c.model_name,
-                        "hybrid_score": self._hybrid_score(c, cache),
+                        "hybrid_score": self._hybrid_score(c, cache, weights),
                         "aic": self._safe_metric(c, "aic"),
                         "bic": self._safe_metric(c, "bic"),
                         "rmse": self._safe_metric(c, "rmse"),

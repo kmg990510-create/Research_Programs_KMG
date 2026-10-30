@@ -1,3 +1,2 @@
-# confidence_threshold lives in thresholds.yaml.
-# Review queue and manual review configuration
+# Review queue settings. confidence_threshold / high_rmse_threshold live in the root config.yaml.
 auto_approve_stub: true

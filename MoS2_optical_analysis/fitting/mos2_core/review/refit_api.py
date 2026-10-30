@@ -462,7 +462,7 @@ class SingleSpectrumRefitAPI:
         mask = fitter._mask_roi(x_full, spec.x_min, spec.x_max)  # noqa: SLF001
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError(f"Insufficient ROI points for model {model_name}")
 
         baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
@@ -491,8 +491,8 @@ class SingleSpectrumRefitAPI:
 
         params = model.make_params()
         if spec.lock_baseline:
-            a_eps = max(1.0e-8, abs(baseline_slope) * 0.01)
-            b_eps = max(1.0e-8, abs(baseline_intercept) * 0.01)
+            a_eps = max(1.0e-8, abs(baseline_slope) * cfg.locked_baseline_rel_tol)
+            b_eps = max(1.0e-8, abs(baseline_intercept) * cfg.locked_baseline_rel_tol)
             params["bg_slope"].set(value=baseline_slope, min=baseline_slope - a_eps, max=baseline_slope + a_eps)
             params["bg_intercept"].set(
                 value=baseline_intercept,
@@ -500,7 +500,8 @@ class SingleSpectrumRefitAPI:
                 max=baseline_intercept + b_eps,
             )
         else:
-            params["bg_slope"].set(value=baseline_slope, min=-2.0, max=2.0)
+            slope_bound = cfg.manual_refit_bg_slope_bound
+            params["bg_slope"].set(value=baseline_slope, min=-slope_bound, max=slope_bound)
             params["bg_intercept"].set(value=baseline_intercept)
 
         for idx, label in enumerate(spec.peak_labels):
@@ -511,7 +512,8 @@ class SingleSpectrumRefitAPI:
             center_guess = float(spec.center_guesses[idx])
             width_guess = float(spec.width_guesses[idx])
             height_guess = float(spec.height_scales[idx] * h_guess)
-            fraction_guess = _to_float(parameter_overrides.get(f"{peak_key}_fraction"), default=0.0) or 0.0
+            fraction_guess = _to_float(parameter_overrides.get(f"{peak_key}_fraction"), default=cfg.fraction_init)
+            fraction_guess = float(cfg.fraction_init if fraction_guess is None else fraction_guess)
 
             if peak_override is not None:
                 if peak_override.center is not None:

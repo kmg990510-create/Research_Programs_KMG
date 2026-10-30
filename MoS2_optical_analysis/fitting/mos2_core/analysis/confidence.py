@@ -26,6 +26,7 @@ class SimpleConfidenceScorer(ConfidenceScoringStage):
     ) -> Mapping[str, ConfidenceResult]:
         review_cfg = context.config.get("review", {})
         threshold = float(review_cfg.get("confidence_threshold", self.threshold))
+        high_rmse_threshold = float(review_cfg.get("high_rmse_threshold", 0.2))
 
         output: dict[str, ConfidenceResult] = {}
         for spectrum_id, selection in selections.items():
@@ -49,7 +50,7 @@ class SimpleConfidenceScorer(ConfidenceScoringStage):
 
             if score < threshold:
                 reasons.append("low_confidence_score")
-            if rmse > 0.2:
+            if rmse > high_rmse_threshold:
                 reasons.append("high_rmse")
 
             output[spectrum_id] = ConfidenceResult(

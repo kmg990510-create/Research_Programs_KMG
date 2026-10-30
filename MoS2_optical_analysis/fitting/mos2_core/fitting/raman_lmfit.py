@@ -5,7 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -24,6 +24,23 @@ class NPeakWindowSpec:
     x_max: float
     left_base: tuple[float, float]
     right_base: tuple[float, float]
+
+
+# Historical fit constants. Each one can be overridden from the root config.yaml
+# (`{raman,pl}.fit...`); these defaults keep the original behaviour when a key is absent.
+_DEFAULT_SIGMA_INIT_BY_PEAK = {"lo": 7.0, "e2g": 3.0, "a1g": 3.0, "zo": 4.0, "la": 8.0}
+_DEFAULT_LOCK_BASELINE_BY_MODEL = {
+    "peak_2_model": False,
+    "peak_3_model": True,
+    "peak_4_model": True,
+    "peak_5_model": True,
+}
+_DEFAULT_OFFSET_BOUNDS = {
+    "lo_from_e2g": {"min": 0.5, "max": 10.0},
+    "zo_from_a1g": {"min": 0.5, "max_floor": 20.0, "max_margin": 10.0},
+    "la_from_a1g": {"min": 0.5, "max_floor": 70.0, "max_margin": 20.0},
+    "chain": {"guess_floor": 1.0, "min": 0.5, "max": 60.0},
+}
 
 
 @dataclass(slots=True)
@@ -60,6 +77,24 @@ class RamanFitConfig:
     pl_share_exciton_fraction: bool
     pl_spike_residual_sigma_k: float = 12.0
     pl_spike_span_ratio: float = 0.60
+    sigma_init_by_peak: dict[str, float] = field(default_factory=lambda: dict(_DEFAULT_SIGMA_INIT_BY_PEAK))
+    fraction_init: float = 0.0
+    lock_baseline_by_model: dict[str, bool] = field(default_factory=lambda: dict(_DEFAULT_LOCK_BASELINE_BY_MODEL))
+    locked_baseline_rel_tol: float = 0.01
+    bg_slope_min_half_width: float = 2.0
+    bg_slope_multiplier: float = 3.0
+    manual_refit_bg_slope_bound: float = 2.0
+    baseline_edge_fraction: float = 0.1
+    baseline_edge_min: float = 1.0
+    anchor_fallback_half_window: float = 0.5
+    offset_bounds: dict[str, dict[str, float]] = field(
+        default_factory=lambda: {k: dict(v) for k, v in _DEFAULT_OFFSET_BOUNDS.items()}
+    )
+    min_roi_points: int = 20
+    min_spectrum_points: int = 20
+    pl_seed_baseline_percentile: float = 20.0
+    pl_seed_local_half_width_min: float = 0.02
+    pl_amplitude_floor_fraction: float = 0.01
 
 
 @dataclass(slots=True)
@@ -74,6 +109,7 @@ class PreFitConfig:
     a1g_snr_soft_min: float
     noise_left: tuple[float, float]
     noise_right: tuple[float, float]
+    min_points: int = 8
 
 
 @dataclass(slots=True)
@@ -415,18 +451,30 @@ def _resolve_prefit_config(raw: Any) -> PreFitConfig:
         a1g_snr_soft_min=max(_finite(raw.get("a1g_snr_soft_min", raw.get("snr_soft_min", 4.0)), 4.0), 0.1),
         noise_left=_resolve_window_pair(noise.get("left"), default=(350.0, 360.0)),
         noise_right=_resolve_window_pair(noise.get("right"), default=(430.0, 440.0)),
+        min_points=int(_finite(raw.get("min_points", 8), 8)),
     )
 
 
-def _default_baseline_windows_from_roi(x_min: float, x_max: float) -> tuple[tuple[float, float], tuple[float, float]]:
+def _default_baseline_windows_from_roi(
+    x_min: float,
+    x_max: float,
+    edge_fraction: float = 0.1,
+    edge_min: float = 1.0,
+) -> tuple[tuple[float, float], tuple[float, float]]:
     span = max(float(x_max) - float(x_min), 1.0)
-    edge = max(1.0, 0.1 * span)
+    edge = max(float(edge_min), float(edge_fraction) * span)
     left = (float(x_min), float(x_min + edge))
     right = (float(x_max - edge), float(x_max))
     return left, right
 
 
-def _resolve_model_windows(raw: Any, global_x_min: float, global_x_max: float) -> dict[str, NPeakWindowSpec]:
+def _resolve_model_windows(
+    raw: Any,
+    global_x_min: float,
+    global_x_max: float,
+    edge_fraction: float = 0.1,
+    edge_min: float = 1.0,
+) -> dict[str, NPeakWindowSpec]:
     if not isinstance(raw, dict):
         return {}
 
@@ -444,7 +492,7 @@ def _resolve_model_windows(raw: Any, global_x_min: float, global_x_max: float) -
             x_min = float(x_min)
             x_max = float(x_max)
 
-        default_left, default_right = _default_baseline_windows_from_roi(x_min, x_max)
+        default_left, default_right = _default_baseline_windows_from_roi(x_min, x_max, edge_fraction, edge_min)
         left_base = _resolve_window_pair(spec.get("left_base"), default=default_left)
         right_base = _resolve_window_pair(spec.get("right_base"), default=default_right)
         resolved[model_name] = NPeakWindowSpec(
@@ -514,9 +562,13 @@ def _estimate_linear_baseline_edges(
     return float(coeff[0]), float(coeff[1])
 
 
-def _bg_slope_bounds(baseline_slope: float) -> dict[str, float]:
+def _bg_slope_bounds(
+    baseline_slope: float,
+    min_half_width: float = 2.0,
+    multiplier: float = 3.0,
+) -> dict[str, float]:
     """Slope search range centred on the edge estimate so steep backgrounds are not clamped."""
-    half_width = max(2.0, 3.0 * abs(baseline_slope))
+    half_width = max(float(min_half_width), float(multiplier) * abs(baseline_slope))
     return {"min": baseline_slope - half_width, "max": baseline_slope + half_width}
 
 
@@ -556,13 +608,22 @@ def _window_peak_height(
     return prominence, float(xw[peak_idx])
 
 
+def _sigma_init_guesses(cfg: RamanFitConfig, labels: Sequence[str]) -> list[float]:
+    return [
+        float(cfg.sigma_init_by_peak.get(label.lower(), _DEFAULT_SIGMA_INIT_BY_PEAK[label.lower()]))
+        for label in labels
+    ]
+
+
 def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
     lo_init = cfg.e2g_init + cfg.lo_offset_from_e2g
     zo_init = cfg.a1g_init + cfg.zo_offset_from_a1g
     la_init = cfg.a1g_init + cfg.la_offset_from_a1g
     window = cfg.model_windows.get(model_name)
     if window is None:
-        default_left, default_right = _default_baseline_windows_from_roi(cfg.x_min, cfg.x_max)
+        default_left, default_right = _default_baseline_windows_from_roi(
+            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
+        )
         window = NPeakWindowSpec(
             x_min=float(cfg.x_min),
             x_max=float(cfg.x_max),
@@ -577,14 +638,14 @@ def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
             model_name=model_name,
             peak_labels=["E2g", "A1g"],
             center_guesses=[cfg.e2g_init, cfg.a1g_init],
-            width_guesses=[3.0, 3.0],
+            width_guesses=_sigma_init_guesses(cfg, ["E2g", "A1g"]),
             height_scales=height_scales,
             x_min=window.x_min,
             x_max=window.x_max,
             left_base=window.left_base,
             right_base=window.right_base,
             center_tolerance=center_tolerance,
-            lock_baseline=False,
+            lock_baseline=cfg.lock_baseline_by_model.get(model_name, False),
         )
 
     if model_name == "peak_3_model":
@@ -594,14 +655,14 @@ def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
             model_name=model_name,
             peak_labels=["LO", "E2g", "A1g"],
             center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init],
-            width_guesses=[7.0, 3.0, 3.0],
+            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g"]),
             height_scales=height_scales,
             x_min=window.x_min,
             x_max=window.x_max,
             left_base=window.left_base,
             right_base=window.right_base,
             center_tolerance=center_tolerance,
-            lock_baseline=True,
+            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
         )
 
     if model_name == "peak_4_model":
@@ -611,14 +672,14 @@ def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
             model_name=model_name,
             peak_labels=["LO", "E2g", "A1g", "ZO"],
             center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init, zo_init],
-            width_guesses=[7.0, 3.0, 3.0, 4.0],
+            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g", "ZO"]),
             height_scales=height_scales,
             x_min=window.x_min,
             x_max=window.x_max,
             left_base=window.left_base,
             right_base=window.right_base,
             center_tolerance=center_tolerance,
-            lock_baseline=True,
+            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
         )
 
     if model_name == "peak_5_model":
@@ -628,14 +689,14 @@ def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
             model_name=model_name,
             peak_labels=["LO", "E2g", "A1g", "ZO", "LA"],
             center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init, zo_init, la_init],
-            width_guesses=[7.0, 3.0, 3.0, 4.0, 8.0],
+            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g", "ZO", "LA"]),
             height_scales=height_scales,
             x_min=window.x_min,
             x_max=window.x_max,
             left_base=window.left_base,
             right_base=window.right_base,
             center_tolerance=center_tolerance,
-            lock_baseline=True,
+            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
         )
 
     raise ValueError(f"Unsupported n-peak model: {model_name}")
@@ -758,6 +819,31 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         pl_spike_residual_sigma_k = _finite(spike_check_cfg.get("residual_sigma_k", 12.0), 12.0)
         pl_spike_span_ratio = _finite(spike_check_cfg.get("span_ratio", 0.60), 0.60)
 
+        def _section(key: str) -> dict[str, Any]:
+            value = fit_cfg.get(key, {})
+            return value if isinstance(value, dict) else {}
+
+        sigma_init_by_peak = dict(_DEFAULT_SIGMA_INIT_BY_PEAK)
+        for peak_key, value in _section("sigma_init_by_peak").items():
+            sigma_init_by_peak[str(peak_key).lower()] = _finite(value, sigma_init_by_peak.get(str(peak_key).lower(), 3.0))
+        baseline_cfg = _section("baseline")
+        lock_baseline_by_model = dict(_DEFAULT_LOCK_BASELINE_BY_MODEL)
+        lock_cfg = baseline_cfg.get("lock_by_model", {})
+        if isinstance(lock_cfg, dict):
+            lock_baseline_by_model.update({str(k): bool(v) for k, v in lock_cfg.items()})
+        slope_cfg = baseline_cfg.get("slope_bounds", {})
+        if not isinstance(slope_cfg, dict):
+            slope_cfg = {}
+        baseline_edge_fraction = _finite(baseline_cfg.get("default_edge_fraction", 0.1), 0.1)
+        baseline_edge_min = _finite(baseline_cfg.get("default_edge_min", 1.0), 1.0)
+        offset_bounds = {k: dict(v) for k, v in _DEFAULT_OFFSET_BOUNDS.items()}
+        for bound_key, bound_cfg in _section("offset_bounds").items():
+            if bound_key in offset_bounds and isinstance(bound_cfg, dict):
+                for item_key, item_value in bound_cfg.items():
+                    if item_key in offset_bounds[bound_key]:
+                        offset_bounds[bound_key][item_key] = _finite(item_value, offset_bounds[bound_key][item_key])
+        seed_cfg = _section("seed")
+
         return RamanFitConfig(
             models=models,
             x_min=x_min,
@@ -806,6 +892,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 fit_cfg.get("model_windows", {}),
                 global_x_min=x_min,
                 global_x_max=x_max,
+                edge_fraction=baseline_edge_fraction,
+                edge_min=baseline_edge_min,
             ),
             pl_components=_resolve_pl_components(fit_cfg.get("components", fit_cfg.get("pl_components", {}))),
             pl_model_components=_resolve_pl_model_components(fit_cfg.get("model_components", {})),
@@ -814,6 +902,22 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             pl_share_exciton_fraction=pl_share_exciton_fraction,
             pl_spike_residual_sigma_k=pl_spike_residual_sigma_k,
             pl_spike_span_ratio=pl_spike_span_ratio,
+            sigma_init_by_peak=sigma_init_by_peak,
+            fraction_init=float(np.clip(_finite(fit_cfg.get("fraction_init", 0.0), 0.0), 0.0, 1.0)),
+            lock_baseline_by_model=lock_baseline_by_model,
+            locked_baseline_rel_tol=_finite(baseline_cfg.get("locked_rel_tol", 0.01), 0.01),
+            bg_slope_min_half_width=_finite(slope_cfg.get("min_half_width", 2.0), 2.0),
+            bg_slope_multiplier=_finite(slope_cfg.get("slope_multiplier", 3.0), 3.0),
+            manual_refit_bg_slope_bound=_finite(baseline_cfg.get("manual_refit_slope_bound", 2.0), 2.0),
+            baseline_edge_fraction=baseline_edge_fraction,
+            baseline_edge_min=baseline_edge_min,
+            anchor_fallback_half_window=_finite(two_stage_anchor_cfg.get("fallback_half_window", 0.5), 0.5),
+            offset_bounds=offset_bounds,
+            min_roi_points=int(_finite(fit_cfg.get("min_roi_points", 20), 20)),
+            min_spectrum_points=int(_finite(fit_cfg.get("min_spectrum_points", 20), 20)),
+            pl_seed_baseline_percentile=_finite(seed_cfg.get("baseline_percentile", 20.0), 20.0),
+            pl_seed_local_half_width_min=_finite(seed_cfg.get("local_half_width_min", 0.02), 0.02),
+            pl_amplitude_floor_fraction=_finite(seed_cfg.get("amplitude_floor_fraction", 0.01), 0.01),
         )
 
     @staticmethod
@@ -1055,7 +1159,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError(f"Insufficient ROI points for PL model {model_name}")
 
         if model_name == "pl_single_pvoigt":
@@ -1069,7 +1173,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
 
         model = LinearModel(prefix="bg_") + peak_model
         params = model.make_params()
-        left_base, right_base = _default_baseline_windows_from_roi(cfg.x_min, cfg.x_max)
+        left_base, right_base = _default_baseline_windows_from_roi(
+            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
+        )
         baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
             x_fit, y_fit, left_base, right_base
         )
@@ -1131,7 +1237,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError(f"Insufficient ROI points for PL model {model_name}")
 
         selected_components: list[PLComponentSpec] = []
@@ -1151,21 +1257,23 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 model = model + PseudoVoigtModel(prefix=prefix)
 
         params = model.make_params()
-        left_base, right_base = _default_baseline_windows_from_roi(cfg.x_min, cfg.x_max)
+        left_base, right_base = _default_baseline_windows_from_roi(
+            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
+        )
         baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
             x_fit, y_fit, left_base, right_base
         )
         params["bg_slope"].set(value=baseline_slope)
         params["bg_intercept"].set(value=baseline_intercept)
 
-        y_low = float(np.percentile(y_fit, 20))
+        y_low = float(np.percentile(y_fit, cfg.pl_seed_baseline_percentile))
         dynamic_height = max(float(np.max(y_fit) - y_low), 1.0e-6)
         for spec in selected_components:
             prefix = f"{spec.key}_"
             local_half_width = max(
                 float(spec.center_init - spec.center_min),
                 float(spec.center_max - spec.center_init),
-                0.02,
+                cfg.pl_seed_local_half_width_min,
             )
             local_height, local_center = _window_peak_height(
                 x_fit,
@@ -1183,7 +1291,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 fraction_guess=fraction_guess,
             )
 
-            amplitude_floor = max(spec.amplitude_min, area_guess_lmfit * 0.01, 1.0e-3)
+            amplitude_floor = max(spec.amplitude_min, area_guess_lmfit * cfg.pl_amplitude_floor_fraction, 1.0e-3)
             params[f"{prefix}center"].set(
                 value=center_guess,
                 min=spec.center_min,
@@ -1474,7 +1582,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError("Insufficient ROI points for two-peak model")
 
         model = self._build_two_peak_model(model_name)
@@ -1538,7 +1646,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         mask = self._mask_roi(x_full, spec.x_min, spec.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError(f"Insufficient ROI points for model {model_name}")
 
         baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
@@ -1557,8 +1665,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         params["bg_slope"].set(value=baseline_slope)
         params["bg_intercept"].set(value=baseline_intercept)
         if spec.lock_baseline:
-            a_eps = max(1.0e-8, abs(baseline_slope) * 0.01)
-            b_eps = max(1.0e-8, abs(baseline_intercept) * 0.01)
+            a_eps = max(1.0e-8, abs(baseline_slope) * cfg.locked_baseline_rel_tol)
+            b_eps = max(1.0e-8, abs(baseline_intercept) * cfg.locked_baseline_rel_tol)
             params["bg_slope"].set(value=baseline_slope, min=baseline_slope - a_eps, max=baseline_slope + a_eps)
             params["bg_intercept"].set(
                 value=baseline_intercept,
@@ -1566,7 +1674,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 max=baseline_intercept + b_eps,
             )
         else:
-            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope))
+            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope, cfg.bg_slope_min_half_width, cfg.bg_slope_multiplier))
             params["bg_intercept"].set(value=baseline_intercept)
 
         anchor_mode = (
@@ -1581,7 +1689,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             width_guess = spec.width_guesses[idx]
             height_scale = spec.height_scales[idx]
             height_guess_scaled = height_scale * h_guess
-            fraction_guess = 0.0
+            fraction_guess = float(cfg.fraction_init)
             area_guess_lmfit = _height_guess_to_lmfit_area(
                 height_guess=height_guess_scaled,
                 sigma_guess=width_guess,
@@ -1610,7 +1718,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     center_min = max(center_min, center_guess - cfg.two_stage_anchor_window)
                     center_max = min(center_max, center_guess + cfg.two_stage_anchor_window)
                     if center_max <= center_min:
-                        center_min, center_max = center_guess - 0.5, center_guess + 0.5
+                        center_min = center_guess - cfg.anchor_fallback_half_window
+                        center_max = center_guess + cfg.anchor_fallback_half_window
 
             anchor_locked = anchor_mode and label in {"E2g", "A1g"}
             center_name = f"{prefix}center"
@@ -1622,20 +1731,23 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     params[center_name].set(value=center_guess, min=center_min, max=center_max)
                 elif label == "LO" and "E2g" in prefix_for_label:
                     delta_name = "d_lo_from_e2g"
-                    delta_guess = max(abs(float(cfg.lo_offset_from_e2g)), 0.5)
-                    params.add(delta_name, value=delta_guess, min=0.5, max=10.0)
+                    lo_bounds = cfg.offset_bounds["lo_from_e2g"]
+                    delta_guess = max(abs(float(cfg.lo_offset_from_e2g)), lo_bounds["min"])
+                    params.add(delta_name, value=delta_guess, min=lo_bounds["min"], max=lo_bounds["max"])
                     params[center_name].set(expr=f"{prefix_for_label['E2g']}center - {delta_name}")
                 elif label == "ZO" and "A1g" in prefix_for_label:
                     delta_name = "d_zo_from_a1g"
-                    delta_guess = max(abs(float(cfg.zo_offset_from_a1g)), 0.5)
-                    delta_max = max(20.0, delta_guess + 10.0)
-                    params.add(delta_name, value=delta_guess, min=0.5, max=delta_max)
+                    zo_bounds = cfg.offset_bounds["zo_from_a1g"]
+                    delta_guess = max(abs(float(cfg.zo_offset_from_a1g)), zo_bounds["min"])
+                    delta_max = max(zo_bounds["max_floor"], delta_guess + zo_bounds["max_margin"])
+                    params.add(delta_name, value=delta_guess, min=zo_bounds["min"], max=delta_max)
                     params[center_name].set(expr=f"{prefix_for_label['A1g']}center + {delta_name}")
                 elif label == "LA" and "A1g" in prefix_for_label:
                     delta_name = "d_la_from_a1g"
-                    delta_guess = max(abs(float(cfg.la_offset_from_a1g)), 0.5)
-                    delta_max = max(70.0, delta_guess + 20.0)
-                    params.add(delta_name, value=delta_guess, min=0.5, max=delta_max)
+                    la_bounds = cfg.offset_bounds["la_from_a1g"]
+                    delta_guess = max(abs(float(cfg.la_offset_from_a1g)), la_bounds["min"])
+                    delta_max = max(la_bounds["max_floor"], delta_guess + la_bounds["max_margin"])
+                    params.add(delta_name, value=delta_guess, min=la_bounds["min"], max=delta_max)
                     params[center_name].set(expr=f"{prefix_for_label['A1g']}center + {delta_name}")
                 elif idx == 0:
                     params[center_name].set(value=center_guess, min=center_min, max=center_max)
@@ -1643,9 +1755,10 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     prev_label = spec.peak_labels[idx - 1]
                     prev_prefix = prefix_for_label[prev_label]
                     prev_guess = spec.center_guesses[idx - 1]
-                    delta_guess = max(center_guess - prev_guess, 1.0)
+                    chain = cfg.offset_bounds["chain"]
+                    delta_guess = max(center_guess - prev_guess, chain["guess_floor"])
                     delta_name = f"d_{prev_label.lower()}_{label.lower()}"
-                    params.add(delta_name, value=delta_guess, min=0.5, max=60.0)
+                    params.add(delta_name, value=delta_guess, min=chain["min"], max=chain["max"])
                     params[center_name].set(expr=f"{prev_prefix}center + {delta_name}")
             elif idx == 0 or not cfg.enforce_peak_order or anchor_locked:
                 params[center_name].set(value=center_guess, min=center_min, max=center_max)
@@ -1653,9 +1766,10 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 prev_label = spec.peak_labels[idx - 1]
                 prev_prefix = prefix_for_label[prev_label]
                 prev_guess = spec.center_guesses[idx - 1]
-                delta_guess = max(center_guess - prev_guess, 1.0)
+                chain = cfg.offset_bounds["chain"]
+                delta_guess = max(center_guess - prev_guess, chain["guess_floor"])
                 delta_name = f"d_{prev_label.lower()}_{label.lower()}"
-                params.add(delta_name, value=delta_guess, min=0.5, max=60.0)
+                params.add(delta_name, value=delta_guess, min=chain["min"], max=chain["max"])
                 params[center_name].set(expr=f"{prev_prefix}center + {delta_name}")
 
             sigma_min, sigma_max = _sigma_bounds_for_peak(cfg, label)
@@ -1724,7 +1838,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         mask = self._mask_roi(x_full, spec.x_min, spec.x_max)
         x_fit = x_full[mask]
         y_fit = y_corr[mask]
-        if x_fit.size < 20:
+        if x_fit.size < cfg.min_roi_points:
             raise ValueError(f"Insufficient ROI points for model {model_name}")
 
         baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
@@ -1741,8 +1855,8 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
 
         params = model.make_params()
         if spec.lock_baseline:
-            a_eps = max(1.0e-8, abs(baseline_slope) * 0.01)
-            b_eps = max(1.0e-8, abs(baseline_intercept) * 0.01)
+            a_eps = max(1.0e-8, abs(baseline_slope) * cfg.locked_baseline_rel_tol)
+            b_eps = max(1.0e-8, abs(baseline_intercept) * cfg.locked_baseline_rel_tol)
             params["bg_slope"].set(value=baseline_slope, min=baseline_slope - a_eps, max=baseline_slope + a_eps)
             params["bg_intercept"].set(
                 value=baseline_intercept,
@@ -1750,7 +1864,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 max=baseline_intercept + b_eps,
             )
         else:
-            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope))
+            params["bg_slope"].set(value=baseline_slope, **_bg_slope_bounds(baseline_slope, cfg.bg_slope_min_half_width, cfg.bg_slope_multiplier))
             params["bg_intercept"].set(value=baseline_intercept)
 
         for idx, label in enumerate(spec.peak_labels):
@@ -1768,7 +1882,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 initial_params.get(f"{peak_key}_height"),
                 spec.height_scales[idx] * h_guess,
             )
-            fraction_guess = float(np.clip(_finite(initial_params.get(f"{peak_key}_fraction"), 0.0), 0.0, 1.0))
+            fraction_guess = float(
+                np.clip(_finite(initial_params.get(f"{peak_key}_fraction"), cfg.fraction_init), 0.0, 1.0)
+            )
 
             if label == "E2g":
                 center_min, center_max = cfg.e2g_bounds
@@ -1905,14 +2021,14 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         y_corr = y_full - baseline
 
         failures: list[dict[str, str]] = []
-        if modality == "raman" and x_full.size >= 8:
+        if modality == "raman" and x_full.size >= cfg.prefit.min_points:
             prefit_eval = self._evaluate_prefit_gate(x_full=x_full, y_corr=y_corr, cfg=cfg)
         else:
             prefit_eval = self._default_prefit_evaluation()
 
         raw_candidates: list[FitCandidate] = []
         if modality == "raman":
-            if x_full.size < 20:
+            if x_full.size < cfg.min_spectrum_points:
                 raw_candidates.append(
                     self._fallback_candidate(
                         model_name="fallback_signal_tracking",
@@ -1986,7 +2102,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                             }
                         )
         elif modality == "pl" and self.enable_pl:
-            if x_full.size < 20:
+            if x_full.size < cfg.min_spectrum_points:
                 raw_candidates.append(
                     self._fallback_candidate(
                         model_name="fallback_signal_tracking",
@@ -2192,7 +2308,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                             y_corr = y_full - baseline
                             prefit_eval = (
                                 self._evaluate_prefit_gate(x_full=x_full, y_corr=y_corr, cfg=cfg)
-                                if modality == "raman" and x_full.size >= 8
+                                if modality == "raman" and x_full.size >= cfg.prefit.min_points
                                 else self._default_prefit_evaluation()
                             )
                             fallback = self._fallback_candidate(

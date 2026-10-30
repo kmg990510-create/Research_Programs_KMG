@@ -280,7 +280,7 @@ class RamanFitReportGenerator(ReportGenerationStage):
             context.config,
             modality=run_modality,
         )
-        # Quality-flag thresholds come from thresholds.yaml (`{modality}.quality_flags`).
+        # Quality-flag thresholds come from config.yaml (`{modality}.quality_flags`).
         modality_cfg = context.config.get(run_modality, {}) if isinstance(context.config, dict) else {}
         quality_cfg = modality_cfg.get("quality_flags", {}) if isinstance(modality_cfg, dict) else {}
         if not isinstance(quality_cfg, dict):
@@ -290,7 +290,9 @@ class RamanFitReportGenerator(ReportGenerationStage):
         rmse_fallback_abs = float(quality_cfg.get("rmse_outlier_fallback_abs", 3.0))
         fwhm_margin_ratio = float(quality_cfg.get("fwhm_band_margin_ratio", 0.10))
         fwhm_normal_band = _fwhm_normal_band_by_peak(sigma_bounds_by_peak, margin_ratio=fwhm_margin_ratio)
-        pl_qc_component_names = ["a_minus", "a0"]
+        pl_qc_component_names = [
+            str(name).lower() for name in quality_cfg.get("fwhm_check_components", ["a_minus", "a0"])
+        ]
 
         attention_count = 0
         invalid_count = 0

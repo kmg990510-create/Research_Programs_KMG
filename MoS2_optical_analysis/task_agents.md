@@ -1396,3 +1396,13 @@
 - Tests: `tests/test_thresholds_config.py` (merge, override, typo/missing-key errors, frozen path order, `r2_min` reaching the report).
 - Validation: merged config diff vs pre-change = only the new keys; Raman/PL dummy, Raman single + batch, PL single (real data), GUI HTTP 200, All Spectra single-row AppTest, auto refit API smoke: pass. 17 tests pass.
 - Not covered by `confidence.py` `high_rmse` (0.2): label-only, does not change status; left hardcoded.
+
+## Unified Scientific Config (2026-10-30)
+
+- Scope: user asked for one visible `config.yaml` holding every scientifically meaningful value (not just thresholds), including formerly hardcoded constants. Supersedes the same-day `thresholds.yaml` (renamed to `config.yaml`).
+- `config.yaml` now carries all scientific content of `raman.yaml` / `pl.yaml` plus review and strain/doping coefficients; section YAMLs keep only `report_export`, GUI style, baseline method.
+- Hardcoded constants moved to config with identical defaults: see `ARCHITECTURE.md` "Unified Scientific Config (2026-10-30)".
+- Rename: `runtime_paths.thresholds_path()` -> `user_config_path()`, `load_pipeline_config(..., user_config_path=...)`, spec copies `config.yaml`.
+- Tests: `tests/test_user_config.py` (merge, override, typo/missing-key errors, frozen path order, fit constants reach `RamanFitConfig`, `r2_min` reaches report). 18 tests pass.
+- Validation: before/after re-fit of 47 Raman (sample_C, sample_C2, sample_D) + 8 PL (sample_L Pristine/Treatment) spectra: per-spectrum outputs identical. Raman/PL dummy, Raman single + batch, GUI HTTP 200, All Spectra single-row, auto refit, Sample Comparison / Flagged AppTest: pass.
+- Open issues reported to user, not fixed: PL default baseline edge windows cover the whole eV ROI; Raman delta QC can invalidate PL fallback rows; gaussian FWHM band factor in reporting.

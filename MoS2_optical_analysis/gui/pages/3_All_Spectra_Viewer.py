@@ -235,6 +235,7 @@ all_spectra_cfg = graph_cfg.get("all_spectra_viewer", {}) if isinstance(graph_cf
 x_window_cfg = all_spectra_cfg.get("x_window", {}) if isinstance(all_spectra_cfg, dict) else {}
 overlay_style_cfg = all_spectra_cfg.get("style", {}) if isinstance(all_spectra_cfg, dict) else {}
 fit_curve_cfg = all_spectra_cfg.get("fit_curve", {}) if isinstance(all_spectra_cfg, dict) else {}
+fwhm_warn_cfg = all_spectra_cfg.get("fwhm_warn", {}) if isinstance(all_spectra_cfg, dict) else {}
 fallback_x_min = float(x_window_cfg.get("fallback_min", 340.0))
 fallback_x_max = float(x_window_cfg.get("fallback_max", 430.0))
 peak_padding = float(x_window_cfg.get("peak_padding", 18.0))
@@ -515,7 +516,11 @@ render_spectrum_overlay(
     fit_curve_cfg=fit_curve_cfg if isinstance(fit_curve_cfg, dict) else None,
 )
 
-render_fit_summary(display_row, download_key=f"download_current_row_{_sanitize_filename(spectrum_id)}")
+render_fit_summary(
+    display_row,
+    download_key=f"download_current_row_{_sanitize_filename(spectrum_id)}",
+    fwhm_warn_cfg=fwhm_warn_cfg,
+)
 
 if "manual_refit_cache" not in st.session_state or not isinstance(st.session_state["manual_refit_cache"], dict):
     st.session_state["manual_refit_cache"] = {}
@@ -630,7 +635,11 @@ if isinstance(manual_state, dict):
         )
 
         with st.expander("Manual Refit Fit Summary", expanded=False):
-            render_fit_summary(after_row, download_key=f"download_manual_row_{_sanitize_filename(spectrum_id)}")
+            render_fit_summary(
+                after_row,
+                download_key=f"download_manual_row_{_sanitize_filename(spectrum_id)}",
+                fwhm_warn_cfg=fwhm_warn_cfg,
+            )
 
         override_path_text = str(manual_state.get("override_path", "")).strip()
         if override_path_text:

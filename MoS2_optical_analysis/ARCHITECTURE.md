@@ -236,17 +236,40 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - Raman n-peak fits (`peak_2..5_model`) now search `bg_slope` in `estimate +/- max(2.0, 3*|estimate|)` instead of a fixed `[-2, 2]`. Steep fluorescence backgrounds (slope ~2, e.g. sample_G) were clamped at the bound and the optimizer stalled at the initial E2g=384 / A1g=403.
 - PL fits and the legacy `mos2_double_*` models keep the fixed bound.
 
-## Thresholds File (2026-10-30)
+## Unified Scientific Config (2026-10-30)
 
-- `thresholds.yaml` (workspace root; next to the exe when packaged) holds every judgement cutoff and is deep-merged
-  over the section YAMLs in `load_pipeline_config` before required-key validation.
-- Path: `runtime_paths.thresholds_path()` -> source: workspace root; frozen: exe folder, falling back to the bundled
-  `_internal/thresholds.yaml` if the user deleted it.
-- Former hardcoded cutoffs now read from config with the same defaults:
-  `{raman,pl}.quality_flags` (`r2_min` 0.95, `rmse_outlier_sigma_k` 3.0, `rmse_outlier_fallback_abs` 3.0,
-  `fwhm_band_margin_ratio` 0.10) in `analysis/reporting.py`; `pl.fit.spike_check` (`residual_sigma_k` 12.0,
-  `span_ratio` 0.60) in `raman_lmfit`.
-- Merged config was verified identical to the pre-move config apart from these new keys.
+- Root `config.yaml` (next to the exe when packaged) is the single source of every scientifically meaningful value:
+  model lists and selection metric/weights, peak initial positions/offsets, center/sigma bounds, height priors,
+  model windows and baseline windows, anchor/offset bounds, prefit SNR gate, Si calibration, PL components,
+  despike/spike check, quality flags, post-selection QC, review thresholds, strain/doping coefficients.
+- `load_pipeline_config` deep-merges it over `fitting/{mos2_raman,mos2_pl}/config/*.yaml` before required-key
+  validation. Section files keep only non-scientific settings (`report_export`, GUI style, baseline method).
+- Path: `runtime_paths.user_config_path()` -> source: workspace root; frozen: exe folder, falling back to the bundled
+  `_internal/config.yaml` if the user deleted it.
+- Formerly hardcoded constants, now config keys with identical defaults:
+  - `raman_lmfit`: `fit.sigma_init_by_peak`, `fit.fraction_init`, `fit.offset_bounds.*`,
+    `fit.two_stage_anchor.fallback_half_window`, `fit.baseline.{lock_by_model,locked_rel_tol,slope_bounds,
+    manual_refit_slope_bound,default_edge_fraction,default_edge_min}`, `fit.min_roi_points`,
+    `fit.min_spectrum_points`, `fit.prefit.min_points`, `pl.fit.seed.*`, `pl.fit.spike_check.*`
+  - `preprocess/basic.py`: `raman.si_calibration.{width_min,min_initial_width}`
+  - `model_selection.py`: `{raman,pl}.hybrid_weights`
+  - `reporting.py`: `{raman,pl}.quality_flags.*` incl. `pl.quality_flags.fwhm_check_components`
+  - `confidence.py`: `review.high_rmse_threshold`
+  - `refit_api.py`: shares `min_roi_points`, `locked_rel_tol`, `fraction_init`, `manual_refit_slope_bound`
+  - GUI: `raman_graph.all_spectra_viewer.fwhm_warn`, `raman_graph.sample_comparison.absolute_isolines.{eps_range,n_range}`
+- Kept in code on purpose: math/stat constants (FWHM<->sigma 2.3548/2.0, MAD 1.4826, h*c 1239.84 eV nm),
+  numerical epsilons, unreachable legacy paths (`mos2_double_*`, `_fit_pl_model` single path), display-only GUI
+  windows, the nm-vs-eV axis guess (`max(x) > 100`).
+- `mos2_pl/config/raman.yaml` previously differed (`selection_metric: hybrid`, E2g/A1g sigma max 5.0); the shared
+  config now uses the Raman values. PL runs do not fit with the `raman` section, so PL results are unchanged.
+- Verification: 47 Raman + 8 PL real spectra re-fitted before/after; all per-spectrum values, statuses and reasons
+  identical (only the embedded config dump, timestamps and paths differ).
+- Known issues found while surveying (not changed here):
+  - PL default baseline windows: `default_edge_min` 1.0 is in eV for PL, so both edge windows span the whole
+    1.38-2.33 eV ROI.
+  - `post_selection_qc` reads `raman.post_selection_qc` without a modality check; PL fallback candidates
+    (`delta_e2g_a1g = 0`) get marked `invalid` by the delta absolute-range rule.
+  - `reporting._fwhm_normal_band_by_peak` uses `2*sigma` for gaussian PL components too (should be 2.3548).
 
 ## Raman Prefit E2g SNR Gate (2026-10-26)
 
