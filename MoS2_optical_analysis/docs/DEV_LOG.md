@@ -1421,3 +1421,12 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Published as the `MoS2_optical_analysis/` subfolder of a public GitHub repository. History was rewritten for the
   public copy: commit emails -> GitHub noreply address, sample/person-identifying folder names in docs -> `sample_*`.
 - Added `.github/workflows/build-mos2-optical-analysis.yml` (repository root) and pinned `packaging/requirements-build.txt`.
+
+## Build Identification (2026-10-30)
+
+- Scope: user asked that each exe build show which commit it came from and when.
+- New `fitting/mos2_core/core/build_info.py`: git commit/date collection at build time, `load_build_info()` (frozen:
+  bundled `build_info.json`; source: live git), display formatting in KST.
+- Spec writes `build_info.json` (bundled) and `BUILD_INFO.txt` (dist root); `gui/Main.py` shows the label under the title.
+- Tests: `tests/test_build_info.py` (git collection, non-git fallback, frozen label with UTC->KST, source label). 22 tests pass.
+- Validation: spec build-info block executed with a temp workpath; GUI HTTP 200 and Main AppTest shows the label. No PyInstaller build run.

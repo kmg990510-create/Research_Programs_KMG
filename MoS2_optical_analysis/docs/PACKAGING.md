@@ -63,6 +63,7 @@ Distribute the whole `dist/mos2-analysis` folder, including:
 - `README.md` (end-user usage note, copied from `packaging/DIST_README.md` by the spec)
 - `data/raw/raman/`, `data/raw/pl/` (empty input folders, created by the spec)
 - `config.yaml` (user-editable scientific settings, copied next to the exe by the spec)
+- `BUILD_INFO.txt` (commit hash, commit date, build date; written by the spec)
 
 ## Packaging Compatibility Adjustments
 
@@ -109,3 +110,12 @@ Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
   the spec above, then upload `dist/mos2-analysis` as the `mos2-analysis` artifact (30 days).
 - `packaging/requirements-build.txt` is a `pip freeze` of the dev `.venv` so CI matches local versions.
   Regenerate it after upgrading packages locally.
+
+## Build Identification
+
+- At build time the spec loads `fitting/mos2_core/core/build_info.py` by file path (stdlib only) and records
+  `git rev-parse HEAD`, the commit date, a `dirty` flag (tracked files changed but not committed), and the build time.
+- Output: `build_info.json` bundled in `_internal` and `BUILD_INFO.txt` next to the exe; the spec also prints
+  `[build-info] ...` in the build log.
+- The GUI home page shows it as `Build | commit <hash> | committed <date> | built <date>` (dates in KST).
+  Source runs show `Source run | commit <hash> | committed <date>` from live git.

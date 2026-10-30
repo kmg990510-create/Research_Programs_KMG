@@ -10,6 +10,8 @@ This build creates multiple executables:
 - `mos2-desktop-editor.exe`: PySide6 manual refit editor worker
 """
 
+import importlib.util
+import json
 import shutil
 from pathlib import Path
 
@@ -20,6 +22,18 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 DIST_README = PROJECT_ROOT / "packaging" / "DIST_README.md"
 USER_CONFIG = PROJECT_ROOT / "config.yaml"
+
+# build_info.py is stdlib-only; load it by path so the spec does not import the fitting package.
+_build_info_spec = importlib.util.spec_from_file_location(
+    "mos2_build_info", PROJECT_ROOT / "fitting" / "mos2_core" / "core" / "build_info.py"
+)
+build_info = importlib.util.module_from_spec(_build_info_spec)
+_build_info_spec.loader.exec_module(build_info)
+BUILD_INFO = build_info.collect_git_build_info(PROJECT_ROOT)
+BUILD_INFO_JSON = Path(workpath) / build_info.BUILD_INFO_FILENAME
+BUILD_INFO_JSON.parent.mkdir(parents=True, exist_ok=True)
+BUILD_INFO_JSON.write_text(json.dumps(BUILD_INFO, indent=2), encoding="utf-8")
+print(f"[build-info] {build_info.format_build_label(BUILD_INFO)}")
 
 
 def _safe_collect_data_files(package: str, **kwargs):
@@ -58,6 +72,9 @@ datas += _safe_collect_data_files("fitting.mos2_pl", includes=["config/*.yaml"])
 # Default config.yaml bundled in `_internal` as the fallback when the user removes
 # the editable copy next to the exe (see runtime_paths.user_config_path()).
 datas.append((str(USER_CONFIG), "."))
+
+# Commit hash + commit/build dates shown in the GUI (fitting.mos2_core.core.build_info).
+datas.append((str(BUILD_INFO_JSON), "."))
 
 # Keep package metadata for runtime version/plugin checks.
 for package_name in (
@@ -223,3 +240,8 @@ shutil.copy2(USER_CONFIG, Path(DISTPATH) / "mos2-analysis" / USER_CONFIG.name)
 
 # End-user usage note in the app folder root.
 shutil.copy2(DIST_README, Path(DISTPATH) / "mos2-analysis" / "README.md")
+
+# Human-readable build identification next to the exe.
+(Path(DISTPATH) / "mos2-analysis" / build_info.BUILD_INFO_TEXT_FILENAME).write_text(
+    build_info.format_build_text(BUILD_INFO), encoding="utf-8"
+)

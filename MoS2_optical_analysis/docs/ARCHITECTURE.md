@@ -84,6 +84,8 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - Frozen path split (`fitting/mos2_core/core/runtime_paths.py`):
   - user data (`data/raw`, `data/results`, `data/bin`): `runtime_project_root()` = exe folder
   - bundled config YAML: `runtime_resource_root()` / `raman_config_dir()` = `sys._MEIPASS` (`_internal`)
+- Build identification: `core/build_info.py`; the spec bundles `build_info.json` (commit, dates) and the GUI home
+  page shows it (see `docs/PACKAGING.md` "Build Identification").
 - `mos2-run-raman` / `mos2-run-pl` entry scripts call `multiprocessing.freeze_support()` so `--workers > 1` works in the exe.
 - If the fit process pool breaks (`BrokenExecutor`), remaining spectra fall back to the sequential fit path instead of being marked `invalid` (`fit_worker_exception`).
 

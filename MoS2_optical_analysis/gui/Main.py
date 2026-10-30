@@ -12,6 +12,7 @@ BOOTSTRAP_ROOT = Path(__file__).resolve().parents[1]
 if str(BOOTSTRAP_ROOT) not in sys.path:
     sys.path.append(str(BOOTSTRAP_ROOT))
 
+from fitting.mos2_core.core.build_info import format_build_label, load_build_info  # noqa: E402
 from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
 
 ROOT = runtime_project_root(__file__, 1)
@@ -29,6 +30,7 @@ st.set_page_config(
 
 st.title("MoS2 Raman/PL Analysis Viewer")
 st.caption("Pipeline output browser for fit results, model quality, and map-wise summaries.")
+st.caption(format_build_label(load_build_info()))
 
 report_path, payload, spectra_df = choose_report_sidebar("home")
 if report_path is None or payload is None:

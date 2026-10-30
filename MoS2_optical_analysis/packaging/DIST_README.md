@@ -51,6 +51,11 @@ New-Item -ItemType Directory -Force data\raw\raman, data\raw\pl
   Restart `mos2-analysis.exe` to refresh values shown in the UI.
 - If the file is deleted, the built-in defaults are used. Keep a copy before large edits.
 
+## Which Version Is This?
+
+- `BUILD_INFO.txt` in this folder lists the source commit, its date, and the build date.
+- The same line is shown under the title of the app's home page.
+
 ## Quick Start (UI)
 
 1. Run `mos2-analysis.exe`.
