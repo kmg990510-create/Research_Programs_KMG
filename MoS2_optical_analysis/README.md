@@ -4,10 +4,14 @@ Current workspace is organized into `fitting`, `gui`, and `data`.
 
 ## Structure
 
+- `config.yaml`: every scientific setting (peaks, windows, thresholds, coefficients)
 - `fitting/mos2_core`: shared pipeline modules
-- `fitting/mos2_raman`: Raman entrypoints and config
-- `fitting/mos2_pl`: PL entrypoints and config
-- `gui`: Streamlit UI
+- `fitting/mos2_raman`: Raman entrypoints and non-scientific config (report export, graph style)
+- `fitting/mos2_pl`: PL entrypoints and non-scientific config
+- `gui`: Streamlit UI and desktop manual refit editor
+- `packaging`: PyInstaller spec, exe entry scripts, end-user `DIST_README.md`
+- `tests`: pytest suite
+- `docs`: `ARCHITECTURE.md` (design), `PACKAGING.md` (build notes), `DEV_LOG.md` (task history)
 - `data/raw`: input data root
 - `data/bin/results`: soft-delete staging area (trash for result files)
 - `data/results`: output reports root
@@ -146,23 +150,22 @@ Recommended review flow in Home navigation:
 Build from repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build mos2_optical_analysis.spec
-Copy-Item -Path PACKAGING_DIST_README.md -Destination dist/mos2-analysis/PACKAGING_DIST_README.md -Force
+.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build packaging/mos2_optical_analysis.spec
 ```
 
 Packaging details (frozen config paths, `--workers` in the exe, end-user `data\raw` setup):
-see `PACKAGING_PYINSTALLER.md` and `PACKAGING_DIST_README.md`.
+see `docs/PACKAGING.md`. The end-user guide `packaging/DIST_README.md` is copied into the app folder as
+`README.md` by the spec.
 
 Packaging outputs:
 
 - distributable: `dist/mos2-analysis`
 - temporary work files: `dist/build`
-- legacy fallback folders (`build/`, `build_progressfix/`, `dist_progressfix/`) are not release targets
 
 Distribution minimum:
 
 - ship the full `dist/mos2-analysis` folder (including `_internal`)
-- include `PACKAGING_DIST_README.md` for end-user run instructions
+- `README.md`, `config.yaml`, and empty `data/raw/{raman,pl}` are placed there by the spec
 
 ## Manual Refit (All Spectra Viewer + Desktop Editor)
 

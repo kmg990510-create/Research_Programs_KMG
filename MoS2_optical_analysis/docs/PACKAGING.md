@@ -6,7 +6,7 @@ This project is packaged as a mixed Python application (pipeline + Streamlit + P
 
 The spec file is:
 
-- `mos2_optical_analysis.spec`
+- `packaging/mos2_optical_analysis.spec`
 
 It builds four executables so frozen subprocess calls continue to work:
 
@@ -20,8 +20,7 @@ It builds four executables so frozen subprocess calls continue to work:
 From repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build mos2_optical_analysis.spec
-Copy-Item -Path PACKAGING_DIST_README.md -Destination dist/mos2-analysis/PACKAGING_DIST_README.md -Force
+.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --distpath dist --workpath dist/build packaging/mos2_optical_analysis.spec
 ```
 
 Notes:
@@ -42,7 +41,6 @@ Notes:
 
 - Runtime outputs such as `data/results/**` and `data/bin/results/**`
 - User-generated manual overrides (`data/results/{modality}/manual_refits/*_manual_overrides.json`)
-- Legacy code under `legacy/**`
 
 These are expected to be generated/managed externally at runtime.
 
@@ -51,15 +49,6 @@ These are expected to be generated/managed externally at runtime.
 - In frozen execution, runtime-generated outputs are written outside the executable binary under:
   - `dist/mos2-analysis/data/results/...`
 - The executable itself is not modified; outputs are regular external files.
-
-## About `dist_progressfix` / `build_progressfix`
-
-- These were temporary fallback outputs used when the normal `dist/mos2-analysis` folder was locked by a running process.
-- They are not required for normal packaging or distribution.
-- Standardize on:
-  - `dist/mos2-analysis` (deliverable)
-  - `dist/build` (temporary build work)
-- If old top-level `build/`, `build_progressfix/`, or `dist_progressfix/` folders exist from earlier runs, treat them as legacy leftovers and do not use them for release artifacts.
 
 ## Distribution Checklist (Minimum)
 
@@ -70,7 +59,7 @@ Distribute the whole `dist/mos2-analysis` folder, including:
 - `mos2-run-pl.exe`
 - `mos2-desktop-editor.exe`
 - `_internal/` (required runtime libraries/assets)
-- `PACKAGING_DIST_README.md` (minimal end-user usage note)
+- `README.md` (end-user usage note, copied from `packaging/DIST_README.md` by the spec)
 - `data/raw/raman/`, `data/raw/pl/` (empty input folders, created by the spec)
 - `config.yaml` (user-editable scientific settings, copied next to the exe by the spec)
 

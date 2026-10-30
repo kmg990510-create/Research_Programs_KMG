@@ -12,7 +12,7 @@ This guide defines safe working conventions for the migrated workspace.
 
 ## Required References
 
-- Before starting implementation, read `ARCHITECTURE.md` and `task_agents.md`.
+- Before starting implementation, read `docs/ARCHITECTURE.md` and `docs/DEV_LOG.md` (task history).
 - Use them as the source of truth for current structure, task boundaries, and validation scope.
 - If code behavior and docs differ, update docs and code together in the same change.
 
@@ -87,7 +87,6 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Prefer editing shared behavior in `fitting/mos2_core`.
 - Keep modality-specific behavior in `fitting/mos2_raman` or `fitting/mos2_pl`.
 - Keep GUI path logic in `gui/components/report_loader.py`.
-- Do not add runtime path dependencies to `legacy/`, `mos2_raman/`, or `mos2_spectra_pipeline/`.
 
 ## Git Workflow Rules
 
@@ -130,7 +129,6 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Standard packaging layout:
   - distributable folder: `dist/mos2-analysis`
   - temporary work folder: `dist/build`
-- `dist_progressfix` / `build_progressfix` are temporary fallback names and must not be the default distribution target.
 
 ## Minimal Validation Required
 

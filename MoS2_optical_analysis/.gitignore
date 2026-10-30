@@ -30,5 +30,3 @@ data/raw/
 data/results/
 data/bin/
 
-# Legacy backup tree (kept locally, not tracked by default)
-legacy/

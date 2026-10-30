@@ -1,7 +1,9 @@
-# Task Agents (Current Work Tracking)
+# Development Log
 
 ## Purpose
-`task_agents.md` is a tool for centrally managing current tasks and agent responsibilities. It records status for each task and specifies links to `agents.md` policies and `architecture.md` impacts.
+Chronological record of tasks done in this workspace (formerly `task_agents.md`): scope, changed files,
+validation, and open issues per task. Current design lives in `ARCHITECTURE.md`; working rules in `../AGENTS.md`.
+Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipeline/`, root-level `mos2_raman/`).
 
 ## Format
 - Task ID: short key (e.g., TASK-001)
@@ -1406,3 +1408,10 @@
 - Tests: `tests/test_user_config.py` (merge, override, typo/missing-key errors, frozen path order, fit constants reach `RamanFitConfig`, `r2_min` reaches report). 18 tests pass.
 - Validation: before/after re-fit of 47 Raman (sample_C, sample_C2, sample_D) + 8 PL (sample_L Pristine/Treatment) spectra: per-spectrum outputs identical. Raman/PL dummy, Raman single + batch, GUI HTTP 200, All Spectra single-row, auto refit, Sample Comparison / Flagged AppTest: pass.
 - Open issues reported to user, not fixed: PL default baseline edge windows cover the whole eV ROI; Raman delta QC can invalidate PL fallback rows; gaussian FWHM band factor in reporting.
+
+## Workspace Cleanup (2026-10-30)
+
+- Docs moved to `docs/`: `ARCHITECTURE.md`, `PACKAGING.md` (was `PACKAGING_PYINSTALLER.md`), `DEV_LOG.md` (was `task_agents.md`).
+- Packaging files moved to `packaging/`: `mos2_optical_analysis.spec` (`PROJECT_ROOT` = spec dir parent), `DIST_README.md`
+  (was `PACKAGING_DIST_README.md`). The spec now copies it to `dist/mos2-analysis/README.md`; the manual `Copy-Item` build step is gone.
+- Deleted the untracked `legacy/` backup tree and its `.gitignore` / spec `excludes` / AGENTS.md references.

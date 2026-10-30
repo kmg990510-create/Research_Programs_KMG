@@ -16,8 +16,9 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 
-PROJECT_ROOT = Path(SPECPATH).resolve()
-DIST_README = PROJECT_ROOT / "PACKAGING_DIST_README.md"
+# This spec lives in `packaging/`; the project root is one level up.
+PROJECT_ROOT = Path(SPECPATH).resolve().parent
+DIST_README = PROJECT_ROOT / "packaging" / "DIST_README.md"
 USER_CONFIG = PROJECT_ROOT / "config.yaml"
 
 
@@ -57,10 +58,6 @@ datas += _safe_collect_data_files("fitting.mos2_pl", includes=["config/*.yaml"])
 # Default config.yaml bundled in `_internal` as the fallback when the user removes
 # the editable copy next to the exe (see runtime_paths.user_config_path()).
 datas.append((str(USER_CONFIG), "."))
-
-# Minimal user-facing usage note shipped in distribution root.
-if DIST_README.exists():
-    datas.append((str(DIST_README), "."))
 
 # Keep package metadata for runtime version/plugin checks.
 for package_name in (
@@ -105,7 +102,6 @@ COMMON_ANALYSIS_KWARGS = dict(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        "legacy",
         "pytest",
         "tkinter",
     ],
@@ -215,7 +211,7 @@ coll = COLLECT(
 # by the Raman (`*.txt`) or PL (`*.asc`) spectrum patterns.
 RAW_PLACEHOLDER = (
     "Put one folder per sample here (e.g. SampleA/Y001-X001.txt ...).\n"
-    "See PACKAGING_DIST_README.md in the app folder.\n"
+    "See README.md in the app folder.\n"
 )
 for modality in ("raman", "pl"):
     raw_dir = Path(DISTPATH) / "mos2-analysis" / "data" / "raw" / modality
@@ -224,3 +220,6 @@ for modality in ("raman", "pl"):
 
 # User-editable config.yaml next to the exe (read before the bundled copy).
 shutil.copy2(USER_CONFIG, Path(DISTPATH) / "mos2-analysis" / USER_CONFIG.name)
+
+# End-user usage note in the app folder root.
+shutil.copy2(DIST_README, Path(DISTPATH) / "mos2-analysis" / "README.md")

@@ -9,6 +9,10 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `mos2_raman/`: Raman entrypoints + Raman config
   - `mos2_pl/`: PL entrypoints + PL config
 - `gui/`: Streamlit UI package
+- `config.yaml`: single source of scientific settings
+- `packaging/`: PyInstaller spec, exe entry scripts, end-user `DIST_README.md`
+- `tests/`: pytest suite
+- `docs/`: this file, `PACKAGING.md`, `DEV_LOG.md`
 - `data/`
   - `raw/raman/`, `raw/pl/`
   - `bin/results/raman/`, `bin/results/pl/` (soft-delete staging area for result files)
@@ -76,7 +80,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `mos2-run-pl` -> `fitting.mos2_pl.run_raw_pipeline`
   - `mos2-desktop-editor` -> `gui.desktop_editor.app`
 - Spec file:
-  - `mos2_optical_analysis.spec`
+  - `packaging/mos2_optical_analysis.spec`
 - Frozen path split (`fitting/mos2_core/core/runtime_paths.py`):
   - user data (`data/raw`, `data/results`, `data/bin`): `runtime_project_root()` = exe folder
   - bundled config YAML: `runtime_resource_root()` / `raman_config_dir()` = `sys._MEIPASS` (`_internal`)
