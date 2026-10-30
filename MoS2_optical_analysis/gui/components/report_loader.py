@@ -34,24 +34,12 @@ def raman_config_dir() -> Path:
 
 @st.cache_data(show_spinner=False)
 def load_graph_config() -> dict[str, Any]:
-    try:
-        from fitting.mos2_core.io import load_pipeline_config
+    # No silent fallback: a broken config.yaml must show its error instead of the GUI
+    # quietly using section-file values without the user's settings.
+    from fitting.mos2_core.io import load_pipeline_config
 
-        config = load_pipeline_config(raman_config_dir())
-        graph_cfg = config.get("raman_graph", {}) if isinstance(config, dict) else {}
-        if isinstance(graph_cfg, dict):
-            return graph_cfg
-    except Exception:
-        pass
-
-    try:
-        import yaml
-
-        path = raman_config_dir() / "raman_graph.yaml"
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-        return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
+    config = load_pipeline_config(raman_config_dir())
+    return dict(config["raman_graph"])
 
 
 def list_report_json_files() -> list[Path]:

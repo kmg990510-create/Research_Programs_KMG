@@ -69,8 +69,6 @@ def _ensure_required_keys(section: str, payload: dict[str, Any], source_path: Pa
             "e2g_max",
             "a1g_min",
             "a1g_max",
-            "sigma_min",
-            "sigma_max",
             "sigma_bounds_by_peak",
             "prefit",
         )

@@ -7,6 +7,9 @@ from typing import Mapping, Sequence
 
 from ..core.interfaces import ModelSelectionStage
 from ..core.types import FitCandidate, FitEnsembleResult, PipelineContext, SelectionResult
+from ..io import config_access as cfgx
+
+_METRICS = {"aic", "bic", "rmse", "hybrid"}
 
 
 class EnsembleMetricModelSelection(ModelSelectionStage):
@@ -18,10 +21,9 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
     - bic
     - rmse
     - hybrid: weighted normalized combination of (aic, bic, rmse)
-    """
 
-    def __init__(self, default_metric: str = "hybrid") -> None:
-        self.default_metric = default_metric.lower()
+    Metric and hybrid weights come from `{modality}.selection_metric` / `{modality}.hybrid_weights`.
+    """
 
     @staticmethod
     def _safe_metric(candidate: FitCandidate, metric_name: str) -> float:
@@ -42,16 +44,14 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
         except (TypeError, ValueError):
             return False
 
-    def _metric_for_modality(self, modality: str, context: PipelineContext) -> str:
-        section = context.config.get(modality, {})
-        configured = (
-            str(section.get("selection_metric", self.default_metric)).lower()
-            if isinstance(section, dict)
-            else self.default_metric
-        )
-        if configured in {"aic", "bic", "rmse", "hybrid"}:
-            return configured
-        return self.default_metric
+    @staticmethod
+    def _metric_for_modality(modality: str, context: PipelineContext) -> str:
+        metric = cfgx.text(cfgx.section(context.config, modality, ""), "selection_metric", modality).lower()
+        if metric not in _METRICS:
+            raise cfgx.ConfigKeyError(
+                f"config.yaml: '{modality}.selection_metric' must be one of {sorted(_METRICS)} (got {metric!r})"
+            )
+        return metric
 
     @staticmethod
     def _normalize(values: Sequence[float]) -> list[float]:
@@ -65,22 +65,19 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
 
     @staticmethod
     def _hybrid_weights(modality: str, context: PipelineContext) -> tuple[float, float, float]:
-        # Default prioritizes information criteria while still penalizing residual error.
-        section = context.config.get(modality, {}) if isinstance(context.config, dict) else {}
-        weights = section.get("hybrid_weights", {}) if isinstance(section, dict) else {}
-        if not isinstance(weights, dict):
-            weights = {}
+        weights = cfgx.section(cfgx.section(context.config, modality, ""), "hybrid_weights", modality)
+        path = f"{modality}.hybrid_weights"
         return (
-            float(weights.get("aic", 0.4)),
-            float(weights.get("bic", 0.4)),
-            float(weights.get("rmse", 0.2)),
+            cfgx.number(weights, "aic", path),
+            cfgx.number(weights, "bic", path),
+            cfgx.number(weights, "rmse", path),
         )
 
     def _hybrid_score(
         self,
         candidate: FitCandidate,
         normalized_cache: dict[str, dict[str, float]],
-        weights: tuple[float, float, float] = (0.4, 0.4, 0.2),
+        weights: tuple[float, float, float],
     ) -> float:
         name = candidate.model_name
         aic = normalized_cache["aic"].get(name, 1.0)
@@ -113,12 +110,13 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
                 continue
 
             metric_name = self._metric_for_modality(result.modality, context)
+            # Weights are validated for every run so a broken value cannot hide until `hybrid` is chosen.
+            weights = self._hybrid_weights(result.modality, context)
             metric_usage[metric_name] = metric_usage.get(metric_name, 0) + 1
             selectable_candidates = [c for c in result.candidates if self._is_selectable(c)]
             ranked_pool = selectable_candidates if selectable_candidates else list(result.candidates)
 
             if metric_name == "hybrid":
-                weights = self._hybrid_weights(result.modality, context)
                 aic_values = [self._safe_metric(c, "aic") for c in ranked_pool]
                 bic_values = [self._safe_metric(c, "bic") for c in ranked_pool]
                 rmse_values = [self._safe_metric(c, "rmse") for c in ranked_pool]

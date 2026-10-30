@@ -105,7 +105,9 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Every scientifically meaningful value (peak positions/bounds/widths, windows, model lists, thresholds, QC limits,
   coefficients) lives only in the root `config.yaml`, deep-merged over the section YAMLs by `load_pipeline_config`.
   Do not re-add those keys to `fitting/*/config/*.yaml`, and do not hardcode new scientific constants in code:
-  add a `config.yaml` key (with a Korean comment) and read it with the old value as the code default.
+  add a `config.yaml` key (with a Korean comment) and read it strictly with `fitting.mos2_core.io.config_access`
+  (`cfgx.number(...)` etc.). No code-side default: a missing key must raise `ConfigKeyError` naming the key.
+  `tests/test_config_dependency.py` fails if a config.yaml key is never read or is read with `.get(key, default)`.
 - In anchor mode docs/code, describe center coupling as anchor-centric:
   - `LO = E2g - d_lo_from_e2g`
   - `ZO = A1g + d_zo_from_a1g`

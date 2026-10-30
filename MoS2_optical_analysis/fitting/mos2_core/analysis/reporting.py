@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ..core.interfaces import ReportGenerationStage
 from ..core.types import PipelineContext, PipelineResult, ReportArtifact
+from ..io import config_access as cfgx
 
 
 def _to_float(value: object) -> float | None:
@@ -41,7 +42,7 @@ def _is_outlier(
     med: float,
     sigma: float,
     fallback_abs: float,
-    sigma_k: float = 3.0,
+    sigma_k: float,
 ) -> bool:
     if value is None:
         return False
@@ -68,66 +69,23 @@ def _check_peak_order(row: dict[str, object]) -> bool:
     return all(ordered[i] < ordered[i + 1] for i in range(len(ordered) - 1))
 
 
-def _resolve_sigma_bounds_by_peak_from_config(
-    config: object,
-    modality: str = "raman",
-) -> dict[str, tuple[float, float]]:
-    if not isinstance(config, dict):
-        return {}
-
-    modality_cfg = config.get(modality, {})
-    if not isinstance(modality_cfg, dict):
-        return {}
-    fit_cfg = modality_cfg.get("fit", {})
-    if not isinstance(fit_cfg, dict):
-        return {}
-
+def _fwhm_bounds_by_peak_from_config(config: object, modality: str) -> dict[str, tuple[float, float]]:
+    """Allowed FWHM range per peak, straight from the fit bounds in config.yaml."""
+    fit_cfg = cfgx.section(cfgx.section(config, modality, ""), "fit", modality)
+    bounds: dict[str, tuple[float, float]] = {}
     if modality == "pl":
-        components = fit_cfg.get("components", {})
-        parsed_components: dict[str, tuple[float, float]] = {}
-        if isinstance(components, dict):
-            for peak_name, spec in components.items():
-                if not isinstance(peak_name, str) or not isinstance(spec, dict):
-                    continue
-                fwhm_min = _to_float(spec.get("fwhm_min"))
-                fwhm_max = _to_float(spec.get("fwhm_max"))
-                if fwhm_min is None or fwhm_max is None or fwhm_max <= fwhm_min:
-                    continue
-                profile = str(spec.get("profile", "pvoigt")).strip().lower()
-                factor = 2.354820045 if profile == "gaussian" else 2.0
-                parsed_components[peak_name.lower()] = (fwhm_min / factor, fwhm_max / factor)
-        if parsed_components:
-            return parsed_components
-
-    sigma_default_min = _to_float(fit_cfg.get("sigma_min"))
-    sigma_default_max = _to_float(fit_cfg.get("sigma_max"))
-    if sigma_default_min is None:
-        sigma_default_min = 0.5
-    if sigma_default_max is None:
-        sigma_default_max = 20.0
-
-    raw_by_peak = fit_cfg.get("sigma_bounds_by_peak", {})
-    parsed: dict[str, tuple[float, float]] = {}
-    if isinstance(raw_by_peak, dict):
-        for peak_name, spec in raw_by_peak.items():
-            if not isinstance(peak_name, str):
-                continue
-            sigma_min: float | None = None
-            sigma_max: float | None = None
-            if isinstance(spec, dict):
-                sigma_min = _to_float(spec.get("min"))
-                sigma_max = _to_float(spec.get("max"))
-            elif isinstance(spec, (list, tuple)) and len(spec) >= 2:
-                sigma_min = _to_float(spec[0])
-                sigma_max = _to_float(spec[1])
-            if sigma_min is None or sigma_max is None or sigma_max <= sigma_min:
-                continue
-            parsed[peak_name.lower()] = (sigma_min, sigma_max)
-
-    default_peaks = ["pl"] if modality == "pl" else ["lo", "e2g", "a1g", "zo", "la"]
-    for peak_name in default_peaks:
-        parsed.setdefault(peak_name, (sigma_default_min, sigma_default_max))
-    return parsed
+        components = cfgx.section(fit_cfg, "components", "pl.fit")
+        for name in components:
+            spec = cfgx.section(components, name, "pl.fit.components")
+            where = f"pl.fit.components.{name}"
+            bounds[str(name).lower()] = (cfgx.number(spec, "fwhm_min", where), cfgx.number(spec, "fwhm_max", where))
+        return bounds
+    sigma_cfg = cfgx.section(fit_cfg, "sigma_bounds_by_peak", "raman.fit")
+    for peak_name in ("lo", "e2g", "a1g", "zo", "la"):
+        sigma_min, sigma_max = cfgx.pair(sigma_cfg, peak_name, "raman.fit.sigma_bounds_by_peak")
+        # Raman peaks are pseudo-Voigt: FWHM = 2 * sigma exactly.
+        bounds[peak_name] = (2.0 * sigma_min, 2.0 * sigma_max)
+    return bounds
 
 
 def _resolve_run_modality(result: PipelineResult, context: PipelineContext) -> str:
@@ -165,13 +123,11 @@ def _resolve_run_modality(result: PipelineResult, context: PipelineContext) -> s
 
 
 def _fwhm_normal_band_by_peak(
-    sigma_bounds_by_peak: dict[str, tuple[float, float]],
-    margin_ratio: float = 0.10,
+    fwhm_bounds_by_peak: dict[str, tuple[float, float]],
+    margin_ratio: float,
 ) -> dict[str, tuple[float, float]]:
     bands: dict[str, tuple[float, float]] = {}
-    for peak_name, (sigma_min, sigma_max) in sigma_bounds_by_peak.items():
-        fwhm_min = 2.0 * sigma_min
-        fwhm_max = 2.0 * sigma_max
+    for peak_name, (fwhm_min, fwhm_max) in fwhm_bounds_by_peak.items():
         span = max(fwhm_max - fwhm_min, 0.0)
         margin = margin_ratio * span
         bands[peak_name] = (fwhm_min + margin, fwhm_max - margin)
@@ -276,23 +232,24 @@ class RamanFitReportGenerator(ReportGenerationStage):
         rmse_values = [v for v in (_to_float(r.get("rmse")) for r in spectra_rows) if v is not None]
         rmse_med = _median(rmse_values) if rmse_values else 0.0
         rmse_sigma = 1.4826 * _mad(rmse_values, rmse_med) if rmse_values else 0.0
-        sigma_bounds_by_peak = _resolve_sigma_bounds_by_peak_from_config(
-            context.config,
-            modality=run_modality,
-        )
         # Quality-flag thresholds come from config.yaml (`{modality}.quality_flags`).
-        modality_cfg = context.config.get(run_modality, {}) if isinstance(context.config, dict) else {}
-        quality_cfg = modality_cfg.get("quality_flags", {}) if isinstance(modality_cfg, dict) else {}
-        if not isinstance(quality_cfg, dict):
-            quality_cfg = {}
-        r2_min = float(quality_cfg.get("r2_min", 0.95))
-        rmse_sigma_k = float(quality_cfg.get("rmse_outlier_sigma_k", 3.0))
-        rmse_fallback_abs = float(quality_cfg.get("rmse_outlier_fallback_abs", 3.0))
-        fwhm_margin_ratio = float(quality_cfg.get("fwhm_band_margin_ratio", 0.10))
-        fwhm_normal_band = _fwhm_normal_band_by_peak(sigma_bounds_by_peak, margin_ratio=fwhm_margin_ratio)
-        pl_qc_component_names = [
-            str(name).lower() for name in quality_cfg.get("fwhm_check_components", ["a_minus", "a0"])
-        ]
+        # A mixed-modality run (dummy/smoke data) is judged with the Raman settings.
+        qc_modality = run_modality if run_modality in {"raman", "pl"} else "raman"
+        qf = f"{qc_modality}.quality_flags"
+        quality_cfg = cfgx.section(cfgx.section(context.config, qc_modality, ""), "quality_flags", qc_modality)
+        r2_min = cfgx.number(quality_cfg, "r2_min", qf)
+        rmse_sigma_k = cfgx.number(quality_cfg, "rmse_outlier_sigma_k", qf)
+        rmse_fallback_abs = cfgx.number(quality_cfg, "rmse_outlier_fallback_abs", qf)
+        fwhm_margin_ratio = cfgx.number(quality_cfg, "fwhm_band_margin_ratio", qf)
+        fwhm_normal_band = _fwhm_normal_band_by_peak(
+            _fwhm_bounds_by_peak_from_config(context.config, qc_modality),
+            margin_ratio=fwhm_margin_ratio,
+        )
+        pl_qc_component_names = (
+            [name.lower() for name in cfgx.string_list(quality_cfg, "fwhm_check_components", qf)]
+            if qc_modality == "pl"
+            else []
+        )
 
         attention_count = 0
         invalid_count = 0

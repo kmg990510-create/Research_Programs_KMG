@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
+from gui.components.science_settings import strain_doping_settings  # noqa: E402
 
 list_report_json_files = _report_loader.list_report_json_files
 load_spectra_dataframe = _report_loader.load_spectra_dataframe
@@ -668,10 +669,10 @@ def _add_absolute_isolines(
     s_a: float,
     d_e: float,
     d_a: float,
-    eps_step: float = 0.5,
-    n_step: float = 0.5,
-    eps_range: tuple[float, float] = (-2.0, 2.0),
-    n_range: tuple[float, float] = (-3.0, 3.0),
+    eps_step: float,
+    n_step: float,
+    eps_range: tuple[float, float],
+    n_range: tuple[float, float],
 ) -> None:
     eps_vals = np.arange(eps_range[0], eps_range[1] + 1e-9, max(eps_step, 0.05))
     n_vals = np.arange(n_range[0], n_range[1] + 1e-9, max(n_step, 0.05))
@@ -727,23 +728,14 @@ st.caption("Cross-sample comparison plots derived from fit report outputs.")
 graph_cfg = load_graph_config()
 sample_cfg = graph_cfg.get("sample_comparison", {}) if isinstance(graph_cfg, dict) else {}
 status_cfg = sample_cfg.get("status_filter", {}) if isinstance(sample_cfg, dict) else {}
-coeff_cfg = sample_cfg.get("coefficients", {}) if isinstance(sample_cfg, dict) else {}
 isoline_cfg = sample_cfg.get("absolute_isolines", {}) if isinstance(sample_cfg, dict) else {}
 isoline_steps_cfg = isoline_cfg.get("steps", {}) if isinstance(isoline_cfg, dict) else {}
 
-
-def _isoline_range(key: str, default: tuple[float, float]) -> tuple[float, float]:
-    raw = isoline_cfg.get(key) if isinstance(isoline_cfg, dict) else None
-    try:
-        lo, hi = float(raw[0]), float(raw[1])
-    except (TypeError, ValueError, IndexError, KeyError):
-        return default
-    return (lo, hi) if hi > lo else default
-
-
-# Strain (%) and carrier density (1e13 cm^-2) grid spans (config.yaml `absolute_isolines`).
-isoline_eps_range = _isoline_range("eps_range", (-2.0, 2.0))
-isoline_n_range = _isoline_range("n_range", (-3.0, 3.0))
+# Strain/doping coefficients and isoline spans: strain (%), carrier density (1e13 cm^-2).
+strain_doping = strain_doping_settings(graph_cfg)
+coefficients = strain_doping["coefficients"]
+isoline_eps_range = strain_doping["eps_range"]
+isoline_n_range = strain_doping["n_range"]
 
 report_files = list_report_json_files()
 if not report_files:
@@ -870,25 +862,25 @@ with st.sidebar.expander("4) Advanced Model Params", expanded=False):
     st.caption("Defaults are placeholders. Use calibrated values when available.")
     s_e = st.number_input(
         "S_E",
-        value=float(coeff_cfg.get("s_e", -6.48)),
+        value=coefficients["s_e"],
         format="%.4f",
         help="E2g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     s_a = st.number_input(
         "S_A",
-        value=float(coeff_cfg.get("s_a", -1.21)),
+        value=coefficients["s_a"],
         format="%.4f",
         help="A1g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     d_e = st.number_input(
         "D_E",
-        value=float(coeff_cfg.get("d_e", -0.33)),
+        value=coefficients["d_e"],
         format="%.4f",
         help="E2g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
     d_a = st.number_input(
         "D_A",
-        value=float(coeff_cfg.get("d_a", -2.22)),
+        value=coefficients["d_a"],
         format="%.4f",
         help="A1g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )

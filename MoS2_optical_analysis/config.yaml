@@ -9,7 +9,9 @@
 #   (GUI 화면에 보이는 값은 mos2-analysis.exe 를 껐다 켜야 바뀝니다.)
 # - 이미 만들어진 리포트는 바뀌지 않습니다. 다시 분석해야 반영됩니다.
 # - 들여쓰기(스페이스)와 키 이름은 그대로 두고 숫자 / true / false 만 바꾸세요.
-# - 이 파일을 지우면 프로그램에 들어 있는 기본값(지금 이 파일과 같은 값)을 씁니다.
+# - 프로그램 코드에는 이 값들의 복사본이 없습니다. 키를 지우거나 이름을 틀리면
+#   "missing required key 'raman.fit.e2g_init'" 처럼 그 키 이름을 알려주며 멈춥니다.
+#   (exe 옆의 이 파일 자체를 지우면 exe 안에 들어 있는 원본 config.yaml 을 씁니다.)
 #   큰 수정 전에는 복사본을 남겨 두세요.
 #
 # 단위: Raman 은 cm-1, PL 은 eV.
@@ -22,6 +24,9 @@
 # =============================================================================
 
 raman:
+  input_qc:
+    min_points: 5                # 스펙트럼 점이 이보다 적으면 분석에서 제외 (too_few_points)
+
   # ---------------------------------------------------------------------------
   # 모델 선택
   # ---------------------------------------------------------------------------
@@ -54,8 +59,7 @@ raman:
     e2g_max: 392.0
     a1g_min: 395.0
     a1g_max: 415.0
-    center_tolerance_by_model:   # LO/ZO/LA 는 시작 위치 +- 이 값 안에서만 움직임
-      peak_2_model: 2.5
+    center_tolerance_by_model:   # LO/ZO/LA 는 시작 위치 +- 이 값 안에서만 움직임 (peak_2 는 LO/ZO/LA 가 없어 해당 없음)
       peak_3_model: 2.5
       peak_4_model: 2.5
       peak_5_model: 2.5
@@ -93,8 +97,6 @@ raman:
       a1g: 3.0
       zo: 4.0
       la: 8.0
-    sigma_min: 0.5               # 아래 피크별 범위가 없을 때 쓰는 전체 범위
-    sigma_max: 12.0
     sigma_bounds_by_peak:        # 피크별 허용 범위 [최소, 최대]
       lo: [2.5, 9.0]
       e2g: [1.5, 6.0]
@@ -145,8 +147,7 @@ raman:
         min_half_width: 2.0
         slope_multiplier: 3.0
       manual_refit_slope_bound: 2.0  # 수동 재피팅(manual refit)에서 기울기 범위 +- 이 값
-      default_edge_fraction: 0.1 # model_windows 가 없을 때 baseline 구간 = 구간 양 끝 10%
-      default_edge_min: 1.0      # 위 구간의 최소 폭
+      # baseline 기준 구간은 위 model_windows 의 left_base / right_base 를 씀
 
     # --- 9) 피팅 전 신호 세기(SNR) 검사 -------------------------------------
     # SNR = 피크 높이 / 노이즈 표준편차
@@ -154,9 +155,13 @@ raman:
       enabled: true              # false 이면 SNR 검사를 하지 않음
       min_points: 8              # 스펙트럼 점이 이보다 적으면 검사 생략
       peak_window_half_width: 2.5  # 피크 높이를 찾는 범위: 초기 위치 +- 이 값
+      local_baseline_percentile: 20.0  # 피크 높이 = 그 범위 최대값 - 범위 안 하위 이 퍼센트 값
       noise_windows:             # 노이즈를 재는 구간 (피크가 없는 곳)
         left: [350.0, 360.0]
         right: [480.0, 490.0]
+        min_points: 8            # 두 구간의 점이 이보다 적으면 대신 스펙트럼 하위 값으로 노이즈 계산
+        fallback_percentile: 35.0  # 그때 쓰는 하위 퍼센트 (이 값 이하인 점들)
+        fallback_min_points: 5   # 그래도 점이 이보다 적으면 스펙트럼 전체로 계산
       e2g_snr_hard_min: 2.0      # E2g SNR 이 이보다 작으면 attention
       e2g_snr_soft_min: 4.0      # E2g SNR 이 이보다 작으면 attention (약한 경고)
       a1g_snr_hard_min: 4.0      # A1g SNR 이 이보다 작으면 invalid (피팅 안 함)
@@ -211,6 +216,9 @@ raman:
       action: invalid            # 이상치일 때 바꿀 상태: invalid 또는 attention
 
 pl:
+  input_qc:
+    min_points: 5                # 스펙트럼 점이 이보다 적으면 분석에서 제외 (too_few_points)
+
   # ---------------------------------------------------------------------------
   # 모델 선택
   # ---------------------------------------------------------------------------
@@ -231,20 +239,12 @@ pl:
     threshold: 6.0               # 주변(중앙값 필터) 대비 MAD 의 이 배수 이상 튀는 점을 스파이크로 제거
 
   fit:
-    x_unit: eV
     x_min: 1.38                  # 피팅 구간 (eV)
     x_max: 2.33
     compare_x_min: 1.38          # 모델 비교 구간
     compare_x_max: 2.33
     min_roi_points: 20
     min_spectrum_points: 20
-
-    # 단일 피크 모델(pl_single_*)에서 쓰는 범위
-    pl_center_init: 1.85
-    pl_center_min: 1.50
-    pl_center_max: 2.15
-    pl_sigma_min: 0.002
-    pl_sigma_max: 0.20
 
     # A- (trion) / A0 (exciton) 관계
     a_minus_a0_split:            # A0 - A- 에너지 차이 (eV)
@@ -259,13 +259,16 @@ pl:
       max: 2.50
     share_exciton_fraction: true # A- 와 A0 의 pseudo-Voigt 비율을 같게 묶음
 
-    # 모델별로 쓰는 성분
+    # 모델별로 쓰는 성분 (위 models 에 있는 모델은 모두 여기 있어야 함)
     model_components:
       pl_single_pvoigt: [pl]
       pl_a_doublet_pvoigt: [a_minus, a0]
       pl_5_component_pvoigt: [i1, i2, a_minus, a0, b]
 
     # 성분별 위치 / 폭 (eV). height_scale 은 높이 시작값(최대-하위20% 대비 비율)
+    # profile: pvoigt 또는 gaussian. fraction_init: pseudo-Voigt Lorentzian 비율 시작값
+    # 선택 항목(없으면 제약 없음): vary_center / vary_sigma / vary_amplitude / vary_fraction: false 로 고정,
+    #   amplitude_min: 면적 최소값
     components:
       pl:
         label: PL
@@ -337,6 +340,7 @@ pl:
     # 성분 높이 시작값을 정할 때 쓰는 값
     seed:
       baseline_percentile: 20.0  # 스펙트럼 하위 이 퍼센트 값을 바닥으로 봄
+      local_baseline_percentile: 20.0  # 성분 주변 범위에서 피크 높이 = 최대값 - 범위 안 하위 이 퍼센트 값
       local_half_width_min: 0.02 # 성분 주변에서 피크를 찾는 최소 반폭 (eV)
       amplitude_floor_fraction: 0.01  # 면적 하한 = 시작 면적 x 이 비율
 
@@ -348,7 +352,8 @@ pl:
     # 피팅 후 남은 좁은 스파이크 의심 (해당되면 attention)
     spike_check:
       residual_sigma_k: 12.0     # 잔차가 잔차 노이즈의 k 배를 넘고
-      span_ratio: 0.60           # 동시에 신호 크기(5~95% 범위)의 이 비율도 넘으면 표시
+      span_ratio: 0.60           # 동시에 신호 크기(아래 퍼센트 범위)의 이 비율도 넘으면 표시
+      span_percentiles: [5.0, 95.0]  # 신호 크기 = 이 두 퍼센트 값의 차이
 
   quality_flags:
     r2_min: 0.95

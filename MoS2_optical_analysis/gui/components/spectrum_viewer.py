@@ -476,13 +476,12 @@ def render_fit_summary(
     row: dict[str, Any],
     *,
     download_key: str | None = None,
-    fwhm_warn_cfg: dict[str, Any] | None = None,
+    fwhm_warn_cfg: dict[str, float],
 ) -> None:
-    # Plausible FWHM ranges (config.yaml `raman_graph.all_spectra_viewer.fwhm_warn`).
-    warn_cfg = fwhm_warn_cfg if isinstance(fwhm_warn_cfg, dict) else {}
-    raman_fwhm_min = _style_float(warn_cfg.get("raman_min"), 3.0)
-    raman_fwhm_max = _style_float(warn_cfg.get("raman_max"), 60.0)
-    pl_fwhm_max = _style_float(warn_cfg.get("pl_max"), 0.5)
+    # Plausible FWHM ranges from science_settings.fwhm_warn_limits (config.yaml `fwhm_warn`).
+    raman_fwhm_min = fwhm_warn_cfg["raman_min"]
+    raman_fwhm_max = fwhm_warn_cfg["raman_max"]
+    pl_fwhm_max = fwhm_warn_cfg["pl_max"]
 
     def _fmt(v: Any, digits: int = 3) -> str:
         try:

@@ -12,6 +12,7 @@ from fitting.mos2_core.core.default_stages import build_default_context, build_d
 from fitting.mos2_core.core.pipeline import run_pipeline
 from fitting.mos2_core.core.types import SpectrumRecord
 from fitting.mos2_core.core.runtime_paths import runtime_project_root
+from fitting.mos2_core.io import config_access as cfgx
 from fitting.mos2_core.io import load_pipeline_config, load_raman_txt_directory
 
 
@@ -164,13 +165,8 @@ def _convert_nm_to_ev_if_needed(
 
 
 def _pl_intensity_density_correction_enabled(config: dict) -> bool:
-    pl_cfg = config.get("pl", {}) if isinstance(config, dict) else {}
-    if not isinstance(pl_cfg, dict):
-        return False
-    correction_cfg = pl_cfg.get("intensity_density_correction", {})
-    if not isinstance(correction_cfg, dict):
-        return False
-    return bool(correction_cfg.get("enabled", False))
+    correction_cfg = cfgx.section(cfgx.section(config, "pl", ""), "intensity_density_correction", "pl")
+    return cfgx.flag(correction_cfg, "enabled", "pl.intensity_density_correction")
 
 
 def _force_pl_modality(records: list[SpectrumRecord], *, intensity_density_correction: bool = False) -> list[SpectrumRecord]:

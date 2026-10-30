@@ -240,7 +240,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
 ## Raman Baseline Slope Bounds (2026-10-23)
 
 - Raman n-peak fits (`peak_2..5_model`) now search `bg_slope` in `estimate +/- max(2.0, 3*|estimate|)` instead of a fixed `[-2, 2]`. Steep fluorescence backgrounds (slope ~2, e.g. sample_G) were clamped at the bound and the optimizer stalled at the initial E2g=384 / A1g=403.
-- PL fits and the legacy `mos2_double_*` models keep the fixed bound.
+- PL fits keep their own baseline handling (`mos2_double_*` legacy models were removed on 2026-10-30).
 
 ## Unified Scientific Config (2026-10-30)
 
@@ -252,7 +252,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
   validation. Section files keep only non-scientific settings (`report_export`, GUI style, baseline method).
 - Path: `runtime_paths.user_config_path()` -> source: workspace root; frozen: exe folder, falling back to the bundled
   `_internal/config.yaml` if the user deleted it.
-- Formerly hardcoded constants, now config keys with identical defaults:
+- Formerly hardcoded constants, now config keys (see "Strict Config Access" below: no code-side defaults remain):
   - `raman_lmfit`: `fit.sigma_init_by_peak`, `fit.fraction_init`, `fit.offset_bounds.*`,
     `fit.two_stage_anchor.fallback_half_window`, `fit.baseline.{lock_by_model,locked_rel_tol,slope_bounds,
     manual_refit_slope_bound,default_edge_fraction,default_edge_min}`, `fit.min_roi_points`,
@@ -264,8 +264,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
   - `refit_api.py`: shares `min_roi_points`, `locked_rel_tol`, `fraction_init`, `manual_refit_slope_bound`
   - GUI: `raman_graph.all_spectra_viewer.fwhm_warn`, `raman_graph.sample_comparison.absolute_isolines.{eps_range,n_range}`
 - Kept in code on purpose: math/stat constants (FWHM<->sigma 2.3548/2.0, MAD 1.4826, h*c 1239.84 eV nm),
-  numerical epsilons, unreachable legacy paths (`mos2_double_*`, `_fit_pl_model` single path), display-only GUI
-  windows, the nm-vs-eV axis guess (`max(x) > 100`).
+  numerical epsilons, display-only GUI windows, the nm-vs-eV axis guess (`max(x) > 100`).
 - `mos2_pl/config/raman.yaml` previously differed (`selection_metric: hybrid`, E2g/A1g sigma max 5.0); the shared
   config now uses the Raman values. PL runs do not fit with the `raman` section, so PL results are unchanged.
 - Verification: 47 Raman + 8 PL real spectra re-fitted before/after; all per-spectrum values, statuses and reasons
@@ -281,3 +280,45 @@ This document describes the current workspace architecture after TASK-006~008 mi
 
 - E2g SNR below `prefit.e2g_snr_hard_min` (now 2.0, was 3.0) no longer invalidates the spectrum: it is fitted normally and flagged `attention` with reason `prefit_e2g_snr_below_hard` (soft band keeps `prefit_e2g_snr_below_soft`).
 - A1g SNR below `a1g_snr_hard_min` still routes to the `prefit_gate_invalid` fallback.
+
+## Strict Config Access (2026-10-30)
+
+- `fitting/mos2_core/io/config_access.py` (`cfgx`): `section/number/integer/flag/text/pair/number_list/string_list`
+  read a key or raise `ConfigKeyError("config.yaml: missing required key 'raman.fit.e2g_init'")`.
+  `ConfigKeyError` is a `LookupError`, not a `ValueError`, so per-candidate fit `except` blocks cannot turn a broken
+  config into "every spectrum invalid".
+- Removed every code-side copy of config values: `_DEFAULT_*` dicts and dataclass defaults in `raman_lmfit`, stale
+  PL component defaults (they differed from config.yaml), `.get(key, default)` reads in preprocessing, post-selection
+  QC (defaults were 17-25 vs config 15-27), reporting, confidence, model selection, PL density correction, GUI pages,
+  desktop editor compare window (fallback was 520-780, a nm window for an eV axis).
+- `_resolve_fit_config` is split into `_resolve_raman_fit_config` / `_resolve_pl_fit_config`; fields of the other
+  modality are neutral (NaN/empty) and never read.
+- Inline literals moved to config.yaml: `raman.fit.prefit.local_baseline_percentile` (20),
+  `raman.fit.prefit.noise_windows.{min_points 8, fallback_percentile 35, fallback_min_points 5}`,
+  `pl.fit.seed.local_baseline_percentile` (20), `pl.fit.spike_check.span_percentiles` ([5, 95]),
+  `{raman,pl}.input_qc.min_points` (5, input QC `too_few_points`).
+- Still literal on purpose (numerical minimums of an algorithm, not judgement criteria): baseline line fit needs 4
+  edge points else uses first/last point, peak-height window needs 3 points, despike skips < 5 points and uses an odd
+  kernel >= 3, Si `curve_fit` maxfev 20000, fallback-candidate AIC/BIC sentinels, `1e12` metric sentinels.
+- Removed config keys that no code used: `raman.fit.{sigma_min,sigma_max}` (every peak has `sigma_bounds_by_peak`),
+  `raman.fit.baseline.{default_edge_fraction,default_edge_min}` (every model has `model_windows`),
+  `raman.fit.center_tolerance_by_model.peak_2_model` (peak_2 has no LO/ZO/LA), `pl.fit.{x_unit,pl_center_*,pl_sigma_*}`.
+- Removed unreachable fit paths: `mos2_double_*` models, `_fit_two_peak_legacy`, the non-component PL single-peak
+  path and PL stub-name aliases. PL model names must be listed in `pl.fit.model_components`.
+- Model selection reads `hybrid_weights` on every run, not only when `selection_metric: hybrid`.
+- Reporting: FWHM normal band uses `raman.fit.sigma_bounds_by_peak` x2 (pseudo-Voigt) and PL component
+  `fwhm_min/fwhm_max` directly (fixes the gaussian 2*sigma issue above; no effect while all components are pvoigt).
+- GUI: `gui/components/science_settings.py` reads `fwhm_warn`, Flagged legacy thresholds, strain/doping coefficients and
+  isoline ranges; `report_loader.load_graph_config` no longer falls back silently to `raman_graph.yaml` without config.yaml.
+- Experimental `least_squares_hotpath` now takes offset bounds, lock tolerance, slope bounds, anchor fallback,
+  `fraction_init`, `min_roi_points` from the same config (it had its own copies, incl. the pre-2026-10-23 fixed slope bound).
+- Found while re-running real data: `_fit_single_spectrum_worker` still passed the removed `default_models` /
+  `pl_models`, so `--workers > 1` silently fell back to sequential (2x slower, same results). Fixed, and
+  `tests/test_packaging_runtime.py::test_real_process_pool_fits_without_falling_back` now runs a real pool.
+- That test also exposed a pre-existing circular import (`core/__init__` eagerly imported `default_stages`, which
+  imports the stage packages): importing `raman_lmfit` first failed. `core/__init__` now resolves
+  `build_default_context/build_default_stages` lazily.
+- Dependency test `tests/test_config_dependency.py`: runs the real Raman/PL pipelines and GUI setting readers on a
+  key-tracking config and asserts every config.yaml leaf is read strictly and none via `.get(default)`; plus
+  missing-key runs that must raise `ConfigKeyError` naming the key. Verified by planting a `.get("r2_min", 0.95)`
+  and an ignored key: both detected.

@@ -135,6 +135,9 @@ Current guardrail status:
 - Top-level keys are config sections (`raman`, `pl`, `review`, `raman_graph`) and are deep-merged over
   `fitting/*/config/*.yaml`, which now only hold non-scientific settings (report export, GUI style).
 - Edits apply to the next analysis run; restart the GUI to refresh cached values.
+- The code keeps no copy of these values: a missing/misspelled key stops the run with
+  `ConfigKeyError: config.yaml: missing required key '<path>'`. `tests/test_config_dependency.py` checks that every
+  key is actually read by the pipeline/GUI and never through a code-side default.
 
 ## Run GUI
 

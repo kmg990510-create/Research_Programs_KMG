@@ -8,6 +8,7 @@ import numpy as np
 
 from ..core.interfaces import PostSelectionQCStage
 from ..core.types import FitCandidate, PipelineContext, SelectionResult
+from ..io import config_access as cfgx
 
 
 def _to_float(value: object) -> float | None:
@@ -33,6 +34,21 @@ def _mad_sigma(values: np.ndarray) -> tuple[float, float]:
     return med, float(1.4826 * mad)
 
 
+def _choice(value: str, allowed: set[str], where: str) -> str:
+    if value not in allowed:
+        raise cfgx.ConfigKeyError(f"config.yaml: '{where}' must be one of {sorted(allowed)} (got {value!r})")
+    return value
+
+
+def _statuses(mapping: Mapping[str, object], key: str, path: str) -> list[str]:
+    values = [v.lower() for v in cfgx.string_list(mapping, key, path)]
+    for value in values:
+        _choice(value, {"valid", "attention"}, f"{path}.{key}")
+    if not values:
+        raise cfgx.ConfigKeyError(f"config.yaml: '{path}.{key}' must list at least one status")
+    return values
+
+
 class MahalanobisPostSelectionQC(PostSelectionQCStage):
     """
     Invalidate geometrically implausible E2g/A1g locations using Mahalanobis distance.
@@ -40,57 +56,37 @@ class MahalanobisPostSelectionQC(PostSelectionQCStage):
     Reference distribution is built from currently selected valid spectra only.
     """
 
-    def __init__(
-        self,
-        mahalanobis_distance_threshold: float = 3.0,
-        min_reference_valid_samples: int = 30,
-        covariance_regularization: float = 1.0e-6,
-    ) -> None:
-        self.mahalanobis_distance_threshold = float(mahalanobis_distance_threshold)
-        self.min_reference_valid_samples = int(min_reference_valid_samples)
-        self.covariance_regularization = float(covariance_regularization)
-
     def run(
         self,
         selections: Mapping[str, SelectionResult],
         context: PipelineContext,
     ) -> Mapping[str, SelectionResult]:
-        raman_cfg = context.config.get("raman", {}) if isinstance(context.config, dict) else {}
-        qc_cfg = (
-            raman_cfg.get("post_selection_qc", {})
-            if isinstance(raman_cfg, dict)
-            else {}
-        )
-        mahalanobis_cfg = (
-            qc_cfg.get("mahalanobis_outlier", {})
-            if isinstance(qc_cfg, dict)
-            else {}
-        )
+        q = "raman.post_selection_qc"
+        qc_cfg = cfgx.section(cfgx.section(context.config, "raman", ""), "post_selection_qc", "raman")
+        enabled = cfgx.flag(qc_cfg, "enabled", q)
+        mahalanobis_enabled = cfgx.flag(cfgx.section(qc_cfg, "mahalanobis_outlier", q), "enabled", f"{q}.mahalanobis_outlier")
+        mahalanobis_distance_threshold = cfgx.number(qc_cfg, "mahalanobis_distance_threshold", q)
+        min_reference_valid_samples = cfgx.integer(qc_cfg, "min_reference_valid_samples", q)
+        covariance_regularization = cfgx.number(qc_cfg, "covariance_regularization", q)
 
-        enabled = bool(qc_cfg.get("enabled", True))
-        mahalanobis_enabled = bool(
-            mahalanobis_cfg.get("enabled", True)
-            if isinstance(mahalanobis_cfg, dict)
-            else True
+        d = f"{q}.delta_outlier"
+        delta_cfg = cfgx.section(qc_cfg, "delta_outlier", q)
+        delta_enabled = cfgx.flag(delta_cfg, "enabled", d)
+        delta_sigma_k = cfgx.number(delta_cfg, "sigma_k", d)
+        delta_fallback_abs = cfgx.number(delta_cfg, "fallback_abs", d)
+        delta_min_reference_samples = cfgx.integer(delta_cfg, "min_reference_samples", d)
+        delta_action = _choice(cfgx.text(delta_cfg, "action", d).lower(), {"attention", "invalid"}, f"{d}.action")
+        apply_statuses = _statuses(delta_cfg, "apply_statuses", d)
+        reference_status = _choice(
+            cfgx.text(delta_cfg, "reference_status", d).lower(), {"valid", "attention"}, f"{d}.reference_status"
         )
-        mahalanobis_distance_threshold = float(
-            qc_cfg.get(
-                "mahalanobis_distance_threshold",
-                self.mahalanobis_distance_threshold,
-            )
-        )
-        min_reference_valid_samples = int(
-            qc_cfg.get(
-                "min_reference_valid_samples",
-                self.min_reference_valid_samples,
-            )
-        )
-        covariance_regularization = float(
-            qc_cfg.get(
-                "covariance_regularization",
-                self.covariance_regularization,
-            )
-        )
+        delta_absolute_cfg = cfgx.section(delta_cfg, "absolute_range", d)
+        delta_absolute_enabled = cfgx.flag(delta_absolute_cfg, "enabled", f"{d}.absolute_range")
+        delta_absolute_min = cfgx.number(delta_absolute_cfg, "min", f"{d}.absolute_range")
+        delta_absolute_max = cfgx.number(delta_absolute_cfg, "max", f"{d}.absolute_range")
+        if delta_absolute_enabled and delta_absolute_max <= delta_absolute_min:
+            raise cfgx.ConfigKeyError(f"config.yaml: '{d}.absolute_range' needs min < max")
+        delta_absolute_apply_statuses = _statuses(delta_absolute_cfg, "apply_statuses", f"{d}.absolute_range")
 
         context.state["post_selection_qc_enabled"] = enabled
         context.state["post_selection_qc_mahalanobis_outlier_enabled"] = (
@@ -194,70 +190,6 @@ class MahalanobisPostSelectionQC(PostSelectionQCStage):
         context.state["post_selection_qc_invalidated_count"] = invalidated
 
         # ---- Rule 2: Delta outlier vs dataset (typically set to attention) ----
-        delta_cfg = qc_cfg.get("delta_outlier", {}) if isinstance(qc_cfg, dict) else {}
-        delta_enabled = bool(delta_cfg.get("enabled", True))
-        delta_sigma_k = float(delta_cfg.get("sigma_k", 6.0))
-        delta_fallback_abs = float(delta_cfg.get("fallback_abs", 3.0))
-        delta_absolute_cfg = (
-            delta_cfg.get("absolute_range", {})
-            if isinstance(delta_cfg, dict)
-            else {}
-        )
-        delta_absolute_enabled = bool(
-            delta_absolute_cfg.get("enabled", True)
-            if isinstance(delta_absolute_cfg, dict)
-            else True
-        )
-        delta_absolute_min = float(
-            delta_absolute_cfg.get("min", 17.0)
-            if isinstance(delta_absolute_cfg, dict)
-            else 17.0
-        )
-        delta_absolute_max = float(
-            delta_absolute_cfg.get("max", 25.0)
-            if isinstance(delta_absolute_cfg, dict)
-            else 25.0
-        )
-        if delta_absolute_max <= delta_absolute_min:
-            delta_absolute_enabled = False
-        absolute_apply_raw = (
-            delta_absolute_cfg.get("apply_statuses", ["valid", "attention"])
-            if isinstance(delta_absolute_cfg, dict)
-            else ["valid", "attention"]
-        )
-        if isinstance(absolute_apply_raw, list):
-            delta_absolute_apply_statuses = [
-                str(v).strip().lower()
-                for v in absolute_apply_raw
-                if str(v).strip().lower() in {"valid", "attention"}
-            ]
-        else:
-            delta_absolute_apply_statuses = ["valid", "attention"]
-        if not delta_absolute_apply_statuses:
-            delta_absolute_apply_statuses = ["valid", "attention"]
-        delta_min_reference_samples = int(
-            delta_cfg.get("min_reference_samples", min_reference_valid_samples)
-        )
-        delta_action = str(delta_cfg.get("action", "attention")).strip().lower()
-        if delta_action not in {"attention", "invalid"}:
-            delta_action = "attention"
-
-        apply_statuses_raw = delta_cfg.get("apply_statuses", ["valid"])
-        if isinstance(apply_statuses_raw, list):
-            apply_statuses = [
-                str(v).strip().lower()
-                for v in apply_statuses_raw
-                if str(v).strip().lower() in {"valid", "attention"}
-            ]
-        else:
-            apply_statuses = ["valid"]
-        if not apply_statuses:
-            apply_statuses = ["valid"]
-
-        reference_status = str(delta_cfg.get("reference_status", "valid")).strip().lower()
-        if reference_status not in {"valid", "attention"}:
-            reference_status = "valid"
-
         context.state["post_selection_qc_delta_outlier_enabled"] = delta_enabled
         context.state["post_selection_qc_delta_absolute_range_enabled"] = delta_absolute_enabled
         context.state["post_selection_qc_delta_absolute_range_min"] = float(delta_absolute_min)

@@ -16,6 +16,7 @@ from scipy.optimize import least_squares
 from ..core.types import FitCandidate
 from .raman_lmfit import (
     RamanFitConfig,
+    _bg_slope_bounds,
     _build_n_peak_spec,
     _estimate_linear_baseline_edges,
     _finite,
@@ -123,7 +124,7 @@ def fit_raman_n_peak_least_squares(
     mask = (x_full >= spec.x_min) & (x_full <= spec.x_max)
     x_fit = np.asarray(x_full[mask], dtype=float)
     y_fit = np.asarray(y_corr[mask], dtype=float)
-    if x_fit.size < 20:
+    if x_fit.size < cfg.min_roi_points:
         raise ValueError(f"Insufficient ROI points for model {model_name}")
 
     baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
@@ -136,8 +137,8 @@ def fit_raman_n_peak_least_squares(
     center_exprs: dict[str, tuple[str, str] | None] = {}
 
     if spec.lock_baseline:
-        a_eps = max(1.0e-8, abs(baseline_slope) * 0.01)
-        b_eps = max(1.0e-8, abs(baseline_intercept) * 0.01)
+        a_eps = max(1.0e-8, abs(baseline_slope) * cfg.locked_baseline_rel_tol)
+        b_eps = max(1.0e-8, abs(baseline_intercept) * cfg.locked_baseline_rel_tol)
         _add_var(var_specs, "bg_slope", baseline_slope, baseline_slope - a_eps, baseline_slope + a_eps)
         _add_var(
             var_specs,
@@ -147,7 +148,8 @@ def fit_raman_n_peak_least_squares(
             baseline_intercept + b_eps,
         )
     else:
-        _add_var(var_specs, "bg_slope", baseline_slope, -2.0, 2.0)
+        slope_bounds = _bg_slope_bounds(baseline_slope, cfg.bg_slope_min_half_width, cfg.bg_slope_multiplier)
+        _add_var(var_specs, "bg_slope", baseline_slope, slope_bounds["min"], slope_bounds["max"])
         _add_var(var_specs, "bg_intercept", baseline_intercept, -1.0e12, 1.0e12)
 
     anchor_mode = (
@@ -182,7 +184,8 @@ def fit_raman_n_peak_least_squares(
                 center_min = max(float(center_min), center_guess - cfg.two_stage_anchor_window)
                 center_max = min(float(center_max), center_guess + cfg.two_stage_anchor_window)
                 if center_max <= center_min:
-                    center_min, center_max = center_guess - 0.5, center_guess + 0.5
+                    center_min = center_guess - cfg.anchor_fallback_half_window
+                    center_max = center_guess + cfg.anchor_fallback_half_window
 
         center_var = f"{key}_center"
         center_exprs[label] = None
@@ -191,18 +194,21 @@ def fit_raman_n_peak_least_squares(
                 _add_var(var_specs, center_var, center_guess, center_min, center_max)
             elif label == "LO" and "E2g" in prefix_for_label:
                 delta_name = "d_lo_from_e2g"
-                delta_guess = max(abs(float(cfg.lo_offset_from_e2g)), 0.5)
-                _add_var(var_specs, delta_name, delta_guess, 0.5, 10.0)
+                b = cfg.offset_bounds["lo_from_e2g"]
+                delta_guess = max(abs(float(cfg.lo_offset_from_e2g)), b["min"])
+                _add_var(var_specs, delta_name, delta_guess, b["min"], b["max"])
                 center_exprs[label] = ("minus", delta_name)
             elif label == "ZO" and "A1g" in prefix_for_label:
                 delta_name = "d_zo_from_a1g"
-                delta_guess = max(abs(float(cfg.zo_offset_from_a1g)), 0.5)
-                _add_var(var_specs, delta_name, delta_guess, 0.5, max(20.0, delta_guess + 10.0))
+                b = cfg.offset_bounds["zo_from_a1g"]
+                delta_guess = max(abs(float(cfg.zo_offset_from_a1g)), b["min"])
+                _add_var(var_specs, delta_name, delta_guess, b["min"], max(b["max_floor"], delta_guess + b["max_margin"]))
                 center_exprs[label] = ("plus_a1g", delta_name)
             elif label == "LA" and "A1g" in prefix_for_label:
                 delta_name = "d_la_from_a1g"
-                delta_guess = max(abs(float(cfg.la_offset_from_a1g)), 0.5)
-                _add_var(var_specs, delta_name, delta_guess, 0.5, max(70.0, delta_guess + 20.0))
+                b = cfg.offset_bounds["la_from_a1g"]
+                delta_guess = max(abs(float(cfg.la_offset_from_a1g)), b["min"])
+                _add_var(var_specs, delta_name, delta_guess, b["min"], max(b["max_floor"], delta_guess + b["max_margin"]))
                 center_exprs[label] = ("plus_a1g", delta_name)
             elif idx == 0:
                 _add_var(var_specs, center_var, center_guess, center_min, center_max)
@@ -210,7 +216,8 @@ def fit_raman_n_peak_least_squares(
                 prev_label = spec.peak_labels[idx - 1]
                 prev_guess = spec.center_guesses[idx - 1]
                 delta_name = f"d_{prev_label.lower()}_{key}"
-                _add_var(var_specs, delta_name, max(center_guess - prev_guess, 1.0), 0.5, 60.0)
+                chain = cfg.offset_bounds["chain"]
+                _add_var(var_specs, delta_name, max(center_guess - prev_guess, chain["guess_floor"]), chain["min"], chain["max"])
                 center_exprs[label] = ("plus_prev", delta_name)
         elif idx == 0 or not cfg.enforce_peak_order or (anchor_mode and label in {"E2g", "A1g"}):
             _add_var(var_specs, center_var, center_guess, center_min, center_max)
@@ -218,12 +225,13 @@ def fit_raman_n_peak_least_squares(
             prev_label = spec.peak_labels[idx - 1]
             prev_guess = spec.center_guesses[idx - 1]
             delta_name = f"d_{prev_label.lower()}_{key}"
-            _add_var(var_specs, delta_name, max(center_guess - prev_guess, 1.0), 0.5, 60.0)
+            chain = cfg.offset_bounds["chain"]
+            _add_var(var_specs, delta_name, max(center_guess - prev_guess, chain["guess_floor"]), chain["min"], chain["max"])
             center_exprs[label] = ("plus_prev", delta_name)
 
         sigma_min, sigma_max = _sigma_bounds_for_peak(cfg, label)
         sigma_guess = float(np.clip(float(spec.width_guesses[idx]), sigma_min, sigma_max))
-        fraction_guess = 0.0
+        fraction_guess = float(cfg.fraction_init)
         area_guess = _height_guess_to_lmfit_area(
             height_guess=float(spec.height_scales[idx] * h_guess),
             sigma_guess=sigma_guess,
