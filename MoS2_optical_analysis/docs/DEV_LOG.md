@@ -1415,3 +1415,9 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Packaging files moved to `packaging/`: `mos2_optical_analysis.spec` (`PROJECT_ROOT` = spec dir parent), `DIST_README.md`
   (was `PACKAGING_DIST_README.md`). The spec now copies it to `dist/mos2-analysis/README.md`; the manual `Copy-Item` build step is gone.
 - Deleted the untracked `legacy/` backup tree and its `.gitignore` / spec `excludes` / AGENTS.md references.
+
+## GitHub Publish + CI Build (2026-10-30)
+
+- Published as the `MoS2_optical_analysis/` subfolder of a public GitHub repository. History was rewritten for the
+  public copy: commit emails -> GitHub noreply address, sample/person-identifying folder names in docs -> `sample_*`.
+- Added `.github/workflows/build-mos2-optical-analysis.yml` (repository root) and pinned `packaging/requirements-build.txt`.

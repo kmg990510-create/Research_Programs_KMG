@@ -154,7 +154,8 @@ Build from repository root:
 ```
 
 Packaging details (frozen config paths, `--workers` in the exe, end-user `data\raw` setup):
-see `docs/PACKAGING.md`. The end-user guide `packaging/DIST_README.md` is copied into the app folder as
+see `docs/PACKAGING.md`. GitHub Actions can build the same exe without a local setup
+(Actions tab -> "Run workflow"; details in `docs/PACKAGING.md`). The end-user guide `packaging/DIST_README.md` is copied into the app folder as
 `README.md` by the spec.
 
 Packaging outputs:

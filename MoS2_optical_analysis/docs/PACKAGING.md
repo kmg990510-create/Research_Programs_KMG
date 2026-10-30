@@ -28,6 +28,7 @@ Notes:
 - `dist/mos2-analysis` is the distributable folder.
 - `dist/build` is temporary PyInstaller work output.
 - Close running `mos2-*.exe` before rebuilding (Windows file lock).
+- The same build also runs on GitHub Actions; see "CI Build (GitHub Actions)" below.
 
 ## Included in Bundle
 
@@ -98,3 +99,13 @@ Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
   Previously each pending spectrum was recorded as `invalid` (`fit_worker_exception`).
 - After a rebuild, verify with `mos2-run-raman.exe --raw-dir <folder> --run-id mp_check --workers 4`
   and confirm the log does not contain `fallback to sequential`.
+
+## CI Build (GitHub Actions)
+
+- Workflow: `.github/workflows/build-mos2-optical-analysis.yml` at the repository root (this project is the
+  `MoS2_optical_analysis/` subfolder of the repository).
+- Triggers: manual "Run workflow" in the Actions tab, or a pushed tag matching `mos2-v*`.
+- Steps on `windows-latest`: Python 3.11, `pip install -r packaging/requirements-build.txt`, `pytest`, PyInstaller with
+  the spec above, then upload `dist/mos2-analysis` as the `mos2-analysis` artifact (30 days).
+- `packaging/requirements-build.txt` is a `pip freeze` of the dev `.venv` so CI matches local versions.
+  Regenerate it after upgrading packages locally.
