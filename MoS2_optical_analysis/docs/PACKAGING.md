@@ -108,6 +108,9 @@ Non-frozen behavior still uses `sys.executable -m ...` exactly as before.
 - Triggers: manual "Run workflow" in the Actions tab, or a pushed tag matching `mos2-v*`.
 - Steps on `windows-latest`: Python 3.11, `pip install -r packaging/requirements-build.txt`, `pytest`, PyInstaller with
   the spec above, then upload `dist/mos2-analysis` as the `mos2-analysis` artifact (30 days).
+- Tag builds (`mos2-v*`) also zip the folder as `mos2-analysis-v<version>.zip` and publish it with
+  `gh release create` as a GitHub Release (public download, no login, kept permanently; needs `contents: write`).
+  Release: `git tag mos2-v1.1 && git push origin mos2-v1.1` from an up-to-date `main`.
 - `packaging/requirements-build.txt` is a `pip freeze` of the dev `.venv` so CI matches local versions.
   Regenerate it after upgrading packages locally.
 

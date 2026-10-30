@@ -14,6 +14,8 @@ defaults:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write  # gh release create
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -41,3 +43,23 @@ jobs:
           name: mos2-analysis
           path: MoS2_optical_analysis/dist/mos2-analysis
           retention-days: 30
+
+      # Tag builds only: publish the zipped app folder as a GitHub Release (public, no login, kept permanently).
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/mos2-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $zip = "mos2-analysis-$($env:TAG -replace '^mos2-', '').zip"
+          7z a -tzip $zip ./dist/mos2-analysis | Out-Null
+          $notes = @"
+          Windows app folder for MoS2 Raman/PL analysis.
+
+          1. Download ``$zip`` below and unzip it.
+          2. Run ``mos2-analysis.exe`` inside the ``mos2-analysis`` folder.
+          3. Put sample folders under ``data\raw\raman`` or ``data\raw\pl``; see ``README.md`` in the folder.
+
+          Build: commit $($env:GITHUB_SHA.Substring(0, 7))
+          "@
+          gh release create $env:TAG $zip --title "MoS2 optical analysis $($env:TAG -replace '^mos2-', '')" --notes $notes

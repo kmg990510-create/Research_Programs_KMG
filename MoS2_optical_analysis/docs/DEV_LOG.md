@@ -1430,3 +1430,8 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Spec writes `build_info.json` (bundled) and `BUILD_INFO.txt` (dist root); `gui/Main.py` shows the label under the title.
 - Tests: `tests/test_build_info.py` (git collection, non-git fallback, frozen label with UTC->KST, source label). 22 tests pass.
 - Validation: spec build-info block executed with a temp workpath; GUI HTTP 200 and Main AppTest shows the label. No PyInstaller build run.
+
+## Release on Tag (2026-10-30)
+
+- Workflow publishes a GitHub Release with the zipped app folder for `mos2-v*` tags; manual runs still only upload an Artifact.
+- First release: `mos2-v1.0` (commit with build identification).
