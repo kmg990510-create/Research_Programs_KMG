@@ -27,6 +27,7 @@ from fitting.mos2_core.review.manual_overrides import (  # noqa: E402
     upsert_manual_override,
 )
 from gui.components import report_loader as _report_loader  # noqa: E402
+from gui.components.science_settings import fwhm_warn_limits  # noqa: E402
 from gui.components.manual_refit_contract import (  # noqa: E402
     build_editor_request,
     validate_editor_response,
@@ -235,7 +236,7 @@ all_spectra_cfg = graph_cfg.get("all_spectra_viewer", {}) if isinstance(graph_cf
 x_window_cfg = all_spectra_cfg.get("x_window", {}) if isinstance(all_spectra_cfg, dict) else {}
 overlay_style_cfg = all_spectra_cfg.get("style", {}) if isinstance(all_spectra_cfg, dict) else {}
 fit_curve_cfg = all_spectra_cfg.get("fit_curve", {}) if isinstance(all_spectra_cfg, dict) else {}
-fwhm_warn_cfg = all_spectra_cfg.get("fwhm_warn", {}) if isinstance(all_spectra_cfg, dict) else {}
+fwhm_warn_cfg = fwhm_warn_limits(graph_cfg)
 fallback_x_min = float(x_window_cfg.get("fallback_min", 340.0))
 fallback_x_max = float(x_window_cfg.get("fallback_max", 430.0))
 peak_padding = float(x_window_cfg.get("peak_padding", 18.0))

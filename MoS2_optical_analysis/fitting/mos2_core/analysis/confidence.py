@@ -6,6 +6,7 @@ from typing import Mapping
 
 from ..core.interfaces import ConfidenceScoringStage
 from ..core.types import ConfidenceResult, PipelineContext, SelectionResult
+from ..io import config_access as cfgx
 
 
 class SimpleConfidenceScorer(ConfidenceScoringStage):
@@ -13,20 +14,17 @@ class SimpleConfidenceScorer(ConfidenceScoringStage):
     Confidence scorer using simple metric heuristics.
 
     Confidence score is normalized to [0, 1], and low confidence is flagged
-    for manual review.
+    for manual review. Thresholds come from `review` in config.yaml.
     """
-
-    def __init__(self, threshold: float = 0.8) -> None:
-        self.threshold = threshold
 
     def run(
         self,
         selections: Mapping[str, SelectionResult],
         context: PipelineContext,
     ) -> Mapping[str, ConfidenceResult]:
-        review_cfg = context.config.get("review", {})
-        threshold = float(review_cfg.get("confidence_threshold", self.threshold))
-        high_rmse_threshold = float(review_cfg.get("high_rmse_threshold", 0.2))
+        review_cfg = cfgx.section(context.config, "review", "")
+        threshold = cfgx.number(review_cfg, "confidence_threshold", "review")
+        high_rmse_threshold = cfgx.number(review_cfg, "high_rmse_threshold", "review")
 
         output: dict[str, ConfidenceResult] = {}
         for spectrum_id, selection in selections.items():

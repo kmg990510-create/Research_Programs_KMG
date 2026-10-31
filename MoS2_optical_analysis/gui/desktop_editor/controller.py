@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from fitting.mos2_core.core.runtime_paths import raman_config_dir
+from fitting.mos2_core.io import config_access as cfgx
 from fitting.mos2_core.io import load_pipeline_config
 from fitting.mos2_core.review.refit_api import ManualRefitRequest, SingleSpectrumRefitAPI
 
@@ -240,19 +241,10 @@ class ManualEditorController:
     def _resolve_compare_window(self) -> tuple[float, float]:
         modality = str(self.request.modality or "raman").strip().lower()
         config = load_pipeline_config(raman_config_dir())
-        section = config.get(modality, {}) if isinstance(config, dict) else {}
-        if not isinstance(section, dict):
-            section = {}
-        fit_cfg = section.get("fit", {})
-        if not isinstance(fit_cfg, dict):
-            fit_cfg = {}
-        x_min = self._safe_metric(fit_cfg.get("compare_x_min"))
-        x_max = self._safe_metric(fit_cfg.get("compare_x_max"))
-        if x_min is None or x_max is None or x_max <= x_min:
-            if modality == "pl":
-                return 520.0, 780.0
-            return 350.0, 440.0
-        return float(x_min), float(x_max)
+        fit_cfg = cfgx.section(cfgx.section(config, modality, ""), "fit", modality)
+        x_min = cfgx.number(fit_cfg, "compare_x_min", f"{modality}.fit")
+        x_max = cfgx.number(fit_cfg, "compare_x_max", f"{modality}.fit")
+        return x_min, x_max
 
     @staticmethod
     def _resolve_line_profile(row_snapshot: dict[str, Any]) -> str:

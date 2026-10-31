@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from ..analysis import MahalanobisPostSelectionQC, RamanFitReportGenerator, SimpleConfidenceScorer
 from ..baseline import ZeroBaselineEnsemble
 from ..fitting import EnsembleMetricModelSelection, LmfitRamanModelEnsembleFitting
+from ..io import config_access as cfgx
 from ..io import load_pipeline_config
 from ..mapping import SimpleMapAnalysis
 from ..models import BasicParameterExtraction
@@ -21,13 +22,8 @@ from .types import PipelineContext
 def _pl_enabled_from_config(config: Mapping[str, Any] | None) -> bool:
     if config is None:
         return True
-    pl_section = config.get("pl", {})
-    if not isinstance(pl_section, Mapping):
-        return False
-    models = pl_section.get("models", [])
-    if not isinstance(models, list):
-        return False
-    return any(str(item).strip() for item in models)
+    models = cfgx.string_list(cfgx.section(config, "pl", ""), "models", "pl")
+    return any(models)
 
 
 def build_default_stages(config: Mapping[str, Any] | None = None) -> PipelineStages:

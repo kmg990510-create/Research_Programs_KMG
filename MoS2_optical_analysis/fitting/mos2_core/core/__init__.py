@@ -1,6 +1,5 @@
 """Core pipeline APIs."""
 
-from .default_stages import build_default_context, build_default_stages
 from .interfaces import (
     BaselineEnsembleStage,
     ConfidenceScoringStage,
@@ -72,3 +71,14 @@ __all__ = [
     "SpectrumRecord",
     "run_pipeline",
 ]
+
+
+def __getattr__(name: str):
+    # Lazy: default_stages imports the stage packages (fitting, analysis, ...), which import
+    # core.interfaces/core.types. Importing it eagerly here made `import fitting.mos2_core.fitting.raman_lmfit`
+    # fail with a circular import (e.g. in spawned fit worker processes).
+    if name in {"build_default_context", "build_default_stages"}:
+        from . import default_stages
+
+        return getattr(default_stages, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

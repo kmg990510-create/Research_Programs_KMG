@@ -73,3 +73,18 @@ def test_broken_process_pool_falls_back_to_sequential(
     assert "fit_worker_exception" not in model_names
     assert any(name.startswith("peak_") for name in model_names)
     assert any(f["model_name"] == "process_pool_init" for f in context.state["fit_failures"])
+
+
+def test_real_process_pool_fits_without_falling_back(tmp_path: Path) -> None:
+    # Guards the parallel path itself: a worker-side error used to be hidden by the sequential fallback.
+    context = build_default_context(run_id="real_pool", artifact_dir=tmp_path, config_dir=RAMAN_CONFIG_DIR)
+    context.state["fit_workers"] = 2
+    stages = build_default_stages(config=context.config)
+
+    passed, _ = stages.qc.run(generate_dummy_spectra(count=2), context)
+    preprocessed = stages.preprocess.run(passed, context)
+    baselines = stages.baseline_ensemble.run(preprocessed, context)
+    ensemble = stages.model_ensemble_fitting.run(preprocessed, baselines, context)
+
+    assert len(ensemble) == 2
+    assert not any(f["model_name"] == "process_pool_init" for f in context.state["fit_failures"])

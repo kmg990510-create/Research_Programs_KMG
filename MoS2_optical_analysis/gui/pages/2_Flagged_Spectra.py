@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.parameter_editor import render_changes_download, render_parameter_editor  # noqa: E402
 from gui.components.review_table import render_review_table  # noqa: E402
+from gui.components.science_settings import flagged_legacy_thresholds  # noqa: E402
 
 choose_report_sidebar = _report_loader.choose_report_sidebar
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
@@ -33,8 +34,7 @@ if df.empty:
 
 flagged = df.copy()
 graph_cfg = load_graph_config()
-flagged_cfg = graph_cfg.get("flagged_spectra", {}) if isinstance(graph_cfg, dict) else {}
-legacy_cfg = flagged_cfg.get("legacy_thresholds", {}) if isinstance(flagged_cfg, dict) else {}
+legacy_thresholds = flagged_legacy_thresholds(graph_cfg)
 mode_note = "flagged_by_quality_flags"
 if "needs_attention" in flagged.columns:
     flagged = flagged[flagged["needs_attention"] == True]  # noqa: E712
@@ -47,9 +47,10 @@ elif "quality_flags" in flagged.columns:
 else:
     mode_note = "flagged_by_legacy_heuristic"
     threshold_col1, threshold_col2, threshold_col3 = st.columns(3)
-    rmse_default = max(0.0, min(float(legacy_cfg.get("rmse_threshold", 15.0)), 100.0))
-    r2_default = max(0.0, min(float(legacy_cfg.get("r2_lower_bound", 0.98)), 1.0))
-    delta_default = max(10.0, min(float(legacy_cfg.get("delta_max", 25.0)), 40.0))
+    # Slider start values from config.yaml, clipped to the slider ranges below.
+    rmse_default = max(0.0, min(legacy_thresholds["rmse_threshold"], 100.0))
+    r2_default = max(0.0, min(legacy_thresholds["r2_lower_bound"], 1.0))
+    delta_default = max(10.0, min(legacy_thresholds["delta_max"], 40.0))
     rmse_threshold = threshold_col1.slider(
         "RMSE threshold",
         0.0,

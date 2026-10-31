@@ -5,15 +5,16 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 from lmfit.model import ModelResult
-from lmfit.models import GaussianModel, LinearModel, LorentzianModel, PseudoVoigtModel
+from lmfit.models import GaussianModel, LinearModel, PseudoVoigtModel
 
 from ..core.interfaces import ModelEnsembleFittingStage
 from ..core.types import BaselineResult, FitCandidate, FitEnsembleResult, PipelineContext, PreprocessedSpectrum
+from ..io import config_access as cfgx
 
 
 @dataclass(slots=True)
@@ -26,26 +27,27 @@ class NPeakWindowSpec:
     right_base: tuple[float, float]
 
 
-# Historical fit constants. Each one can be overridden from the root config.yaml
-# (`{raman,pl}.fit...`); these defaults keep the original behaviour when a key is absent.
-_DEFAULT_SIGMA_INIT_BY_PEAK = {"lo": 7.0, "e2g": 3.0, "a1g": 3.0, "zo": 4.0, "la": 8.0}
-_DEFAULT_LOCK_BASELINE_BY_MODEL = {
-    "peak_2_model": False,
-    "peak_3_model": True,
-    "peak_4_model": True,
-    "peak_5_model": True,
+RAMAN_PEAK_MODELS = ("peak_2_model", "peak_3_model", "peak_4_model", "peak_5_model")
+RAMAN_PEAK_LABELS = {
+    "peak_2_model": ["E2g", "A1g"],
+    "peak_3_model": ["LO", "E2g", "A1g"],
+    "peak_4_model": ["LO", "E2g", "A1g", "ZO"],
+    "peak_5_model": ["LO", "E2g", "A1g", "ZO", "LA"],
 }
-_DEFAULT_OFFSET_BOUNDS = {
-    "lo_from_e2g": {"min": 0.5, "max": 10.0},
-    "zo_from_a1g": {"min": 0.5, "max_floor": 20.0, "max_margin": 10.0},
-    "la_from_a1g": {"min": 0.5, "max_floor": 70.0, "max_margin": 20.0},
-    "chain": {"guess_floor": 1.0, "min": 0.5, "max": 60.0},
+_OFFSET_BOUND_KEYS = {
+    "lo_from_e2g": ("min", "max"),
+    "zo_from_a1g": ("min", "max_floor", "max_margin"),
+    "la_from_a1g": ("min", "max_floor", "max_margin"),
+    "chain": ("guess_floor", "min", "max"),
 }
 
 
 @dataclass(slots=True)
 class RamanFitConfig:
-    """Runtime Raman fit configuration resolved from YAML."""
+    """Runtime fit configuration resolved strictly from config.yaml (`raman.fit` or `pl.fit`).
+
+    Fields that only one modality uses are left neutral for the other one.
+    """
 
     models: list[str]
     x_min: float
@@ -59,7 +61,6 @@ class RamanFitConfig:
     center_tolerance_by_model: dict[str, float]
     e2g_bounds: tuple[float, float]
     a1g_bounds: tuple[float, float]
-    sigma_bounds: tuple[float, float]
     sigma_bounds_by_peak: dict[str, tuple[float, float]]
     compare_x_min: float
     compare_x_max: float
@@ -75,31 +76,31 @@ class RamanFitConfig:
     pl_a_minus_a0_split: tuple[bool, float, float, float]
     pl_trion_exciton_fwhm_ratio: tuple[bool, float, float, float]
     pl_share_exciton_fraction: bool
-    pl_spike_residual_sigma_k: float = 12.0
-    pl_spike_span_ratio: float = 0.60
-    sigma_init_by_peak: dict[str, float] = field(default_factory=lambda: dict(_DEFAULT_SIGMA_INIT_BY_PEAK))
-    fraction_init: float = 0.0
-    lock_baseline_by_model: dict[str, bool] = field(default_factory=lambda: dict(_DEFAULT_LOCK_BASELINE_BY_MODEL))
-    locked_baseline_rel_tol: float = 0.01
-    bg_slope_min_half_width: float = 2.0
-    bg_slope_multiplier: float = 3.0
-    manual_refit_bg_slope_bound: float = 2.0
-    baseline_edge_fraction: float = 0.1
-    baseline_edge_min: float = 1.0
-    anchor_fallback_half_window: float = 0.5
-    offset_bounds: dict[str, dict[str, float]] = field(
-        default_factory=lambda: {k: dict(v) for k, v in _DEFAULT_OFFSET_BOUNDS.items()}
-    )
-    min_roi_points: int = 20
-    min_spectrum_points: int = 20
-    pl_seed_baseline_percentile: float = 20.0
-    pl_seed_local_half_width_min: float = 0.02
-    pl_amplitude_floor_fraction: float = 0.01
+    pl_spike_residual_sigma_k: float
+    pl_spike_span_ratio: float
+    pl_spike_span_percentiles: tuple[float, float]
+    sigma_init_by_peak: dict[str, float]
+    fraction_init: float
+    lock_baseline_by_model: dict[str, bool]
+    locked_baseline_rel_tol: float
+    bg_slope_min_half_width: float
+    bg_slope_multiplier: float
+    manual_refit_bg_slope_bound: float
+    baseline_edge_fraction: float
+    baseline_edge_min: float
+    anchor_fallback_half_window: float
+    offset_bounds: dict[str, dict[str, float]]
+    min_roi_points: int
+    min_spectrum_points: int
+    pl_seed_baseline_percentile: float
+    pl_seed_local_baseline_percentile: float
+    pl_seed_local_half_width_min: float
+    pl_amplitude_floor_fraction: float
 
 
 @dataclass(slots=True)
 class PreFitConfig:
-    """Configuration for pre-fit peak-evidence gating."""
+    """Configuration for pre-fit peak-evidence gating (Raman only)."""
 
     enabled: bool
     peak_window_half_width: float
@@ -109,7 +110,30 @@ class PreFitConfig:
     a1g_snr_soft_min: float
     noise_left: tuple[float, float]
     noise_right: tuple[float, float]
-    min_points: int = 8
+    min_points: int
+    noise_min_points: int
+    noise_fallback_percentile: float
+    noise_fallback_min_points: int
+    local_baseline_percentile: float
+
+    @classmethod
+    def disabled(cls) -> "PreFitConfig":
+        nan = float("nan")
+        return cls(
+            enabled=False,
+            peak_window_half_width=nan,
+            e2g_snr_hard_min=nan,
+            e2g_snr_soft_min=nan,
+            a1g_snr_hard_min=nan,
+            a1g_snr_soft_min=nan,
+            noise_left=(nan, nan),
+            noise_right=(nan, nan),
+            min_points=0,
+            noise_min_points=0,
+            noise_fallback_percentile=nan,
+            noise_fallback_min_points=0,
+            local_baseline_percentile=nan,
+        )
 
 
 @dataclass(slots=True)
@@ -187,74 +211,11 @@ def _safe_param(params: Any, name: str, default: float = 0.0) -> float:
     return _finite(getattr(param, "value", default), default=default)
 
 
-def _resolve_models(raw_models: Any, default_models: Sequence[str]) -> list[str]:
-    if not isinstance(raw_models, list):
-        return list(default_models)
-
-    names: list[str] = []
-    for item in raw_models:
-        if isinstance(item, str):
-            names.append(item)
-            continue
-        if isinstance(item, dict):
-            name = item.get("name")
-            enabled = bool(item.get("enabled", True))
-            if isinstance(name, str) and enabled:
-                names.append(name)
-
-    return names or list(default_models)
-
-
-def _resolve_height_scales(raw: Any) -> dict[str, list[float]]:
-    if not isinstance(raw, dict):
-        return {}
-    resolved: dict[str, list[float]] = {}
-    for model_name, values in raw.items():
-        if not isinstance(model_name, str) or not isinstance(values, list):
-            continue
-        parsed: list[float] = []
-        for value in values:
-            number = _finite(value, default=float("nan"))
-            if np.isfinite(number) and number >= 0.0:
-                parsed.append(float(number))
-        if parsed:
-            resolved[model_name] = parsed
-    return resolved
-
-
-def _resolve_center_tolerances(raw: Any) -> dict[str, float]:
-    if not isinstance(raw, dict):
-        return {}
-    resolved: dict[str, float] = {}
-    for model_name, value in raw.items():
-        if not isinstance(model_name, str):
-            continue
-        tol = _finite(value, default=float("nan"))
-        if np.isfinite(tol) and tol > 0.0:
-            resolved[model_name] = float(tol)
-    return resolved
-
-
-def _resolve_sigma_bounds_by_peak(raw: Any) -> dict[str, tuple[float, float]]:
-    if not isinstance(raw, dict):
-        return {}
-    resolved: dict[str, tuple[float, float]] = {}
-    for peak_name, spec in raw.items():
-        if not isinstance(peak_name, str):
-            continue
-
-        sigma_min = float("nan")
-        sigma_max = float("nan")
-        if isinstance(spec, dict):
-            sigma_min = _finite(spec.get("min"), default=float("nan"))
-            sigma_max = _finite(spec.get("max"), default=float("nan"))
-        elif isinstance(spec, (list, tuple)) and len(spec) >= 2:
-            sigma_min = _finite(spec[0], default=float("nan"))
-            sigma_max = _finite(spec[1], default=float("nan"))
-
-        if np.isfinite(sigma_min) and np.isfinite(sigma_max) and sigma_max > sigma_min:
-            resolved[peak_name.lower()] = (float(sigma_min), float(sigma_max))
-    return resolved
+def _resolve_models(section: Mapping[str, Any], path: str) -> list[str]:
+    names = cfgx.string_list(section, "models", path)
+    if not names:
+        raise cfgx.ConfigKeyError(f"config.yaml: '{path}.models' must list at least one model")
+    return names
 
 
 def _pl_component_key(name: str) -> str:
@@ -267,264 +228,145 @@ def _pl_component_key(name: str) -> str:
 
 
 def _fwhm_to_sigma(fwhm: float, profile: str) -> float:
+    # Exact line-shape conversions (lmfit): Gaussian FWHM = 2*sqrt(2 ln2)*sigma, pseudo-Voigt FWHM = 2*sigma.
     fwhm_value = max(float(fwhm), 1.0e-9)
     return fwhm_value / 2.354820045 if profile == "gaussian" else fwhm_value / 2.0
 
 
-def _resolve_pl_components(raw: Any) -> dict[str, PLComponentSpec]:
-    defaults: dict[str, dict[str, Any]] = {
-        "pl": {
-            "label": "PL",
-            "profile": "pvoigt",
-            "center_init": 1.85,
-            "center_min": 1.50,
-            "center_max": 2.15,
-            "fwhm_init": 0.12,
-            "fwhm_min": 0.004,
-            "fwhm_max": 0.40,
-            "height_scale": 1.00,
-        },
-        "i1": {
-            "label": "I1",
-            "profile": "pvoigt",
-            "center_init": 1.51,
-            "center_min": 1.43,
-            "center_max": 1.58,
-            "fwhm_init": 0.13,
-            "fwhm_min": 0.03,
-            "fwhm_max": 0.24,
-            "height_scale": 0.15,
-        },
-        "i2": {
-            "label": "I2",
-            "profile": "pvoigt",
-            "center_init": 1.61,
-            "center_min": 1.54,
-            "center_max": 1.70,
-            "fwhm_init": 0.20,
-            "fwhm_min": 0.04,
-            "fwhm_max": 0.32,
-            "height_scale": 0.20,
-        },
-        "a_minus": {
-            "label": "A-",
-            "profile": "pvoigt",
-            "center_init": 1.855,
-            "center_min": 1.78,
-            "center_max": 1.90,
-            "fwhm_init": 0.085,
-            "fwhm_min": 0.02,
-            "fwhm_max": 0.18,
-            "height_scale": 1.00,
-        },
-        "a0": {
-            "label": "A0",
-            "profile": "pvoigt",
-            "center_init": 1.882,
-            "center_min": 1.84,
-            "center_max": 1.93,
-            "fwhm_init": 0.045,
-            "fwhm_min": 0.01,
-            "fwhm_max": 0.12,
-            "height_scale": 0.30,
-        },
-        "b": {
-            "label": "B",
-            "profile": "pvoigt",
-            "center_init": 2.022,
-            "center_min": 1.94,
-            "center_max": 2.10,
-            "fwhm_init": 0.125,
-            "fwhm_min": 0.03,
-            "fwhm_max": 0.24,
-            "height_scale": 0.25,
-        },
-    }
-
-    entries = {**defaults, **raw} if isinstance(raw, dict) else defaults
+def _resolve_pl_components(raw: Mapping[str, Any], path: str) -> dict[str, PLComponentSpec]:
     resolved: dict[str, PLComponentSpec] = {}
-    for raw_name, raw_spec in entries.items():
-        if not isinstance(raw_spec, dict):
-            continue
-        key = _pl_component_key(str(raw_spec.get("key", raw_name)))
-        default = defaults.get(key, {})
-        label = str(raw_spec.get("label", default.get("label", key))).strip() or key
-        profile = str(raw_spec.get("profile", default.get("profile", "pvoigt"))).strip().lower()
+    for raw_name in raw:
+        spec_path = f"{path}.{raw_name}"
+        spec = cfgx.section(raw, raw_name, path)
+        key = _pl_component_key(str(raw_name))
+        profile = cfgx.text(spec, "profile", spec_path).lower()
         if profile not in {"pvoigt", "gaussian"}:
-            profile = "pvoigt"
+            raise cfgx.ConfigKeyError(f"config.yaml: '{spec_path}.profile' must be pvoigt or gaussian (got {profile!r})")
 
-        center_init = _finite(raw_spec.get("center_init", default.get("center_init")), 1.85)
-        center_min = _finite(raw_spec.get("center_min", default.get("center_min")), center_init - 0.05)
-        center_max = _finite(raw_spec.get("center_max", default.get("center_max")), center_init + 0.05)
-        if center_max <= center_min:
-            center_min, center_max = center_init - 0.05, center_init + 0.05
-
-        sigma_init_raw = raw_spec.get("sigma_init")
-        sigma_min_raw = raw_spec.get("sigma_min")
-        sigma_max_raw = raw_spec.get("sigma_max")
-        if sigma_init_raw is None:
-            sigma_init = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_init", default.get("fwhm_init")), 0.1), profile)
-        else:
-            sigma_init = _finite(sigma_init_raw, 0.05)
-        if sigma_min_raw is None:
-            sigma_min = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_min", default.get("fwhm_min")), 0.01), profile)
-        else:
-            sigma_min = _finite(sigma_min_raw, 0.005)
-        if sigma_max_raw is None:
-            sigma_max = _fwhm_to_sigma(_finite(raw_spec.get("fwhm_max", default.get("fwhm_max")), 0.25), profile)
-        else:
-            sigma_max = _finite(sigma_max_raw, 0.125)
-        if sigma_max <= sigma_min:
-            sigma_min, sigma_max = 0.002, 0.20
-        sigma_init = float(np.clip(sigma_init, sigma_min, sigma_max))
+        center_init = cfgx.number(spec, "center_init", spec_path)
+        center_min = cfgx.number(spec, "center_min", spec_path)
+        center_max = cfgx.number(spec, "center_max", spec_path)
+        if not center_min < center_max:
+            raise cfgx.ConfigKeyError(f"config.yaml: '{spec_path}' needs center_min < center_max")
+        sigma_init = _fwhm_to_sigma(cfgx.number(spec, "fwhm_init", spec_path), profile)
+        sigma_min = _fwhm_to_sigma(cfgx.number(spec, "fwhm_min", spec_path), profile)
+        sigma_max = _fwhm_to_sigma(cfgx.number(spec, "fwhm_max", spec_path), profile)
+        if not sigma_min < sigma_max:
+            raise cfgx.ConfigKeyError(f"config.yaml: '{spec_path}' needs fwhm_min < fwhm_max")
 
         resolved[key] = PLComponentSpec(
             key=key,
-            label=label,
+            label=cfgx.text(spec, "label", spec_path),
             profile=profile,
             center_init=float(np.clip(center_init, center_min, center_max)),
-            center_min=float(center_min),
-            center_max=float(center_max),
-            sigma_init=float(sigma_init),
-            sigma_min=float(sigma_min),
-            sigma_max=float(sigma_max),
-            height_scale=max(_finite(raw_spec.get("height_scale", default.get("height_scale")), 1.0), 0.0),
-            amplitude_min=max(_finite(raw_spec.get("amplitude_min", default.get("amplitude_min", 0.0)), 0.0), 0.0),
-            fraction_init=float(np.clip(_finite(raw_spec.get("fraction_init", default.get("fraction_init", 0.5)), 0.5), 0.0, 1.0)),
-            vary_center=bool(raw_spec.get("vary_center", default.get("vary_center", True))),
-            vary_sigma=bool(raw_spec.get("vary_sigma", default.get("vary_sigma", True))),
-            vary_amplitude=bool(raw_spec.get("vary_amplitude", default.get("vary_amplitude", True))),
-            vary_fraction=bool(raw_spec.get("vary_fraction", default.get("vary_fraction", True))),
+            center_min=center_min,
+            center_max=center_max,
+            sigma_init=float(np.clip(sigma_init, sigma_min, sigma_max)),
+            sigma_min=sigma_min,
+            sigma_max=sigma_max,
+            height_scale=max(cfgx.number(spec, "height_scale", spec_path), 0.0),
+            # Optional constraints; absent means "no extra constraint", not a hidden scientific value.
+            amplitude_min=max(float(spec.get("amplitude_min", 0.0)), 0.0),
+            fraction_init=float(np.clip(cfgx.number(spec, "fraction_init", spec_path), 0.0, 1.0)),
+            vary_center=bool(spec.get("vary_center", True)),
+            vary_sigma=bool(spec.get("vary_sigma", True)),
+            vary_amplitude=bool(spec.get("vary_amplitude", True)),
+            vary_fraction=bool(spec.get("vary_fraction", True)),
         )
-
     if not resolved:
-        return _resolve_pl_components(defaults)
+        raise cfgx.ConfigKeyError(f"config.yaml: '{path}' must define at least one component")
     return resolved
 
 
-def _resolve_pl_model_components(raw: Any) -> dict[str, list[str]]:
-    defaults = {
-        "pl_single_pvoigt": ["pl"],
-        "pl_single_gaussian": ["pl"],
-        "pl_a_doublet_pvoigt": ["a_minus", "a0"],
-        "pl_5_component_pvoigt": ["i1", "i2", "a_minus", "a0", "b"],
-    }
-    if not isinstance(raw, dict):
-        return defaults
-    resolved = dict(defaults)
-    for model_name, components in raw.items():
-        if not isinstance(model_name, str) or not isinstance(components, list):
-            continue
-        keys = [_pl_component_key(str(item)) for item in components if str(item).strip()]
-        if keys:
-            resolved[model_name] = keys
+def _resolve_pl_model_components(
+    raw: Mapping[str, Any],
+    models: Sequence[str],
+    components: Mapping[str, PLComponentSpec],
+    path: str,
+) -> dict[str, list[str]]:
+    resolved: dict[str, list[str]] = {}
+    for model_name in models:
+        keys = [_pl_component_key(item) for item in cfgx.string_list(raw, model_name, path) if item]
+        unknown = [key for key in keys if key not in components]
+        if not keys or unknown:
+            raise cfgx.ConfigKeyError(
+                f"config.yaml: '{path}.{model_name}' must list components defined in pl.fit.components"
+                f" (unknown: {unknown or 'none listed'})"
+            )
+        resolved[model_name] = keys
     return resolved
 
 
-def _resolve_window_pair(raw: Any, default: tuple[float, float]) -> tuple[float, float]:
-    if isinstance(raw, (list, tuple)) and len(raw) >= 2:
-        lo = _finite(raw[0], default=float("nan"))
-        hi = _finite(raw[1], default=float("nan"))
-        if np.isfinite(lo) and np.isfinite(hi):
-            return (float(min(lo, hi)), float(max(lo, hi)))
-    if isinstance(raw, dict):
-        lo = _finite(raw.get("min"), default=float("nan"))
-        hi = _finite(raw.get("max"), default=float("nan"))
-        if np.isfinite(lo) and np.isfinite(hi):
-            return (float(min(lo, hi)), float(max(lo, hi)))
-    return default
-
-
-def _resolve_prefit_config(raw: Any) -> PreFitConfig:
-    if not isinstance(raw, dict):
-        raw = {}
-    noise = raw.get("noise_windows", {})
-    if not isinstance(noise, dict):
-        noise = {}
-
+def _resolve_prefit_config(raw: Mapping[str, Any], path: str) -> PreFitConfig:
+    noise = cfgx.section(raw, "noise_windows", path)
+    noise_path = f"{path}.noise_windows"
     return PreFitConfig(
-        enabled=bool(raw.get("enabled", True)),
-        peak_window_half_width=max(_finite(raw.get("peak_window_half_width", 2.5), 2.5), 0.5),
-        e2g_snr_hard_min=max(_finite(raw.get("e2g_snr_hard_min", raw.get("snr_hard_min", 2.5)), 2.5), 0.1),
-        e2g_snr_soft_min=max(_finite(raw.get("e2g_snr_soft_min", raw.get("snr_soft_min", 4.0)), 4.0), 0.1),
-        a1g_snr_hard_min=max(_finite(raw.get("a1g_snr_hard_min", raw.get("snr_hard_min", 2.5)), 2.5), 0.1),
-        a1g_snr_soft_min=max(_finite(raw.get("a1g_snr_soft_min", raw.get("snr_soft_min", 4.0)), 4.0), 0.1),
-        noise_left=_resolve_window_pair(noise.get("left"), default=(350.0, 360.0)),
-        noise_right=_resolve_window_pair(noise.get("right"), default=(430.0, 440.0)),
-        min_points=int(_finite(raw.get("min_points", 8), 8)),
+        enabled=cfgx.flag(raw, "enabled", path),
+        peak_window_half_width=cfgx.number(raw, "peak_window_half_width", path),
+        e2g_snr_hard_min=cfgx.number(raw, "e2g_snr_hard_min", path),
+        e2g_snr_soft_min=cfgx.number(raw, "e2g_snr_soft_min", path),
+        a1g_snr_hard_min=cfgx.number(raw, "a1g_snr_hard_min", path),
+        a1g_snr_soft_min=cfgx.number(raw, "a1g_snr_soft_min", path),
+        noise_left=cfgx.pair(noise, "left", noise_path),
+        noise_right=cfgx.pair(noise, "right", noise_path),
+        min_points=cfgx.integer(raw, "min_points", path),
+        noise_min_points=cfgx.integer(noise, "min_points", noise_path),
+        noise_fallback_percentile=cfgx.number(noise, "fallback_percentile", noise_path),
+        noise_fallback_min_points=cfgx.integer(noise, "fallback_min_points", noise_path),
+        local_baseline_percentile=cfgx.number(raw, "local_baseline_percentile", path),
     )
 
 
 def _default_baseline_windows_from_roi(
     x_min: float,
     x_max: float,
-    edge_fraction: float = 0.1,
-    edge_min: float = 1.0,
+    edge_fraction: float,
+    edge_min: float,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
-    span = max(float(x_max) - float(x_min), 1.0)
+    span = float(x_max) - float(x_min)
     edge = max(float(edge_min), float(edge_fraction) * span)
     left = (float(x_min), float(x_min + edge))
     right = (float(x_max - edge), float(x_max))
     return left, right
 
 
-def _resolve_model_windows(
-    raw: Any,
-    global_x_min: float,
-    global_x_max: float,
-    edge_fraction: float = 0.1,
-    edge_min: float = 1.0,
-) -> dict[str, NPeakWindowSpec]:
-    if not isinstance(raw, dict):
-        return {}
-
+def _resolve_model_windows(raw: Mapping[str, Any], models: Sequence[str], path: str) -> dict[str, NPeakWindowSpec]:
     resolved: dict[str, NPeakWindowSpec] = {}
-    for model_name, spec in raw.items():
-        if not isinstance(model_name, str) or not isinstance(spec, dict):
-            continue
-
-        x_min = _finite(spec.get("x_min"), default=float("nan"))
-        x_max = _finite(spec.get("x_max"), default=float("nan"))
-        if not (np.isfinite(x_min) and np.isfinite(x_max) and x_max > x_min):
-            x_min = float(global_x_min)
-            x_max = float(global_x_max)
-        else:
-            x_min = float(x_min)
-            x_max = float(x_max)
-
-        default_left, default_right = _default_baseline_windows_from_roi(x_min, x_max, edge_fraction, edge_min)
-        left_base = _resolve_window_pair(spec.get("left_base"), default=default_left)
-        right_base = _resolve_window_pair(spec.get("right_base"), default=default_right)
+    for model_name in models:
+        spec_path = f"{path}.{model_name}"
+        spec = cfgx.section(raw, model_name, path)
+        x_min = cfgx.number(spec, "x_min", spec_path)
+        x_max = cfgx.number(spec, "x_max", spec_path)
+        if not x_min < x_max:
+            raise cfgx.ConfigKeyError(f"config.yaml: '{spec_path}' needs x_min < x_max")
         resolved[model_name] = NPeakWindowSpec(
             x_min=x_min,
             x_max=x_max,
-            left_base=left_base,
-            right_base=right_base,
+            left_base=cfgx.pair(spec, "left_base", spec_path),
+            right_base=cfgx.pair(spec, "right_base", spec_path),
         )
-
     return resolved
 
 
-def _height_scales_for_model(
-    cfg: RamanFitConfig,
-    model_name: str,
-    defaults: list[float],
-) -> list[float]:
-    configured = cfg.height_scales.get(model_name)
-    if configured is None or len(configured) != len(defaults):
-        return list(defaults)
-    return list(configured)
+def _resolve_sigma_bounds_by_peak(raw: Mapping[str, Any], path: str) -> dict[str, tuple[float, float]]:
+    resolved: dict[str, tuple[float, float]] = {}
+    for label in RAMAN_PEAK_LABELS["peak_5_model"]:
+        key = label.lower()
+        lo, hi = cfgx.pair(raw, key, path)
+        if not lo < hi:
+            raise cfgx.ConfigKeyError(f"config.yaml: '{path}.{key}' needs [min, max] with min < max")
+        resolved[key] = (lo, hi)
+    return resolved
 
 
-def _center_tolerance_for_model(cfg: RamanFitConfig, model_name: str, default: float) -> float:
-    return float(cfg.center_tolerance_by_model.get(model_name, default))
+def _require_known_raman_models(models: Sequence[str], path: str) -> None:
+    unknown = [name for name in models if name not in RAMAN_PEAK_MODELS]
+    if unknown:
+        raise cfgx.ConfigKeyError(f"config.yaml: '{path}' has unsupported Raman models {unknown}")
 
 
 def _sigma_bounds_for_peak(cfg: RamanFitConfig, peak_label: str) -> tuple[float, float]:
-    specific = cfg.sigma_bounds_by_peak.get(str(peak_label).lower())
-    if specific is not None:
-        return specific
-    return cfg.sigma_bounds
+    return cfg.sigma_bounds_by_peak[str(peak_label).lower()]
 
 
 def _height_to_area_factor(sigma: float, fraction: float) -> float:
@@ -564,8 +406,8 @@ def _estimate_linear_baseline_edges(
 
 def _bg_slope_bounds(
     baseline_slope: float,
-    min_half_width: float = 2.0,
-    multiplier: float = 3.0,
+    min_half_width: float,
+    multiplier: float,
 ) -> dict[str, float]:
     """Slope search range centred on the edge estimate so steep backgrounds are not clamped."""
     half_width = max(float(min_half_width), float(multiplier) * abs(baseline_slope))
@@ -575,17 +417,18 @@ def _bg_slope_bounds(
 def _noise_std_from_windows(
     x: np.ndarray,
     y: np.ndarray,
-    left_window: tuple[float, float],
-    right_window: tuple[float, float],
+    prefit: PreFitConfig,
 ) -> float:
+    left_window, right_window = prefit.noise_left, prefit.noise_right
     left_mask = (x >= left_window[0]) & (x <= left_window[1])
     right_mask = (x >= right_window[0]) & (x <= right_window[1])
     noise_mask = left_mask | right_mask
     noise = y[noise_mask]
-    if noise.size < 8:
-        low = float(np.percentile(y, 35))
+    if noise.size < prefit.noise_min_points:
+        # Too few points in the noise windows: use the lowest part of the spectrum instead.
+        low = float(np.percentile(y, prefit.noise_fallback_percentile))
         noise = y[y <= low]
-    if noise.size < 5:
+    if noise.size < prefit.noise_fallback_min_points:
         noise = y
     sigma = float(np.std(noise))
     return max(sigma, 1.0e-6)
@@ -596,6 +439,7 @@ def _window_peak_height(
     y: np.ndarray,
     center: float,
     half_width: float,
+    baseline_percentile: float,
 ) -> tuple[float, float]:
     mask = (x >= (center - half_width)) & (x <= (center + half_width))
     if int(np.sum(mask)) < 3:
@@ -603,321 +447,220 @@ def _window_peak_height(
     yw = y[mask]
     xw = x[mask]
     peak_idx = int(np.argmax(yw))
-    baseline_local = float(np.percentile(yw, 20))
+    baseline_local = float(np.percentile(yw, baseline_percentile))
     prominence = float(max(yw[peak_idx] - baseline_local, 0.0))
     return prominence, float(xw[peak_idx])
 
 
-def _sigma_init_guesses(cfg: RamanFitConfig, labels: Sequence[str]) -> list[float]:
-    return [
-        float(cfg.sigma_init_by_peak.get(label.lower(), _DEFAULT_SIGMA_INIT_BY_PEAK[label.lower()]))
-        for label in labels
-    ]
-
-
 def _build_n_peak_spec(model_name: str, cfg: RamanFitConfig) -> NPeakSpec:
-    lo_init = cfg.e2g_init + cfg.lo_offset_from_e2g
-    zo_init = cfg.a1g_init + cfg.zo_offset_from_a1g
-    la_init = cfg.a1g_init + cfg.la_offset_from_a1g
-    window = cfg.model_windows.get(model_name)
-    if window is None:
-        default_left, default_right = _default_baseline_windows_from_roi(
-            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
-        )
-        window = NPeakWindowSpec(
-            x_min=float(cfg.x_min),
-            x_max=float(cfg.x_max),
-            left_base=default_left,
-            right_base=default_right,
-        )
-
-    if model_name == "peak_2_model":
-        height_scales = _height_scales_for_model(cfg, model_name, defaults=[0.50, 0.90])
-        center_tolerance = _center_tolerance_for_model(cfg, model_name, default=5.0)
-        return NPeakSpec(
-            model_name=model_name,
-            peak_labels=["E2g", "A1g"],
-            center_guesses=[cfg.e2g_init, cfg.a1g_init],
-            width_guesses=_sigma_init_guesses(cfg, ["E2g", "A1g"]),
-            height_scales=height_scales,
-            x_min=window.x_min,
-            x_max=window.x_max,
-            left_base=window.left_base,
-            right_base=window.right_base,
-            center_tolerance=center_tolerance,
-            lock_baseline=cfg.lock_baseline_by_model.get(model_name, False),
-        )
-
-    if model_name == "peak_3_model":
-        height_scales = _height_scales_for_model(cfg, model_name, defaults=[0.12, 0.50, 0.90])
-        center_tolerance = _center_tolerance_for_model(cfg, model_name, default=2.5)
-        return NPeakSpec(
-            model_name=model_name,
-            peak_labels=["LO", "E2g", "A1g"],
-            center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init],
-            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g"]),
-            height_scales=height_scales,
-            x_min=window.x_min,
-            x_max=window.x_max,
-            left_base=window.left_base,
-            right_base=window.right_base,
-            center_tolerance=center_tolerance,
-            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
-        )
-
-    if model_name == "peak_4_model":
-        height_scales = _height_scales_for_model(cfg, model_name, defaults=[0.12, 0.50, 0.90, 0.20])
-        center_tolerance = _center_tolerance_for_model(cfg, model_name, default=2.5)
-        return NPeakSpec(
-            model_name=model_name,
-            peak_labels=["LO", "E2g", "A1g", "ZO"],
-            center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init, zo_init],
-            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g", "ZO"]),
-            height_scales=height_scales,
-            x_min=window.x_min,
-            x_max=window.x_max,
-            left_base=window.left_base,
-            right_base=window.right_base,
-            center_tolerance=center_tolerance,
-            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
-        )
-
-    if model_name == "peak_5_model":
-        height_scales = _height_scales_for_model(cfg, model_name, defaults=[0.12, 0.50, 0.90, 0.20, 0.20])
-        center_tolerance = _center_tolerance_for_model(cfg, model_name, default=2.5)
-        return NPeakSpec(
-            model_name=model_name,
-            peak_labels=["LO", "E2g", "A1g", "ZO", "LA"],
-            center_guesses=[lo_init, cfg.e2g_init, cfg.a1g_init, zo_init, la_init],
-            width_guesses=_sigma_init_guesses(cfg, ["LO", "E2g", "A1g", "ZO", "LA"]),
-            height_scales=height_scales,
-            x_min=window.x_min,
-            x_max=window.x_max,
-            left_base=window.left_base,
-            right_base=window.right_base,
-            center_tolerance=center_tolerance,
-            lock_baseline=cfg.lock_baseline_by_model.get(model_name, True),
-        )
-
-    raise ValueError(f"Unsupported n-peak model: {model_name}")
+    labels = RAMAN_PEAK_LABELS.get(model_name)
+    if labels is None:
+        raise ValueError(f"Unsupported n-peak model: {model_name}")
+    center_by_label = {
+        "LO": cfg.e2g_init + cfg.lo_offset_from_e2g,
+        "E2g": cfg.e2g_init,
+        "A1g": cfg.a1g_init,
+        "ZO": cfg.a1g_init + cfg.zo_offset_from_a1g,
+        "LA": cfg.a1g_init + cfg.la_offset_from_a1g,
+    }
+    window = cfg.model_windows[model_name]
+    return NPeakSpec(
+        model_name=model_name,
+        peak_labels=list(labels),
+        center_guesses=[center_by_label[label] for label in labels],
+        width_guesses=[cfg.sigma_init_by_peak[label.lower()] for label in labels],
+        height_scales=list(cfg.height_scales[model_name]),
+        x_min=window.x_min,
+        x_max=window.x_max,
+        left_base=window.left_base,
+        right_base=window.right_base,
+        # E2g/A1g use their own bounds; the tolerance only applies to LO/ZO/LA (absent in peak_2_model).
+        center_tolerance=cfg.center_tolerance_by_model.get(model_name, float("nan")),
+        lock_baseline=cfg.lock_baseline_by_model[model_name],
+    )
 
 
 class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
     """
     Raman/PL ensemble fitter using multiple candidate models.
 
-    Supported model names in `raman.models`:
-    - peak_2_model
-    - peak_3_model
-    - peak_4_model
-    - peak_5_model
-    - mos2_double_pvoigt
-    - mos2_double_lorentz
-    - mos2_double_gaussian
-
-    Supported model names in `pl.models`:
-    - pl_single_gaussian
-    - pl_single_pvoigt
-    - pl_a_doublet_pvoigt
-    - pl_5_component_pvoigt
+    Model lists and every fit setting come from config.yaml (`raman.models` / `raman.fit`,
+    `pl.models` / `pl.fit`).
+    - Raman models: peak_2_model, peak_3_model, peak_4_model, peak_5_model
+    - PL models: any name listed in `pl.fit.model_components`
     """
 
-    def __init__(
-        self,
-        default_models: Sequence[str] | None = None,
-        pl_models: Sequence[str] | None = None,
-        enable_pl: bool = True,
-    ) -> None:
-        self.default_models = list(
-            default_models or ["peak_2_model", "peak_3_model", "peak_4_model", "peak_5_model"]
-        )
-        self.pl_models = list(
-            pl_models or ["pl_single_pvoigt", "pl_a_doublet_pvoigt", "pl_5_component_pvoigt"]
-        )
+    def __init__(self, enable_pl: bool = True) -> None:
         self.enable_pl = bool(enable_pl)
 
     def _resolve_fit_config(self, context: PipelineContext, modality: str) -> RamanFitConfig:
-        section = context.config.get(modality, {}) if isinstance(context.config, dict) else {}
-        if not isinstance(section, dict):
-            section = {}
+        config = context.config if isinstance(context.config, Mapping) else {}
+        if modality == "pl":
+            return self._resolve_pl_fit_config(cfgx.section(config, "pl", ""))
+        return self._resolve_raman_fit_config(cfgx.section(config, "raman", ""))
 
-        fit_cfg = section.get("fit", {})
-        if not isinstance(fit_cfg, dict):
-            fit_cfg = {}
+    @staticmethod
+    def _resolve_raman_fit_config(section: Mapping[str, Any]) -> RamanFitConfig:
+        p = "raman.fit"
+        fit = cfgx.section(section, "fit", "raman")
+        models = _resolve_models(section, "raman")
+        _require_known_raman_models(models, "raman.models")
 
-        is_pl = modality == "pl"
-        default_models = self.pl_models if is_pl else self.default_models
-        models = _resolve_models(section.get("models", default_models), default_models)
-        x_min_default = 1.38 if is_pl else 340.0
-        x_max_default = 2.33 if is_pl else 430.0
-        x_min = _finite(fit_cfg.get("x_min", x_min_default), x_min_default)
-        x_max = _finite(fit_cfg.get("x_max", x_max_default), x_max_default)
-        center_init_default = 1.85 if is_pl else 384.0
-        center_min_default = x_min + 0.05 if is_pl else 370.0
-        center_max_default = x_max - 0.05 if is_pl else 392.0
-        sigma_min_default = 0.002 if is_pl else 0.5
-        sigma_max_default = 0.20 if is_pl else 20.0
-        prefit_cfg = (
-            {
-                "enabled": False,
-                "peak_window_half_width": 2.5,
-                "e2g_snr_hard_min": 0.0,
-                "e2g_snr_soft_min": 0.0,
-                "a1g_snr_hard_min": 0.0,
-                "a1g_snr_soft_min": 0.0,
-                "noise_windows": {
-                    "left": [x_min, x_min + max((x_max - x_min) * 0.1, 1.0)],
-                    "right": [x_max - max((x_max - x_min) * 0.1, 1.0), x_max],
-                },
-            }
-            if is_pl
-            else fit_cfg.get("prefit", {})
-        )
-        two_stage_anchor_cfg = fit_cfg.get("two_stage_anchor", {})
-        if not isinstance(two_stage_anchor_cfg, dict):
-            two_stage_anchor_cfg = {}
-        auto_refine_cfg = fit_cfg.get("auto_refine", {})
-        if not isinstance(auto_refine_cfg, dict):
-            auto_refine_cfg = {}
-        two_stage_anchor_enabled = bool(
-            two_stage_anchor_cfg.get("enabled", not is_pl)
-        )
-        two_stage_anchor_window = max(
-            _finite(
-                two_stage_anchor_cfg.get("window", 2.0),
-                2.0,
-            ),
-            0.0,
-        )
-        auto_refine_enabled = bool(auto_refine_cfg.get("enabled", False))
-        auto_refine_min_rmse_improvement = max(
-            _finite(auto_refine_cfg.get("min_rmse_improvement", 0.01), 0.01),
-            0.0,
-        )
-        a_minus_a0_split_cfg = fit_cfg.get("a_minus_a0_split", {})
-        if not isinstance(a_minus_a0_split_cfg, dict):
-            a_minus_a0_split_cfg = {}
-        split_enabled = bool(a_minus_a0_split_cfg.get("enabled", is_pl))
-        split_min = _finite(a_minus_a0_split_cfg.get("min", 0.015), 0.015)
-        split_max = _finite(a_minus_a0_split_cfg.get("max", 0.055), 0.055)
-        split_init = _finite(a_minus_a0_split_cfg.get("init", 0.030), 0.030)
-        pl_a_minus_a0_split = (split_enabled, split_min, split_max, split_init)
+        anchor = cfgx.section(fit, "two_stage_anchor", p)
+        refine = cfgx.section(fit, "auto_refine", p)
+        baseline = cfgx.section(fit, "baseline", p)
+        slope = cfgx.section(baseline, "slope_bounds", f"{p}.baseline")
+        lock = cfgx.section(baseline, "lock_by_model", f"{p}.baseline")
+        heights = cfgx.section(fit, "height_scales", p)
+        tolerances = cfgx.section(fit, "center_tolerance_by_model", p)
+        sigma_init = cfgx.section(fit, "sigma_init_by_peak", p)
+        offsets = cfgx.section(fit, "offset_bounds", p)
 
-        fwhm_ratio_cfg = fit_cfg.get("trion_exciton_fwhm_ratio", {})
-        if not isinstance(fwhm_ratio_cfg, dict):
-            fwhm_ratio_cfg = {}
-        ratio_enabled = bool(fwhm_ratio_cfg.get("enabled", is_pl))
-        ratio_min = _finite(fwhm_ratio_cfg.get("min", 1.05), 1.05)
-        ratio_max = _finite(fwhm_ratio_cfg.get("max", 2.50), 2.50)
-        ratio_init = _finite(fwhm_ratio_cfg.get("init", 1.35), 1.35)
-        pl_trion_exciton_fwhm_ratio = (ratio_enabled, ratio_min, ratio_max, ratio_init)
-
-        pl_share_exciton_fraction = bool(fit_cfg.get("share_exciton_fraction", is_pl))
-        spike_check_cfg = fit_cfg.get("spike_check", {})
-        if not isinstance(spike_check_cfg, dict):
-            spike_check_cfg = {}
-        pl_spike_residual_sigma_k = _finite(spike_check_cfg.get("residual_sigma_k", 12.0), 12.0)
-        pl_spike_span_ratio = _finite(spike_check_cfg.get("span_ratio", 0.60), 0.60)
-
-        def _section(key: str) -> dict[str, Any]:
-            value = fit_cfg.get(key, {})
-            return value if isinstance(value, dict) else {}
-
-        sigma_init_by_peak = dict(_DEFAULT_SIGMA_INIT_BY_PEAK)
-        for peak_key, value in _section("sigma_init_by_peak").items():
-            sigma_init_by_peak[str(peak_key).lower()] = _finite(value, sigma_init_by_peak.get(str(peak_key).lower(), 3.0))
-        baseline_cfg = _section("baseline")
-        lock_baseline_by_model = dict(_DEFAULT_LOCK_BASELINE_BY_MODEL)
-        lock_cfg = baseline_cfg.get("lock_by_model", {})
-        if isinstance(lock_cfg, dict):
-            lock_baseline_by_model.update({str(k): bool(v) for k, v in lock_cfg.items()})
-        slope_cfg = baseline_cfg.get("slope_bounds", {})
-        if not isinstance(slope_cfg, dict):
-            slope_cfg = {}
-        baseline_edge_fraction = _finite(baseline_cfg.get("default_edge_fraction", 0.1), 0.1)
-        baseline_edge_min = _finite(baseline_cfg.get("default_edge_min", 1.0), 1.0)
-        offset_bounds = {k: dict(v) for k, v in _DEFAULT_OFFSET_BOUNDS.items()}
-        for bound_key, bound_cfg in _section("offset_bounds").items():
-            if bound_key in offset_bounds and isinstance(bound_cfg, dict):
-                for item_key, item_value in bound_cfg.items():
-                    if item_key in offset_bounds[bound_key]:
-                        offset_bounds[bound_key][item_key] = _finite(item_value, offset_bounds[bound_key][item_key])
-        seed_cfg = _section("seed")
+        offset_bounds = {
+            name: {item: cfgx.number(cfgx.section(offsets, name, f"{p}.offset_bounds"), item, f"{p}.offset_bounds.{name}")
+                   for item in items}
+            for name, items in _OFFSET_BOUND_KEYS.items()
+        }
+        height_scales: dict[str, list[float]] = {}
+        center_tolerance_by_model: dict[str, float] = {}
+        lock_baseline_by_model: dict[str, bool] = {}
+        for model_name in models:
+            n_peaks = len(RAMAN_PEAK_LABELS[model_name])
+            height_scales[model_name] = cfgx.number_list(heights, model_name, f"{p}.height_scales", length=n_peaks)
+            lock_baseline_by_model[model_name] = cfgx.flag(lock, model_name, f"{p}.baseline.lock_by_model")
+            if model_name != "peak_2_model":
+                center_tolerance_by_model[model_name] = cfgx.number(
+                    tolerances, model_name, f"{p}.center_tolerance_by_model"
+                )
 
         return RamanFitConfig(
             models=models,
-            x_min=x_min,
-            x_max=x_max,
-            e2g_init=_finite(
-                fit_cfg.get("pl_center_init", fit_cfg.get("e2g_init", center_init_default)),
-                center_init_default,
-            ),
-            a1g_init=_finite(
-                fit_cfg.get("a1g_init", fit_cfg.get("pl_center_init", center_init_default)),
-                center_init_default,
-            ),
-            lo_offset_from_e2g=_finite(fit_cfg.get("lo_offset_from_e2g", -5.0), -5.0),
-            zo_offset_from_a1g=_finite(fit_cfg.get("zo_offset_from_a1g", 5.0), 5.0),
-            la_offset_from_a1g=_finite(fit_cfg.get("la_offset_from_a1g", 50.0), 50.0),
-            height_scales=_resolve_height_scales(
-                fit_cfg.get("height_scales", fit_cfg.get("amplitude_scales", {}))
-            ),
-            center_tolerance_by_model=_resolve_center_tolerances(
-                fit_cfg.get("center_tolerance_by_model", {})
-            ),
-            e2g_bounds=(
-                _finite(fit_cfg.get("pl_center_min", fit_cfg.get("e2g_min", center_min_default)), center_min_default),
-                _finite(fit_cfg.get("pl_center_max", fit_cfg.get("e2g_max", center_max_default)), center_max_default),
-            ),
-            a1g_bounds=(
-                _finite(fit_cfg.get("a1g_min", 395.0), 395.0),
-                _finite(fit_cfg.get("a1g_max", 415.0), 415.0),
-            ),
-            sigma_bounds=(
-                _finite(fit_cfg.get("pl_sigma_min", fit_cfg.get("sigma_min", sigma_min_default)), sigma_min_default),
-                _finite(fit_cfg.get("pl_sigma_max", fit_cfg.get("sigma_max", sigma_max_default)), sigma_max_default),
-            ),
-            sigma_bounds_by_peak=_resolve_sigma_bounds_by_peak(
-                fit_cfg.get("sigma_bounds_by_peak", {})
-            ),
-            compare_x_min=_finite(fit_cfg.get("compare_x_min", x_min), x_min),
-            compare_x_max=_finite(fit_cfg.get("compare_x_max", x_max), x_max),
-            enforce_peak_order=bool(fit_cfg.get("enforce_peak_order", not is_pl)),
-            two_stage_anchor_enabled=two_stage_anchor_enabled,
-            two_stage_anchor_window=two_stage_anchor_window,
-            auto_refine_enabled=auto_refine_enabled,
-            auto_refine_min_rmse_improvement=auto_refine_min_rmse_improvement,
-            prefit=_resolve_prefit_config(prefit_cfg),
-            model_windows=_resolve_model_windows(
-                fit_cfg.get("model_windows", {}),
-                global_x_min=x_min,
-                global_x_max=x_max,
-                edge_fraction=baseline_edge_fraction,
-                edge_min=baseline_edge_min,
-            ),
-            pl_components=_resolve_pl_components(fit_cfg.get("components", fit_cfg.get("pl_components", {}))),
-            pl_model_components=_resolve_pl_model_components(fit_cfg.get("model_components", {})),
-            pl_a_minus_a0_split=pl_a_minus_a0_split,
-            pl_trion_exciton_fwhm_ratio=pl_trion_exciton_fwhm_ratio,
-            pl_share_exciton_fraction=pl_share_exciton_fraction,
-            pl_spike_residual_sigma_k=pl_spike_residual_sigma_k,
-            pl_spike_span_ratio=pl_spike_span_ratio,
-            sigma_init_by_peak=sigma_init_by_peak,
-            fraction_init=float(np.clip(_finite(fit_cfg.get("fraction_init", 0.0), 0.0), 0.0, 1.0)),
+            x_min=cfgx.number(fit, "x_min", p),
+            x_max=cfgx.number(fit, "x_max", p),
+            e2g_init=cfgx.number(fit, "e2g_init", p),
+            a1g_init=cfgx.number(fit, "a1g_init", p),
+            lo_offset_from_e2g=cfgx.number(fit, "lo_offset_from_e2g", p),
+            zo_offset_from_a1g=cfgx.number(fit, "zo_offset_from_a1g", p),
+            la_offset_from_a1g=cfgx.number(fit, "la_offset_from_a1g", p),
+            height_scales=height_scales,
+            center_tolerance_by_model=center_tolerance_by_model,
+            e2g_bounds=(cfgx.number(fit, "e2g_min", p), cfgx.number(fit, "e2g_max", p)),
+            a1g_bounds=(cfgx.number(fit, "a1g_min", p), cfgx.number(fit, "a1g_max", p)),
+            sigma_bounds_by_peak=_resolve_sigma_bounds_by_peak(cfgx.section(fit, "sigma_bounds_by_peak", p), f"{p}.sigma_bounds_by_peak"),
+            compare_x_min=cfgx.number(fit, "compare_x_min", p),
+            compare_x_max=cfgx.number(fit, "compare_x_max", p),
+            enforce_peak_order=cfgx.flag(fit, "enforce_peak_order", p),
+            two_stage_anchor_enabled=cfgx.flag(anchor, "enabled", f"{p}.two_stage_anchor"),
+            two_stage_anchor_window=max(cfgx.number(anchor, "window", f"{p}.two_stage_anchor"), 0.0),
+            auto_refine_enabled=cfgx.flag(refine, "enabled", f"{p}.auto_refine"),
+            auto_refine_min_rmse_improvement=max(cfgx.number(refine, "min_rmse_improvement", f"{p}.auto_refine"), 0.0),
+            prefit=_resolve_prefit_config(cfgx.section(fit, "prefit", p), f"{p}.prefit"),
+            model_windows=_resolve_model_windows(cfgx.section(fit, "model_windows", p), models, f"{p}.model_windows"),
+            pl_components={},
+            pl_model_components={},
+            pl_a_minus_a0_split=(False, float("nan"), float("nan"), float("nan")),
+            pl_trion_exciton_fwhm_ratio=(False, float("nan"), float("nan"), float("nan")),
+            pl_share_exciton_fraction=False,
+            pl_spike_residual_sigma_k=float("nan"),
+            pl_spike_span_ratio=float("nan"),
+            pl_spike_span_percentiles=(float("nan"), float("nan")),
+            sigma_init_by_peak={
+                label.lower(): cfgx.number(sigma_init, label.lower(), f"{p}.sigma_init_by_peak")
+                for label in RAMAN_PEAK_LABELS["peak_5_model"]
+            },
+            fraction_init=float(np.clip(cfgx.number(fit, "fraction_init", p), 0.0, 1.0)),
             lock_baseline_by_model=lock_baseline_by_model,
-            locked_baseline_rel_tol=_finite(baseline_cfg.get("locked_rel_tol", 0.01), 0.01),
-            bg_slope_min_half_width=_finite(slope_cfg.get("min_half_width", 2.0), 2.0),
-            bg_slope_multiplier=_finite(slope_cfg.get("slope_multiplier", 3.0), 3.0),
-            manual_refit_bg_slope_bound=_finite(baseline_cfg.get("manual_refit_slope_bound", 2.0), 2.0),
-            baseline_edge_fraction=baseline_edge_fraction,
-            baseline_edge_min=baseline_edge_min,
-            anchor_fallback_half_window=_finite(two_stage_anchor_cfg.get("fallback_half_window", 0.5), 0.5),
+            locked_baseline_rel_tol=cfgx.number(baseline, "locked_rel_tol", f"{p}.baseline"),
+            bg_slope_min_half_width=cfgx.number(slope, "min_half_width", f"{p}.baseline.slope_bounds"),
+            bg_slope_multiplier=cfgx.number(slope, "slope_multiplier", f"{p}.baseline.slope_bounds"),
+            manual_refit_bg_slope_bound=cfgx.number(baseline, "manual_refit_slope_bound", f"{p}.baseline"),
+            # Raman baseline windows always come from model_windows.
+            baseline_edge_fraction=float("nan"),
+            baseline_edge_min=float("nan"),
+            anchor_fallback_half_window=cfgx.number(anchor, "fallback_half_window", f"{p}.two_stage_anchor"),
             offset_bounds=offset_bounds,
-            min_roi_points=int(_finite(fit_cfg.get("min_roi_points", 20), 20)),
-            min_spectrum_points=int(_finite(fit_cfg.get("min_spectrum_points", 20), 20)),
-            pl_seed_baseline_percentile=_finite(seed_cfg.get("baseline_percentile", 20.0), 20.0),
-            pl_seed_local_half_width_min=_finite(seed_cfg.get("local_half_width_min", 0.02), 0.02),
-            pl_amplitude_floor_fraction=_finite(seed_cfg.get("amplitude_floor_fraction", 0.01), 0.01),
+            min_roi_points=cfgx.integer(fit, "min_roi_points", p),
+            min_spectrum_points=cfgx.integer(fit, "min_spectrum_points", p),
+            pl_seed_baseline_percentile=float("nan"),
+            pl_seed_local_baseline_percentile=float("nan"),
+            pl_seed_local_half_width_min=float("nan"),
+            pl_amplitude_floor_fraction=float("nan"),
+        )
+
+    @staticmethod
+    def _resolve_pl_fit_config(section: Mapping[str, Any]) -> RamanFitConfig:
+        p = "pl.fit"
+        fit = cfgx.section(section, "fit", "pl")
+        models = _resolve_models(section, "pl")
+        split = cfgx.section(fit, "a_minus_a0_split", p)
+        ratio = cfgx.section(fit, "trion_exciton_fwhm_ratio", p)
+        spike = cfgx.section(fit, "spike_check", p)
+        seed = cfgx.section(fit, "seed", p)
+        baseline = cfgx.section(fit, "baseline", p)
+        components = _resolve_pl_components(cfgx.section(fit, "components", p), f"{p}.components")
+        model_components = _resolve_pl_model_components(
+            cfgx.section(fit, "model_components", p), models, components, f"{p}.model_components"
+        )
+        nan = float("nan")
+        return RamanFitConfig(
+            models=models,
+            x_min=cfgx.number(fit, "x_min", p),
+            x_max=cfgx.number(fit, "x_max", p),
+            # Raman peak-model fields: not used by PL component fits.
+            e2g_init=nan,
+            a1g_init=nan,
+            lo_offset_from_e2g=nan,
+            zo_offset_from_a1g=nan,
+            la_offset_from_a1g=nan,
+            height_scales={},
+            center_tolerance_by_model={},
+            e2g_bounds=(nan, nan),
+            a1g_bounds=(nan, nan),
+            sigma_bounds_by_peak={},
+            compare_x_min=cfgx.number(fit, "compare_x_min", p),
+            compare_x_max=cfgx.number(fit, "compare_x_max", p),
+            enforce_peak_order=False,
+            two_stage_anchor_enabled=False,
+            two_stage_anchor_window=nan,
+            auto_refine_enabled=False,
+            auto_refine_min_rmse_improvement=nan,
+            prefit=PreFitConfig.disabled(),
+            model_windows={},
+            pl_components=components,
+            pl_model_components=model_components,
+            pl_a_minus_a0_split=(
+                cfgx.flag(split, "enabled", f"{p}.a_minus_a0_split"),
+                cfgx.number(split, "min", f"{p}.a_minus_a0_split"),
+                cfgx.number(split, "max", f"{p}.a_minus_a0_split"),
+                cfgx.number(split, "init", f"{p}.a_minus_a0_split"),
+            ),
+            pl_trion_exciton_fwhm_ratio=(
+                cfgx.flag(ratio, "enabled", f"{p}.trion_exciton_fwhm_ratio"),
+                cfgx.number(ratio, "min", f"{p}.trion_exciton_fwhm_ratio"),
+                cfgx.number(ratio, "max", f"{p}.trion_exciton_fwhm_ratio"),
+                cfgx.number(ratio, "init", f"{p}.trion_exciton_fwhm_ratio"),
+            ),
+            pl_share_exciton_fraction=cfgx.flag(fit, "share_exciton_fraction", p),
+            pl_spike_residual_sigma_k=cfgx.number(spike, "residual_sigma_k", f"{p}.spike_check"),
+            pl_spike_span_ratio=cfgx.number(spike, "span_ratio", f"{p}.spike_check"),
+            pl_spike_span_percentiles=cfgx.pair(spike, "span_percentiles", f"{p}.spike_check"),
+            sigma_init_by_peak={},
+            fraction_init=nan,
+            lock_baseline_by_model={},
+            locked_baseline_rel_tol=nan,
+            bg_slope_min_half_width=nan,
+            bg_slope_multiplier=nan,
+            manual_refit_bg_slope_bound=nan,
+            baseline_edge_fraction=cfgx.number(baseline, "default_edge_fraction", f"{p}.baseline"),
+            baseline_edge_min=cfgx.number(baseline, "default_edge_min", f"{p}.baseline"),
+            anchor_fallback_half_window=nan,
+            offset_bounds={},
+            min_roi_points=cfgx.integer(fit, "min_roi_points", p),
+            min_spectrum_points=cfgx.integer(fit, "min_spectrum_points", p),
+            pl_seed_baseline_percentile=cfgx.number(seed, "baseline_percentile", f"{p}.seed"),
+            pl_seed_local_baseline_percentile=cfgx.number(seed, "local_baseline_percentile", f"{p}.seed"),
+            pl_seed_local_half_width_min=cfgx.number(seed, "local_half_width_min", f"{p}.seed"),
+            pl_amplitude_floor_fraction=cfgx.number(seed, "amplitude_floor_fraction", f"{p}.seed"),
         )
 
     @staticmethod
@@ -949,23 +692,20 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 },
             )
 
-        noise_std = _noise_std_from_windows(
-            x_full,
-            y_corr,
-            left_window=prefit.noise_left,
-            right_window=prefit.noise_right,
-        )
+        noise_std = _noise_std_from_windows(x_full, y_corr, prefit)
         e2g_height, e2g_peak_x = _window_peak_height(
             x_full,
             y_corr,
             center=cfg.e2g_init,
             half_width=prefit.peak_window_half_width,
+            baseline_percentile=prefit.local_baseline_percentile,
         )
         a1g_height, a1g_peak_x = _window_peak_height(
             x_full,
             y_corr,
             center=cfg.a1g_init,
             half_width=prefit.peak_window_half_width,
+            baseline_percentile=prefit.local_baseline_percentile,
         )
         e2g_snr = e2g_height / max(noise_std, 1.0e-6)
         a1g_snr = a1g_height / max(noise_std, 1.0e-6)
@@ -1114,6 +854,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             },
             fitted_y=[mean_y] * len(x_full),
             metrics={
+                # Sentinel scores so fallback rows always rank after real fits; not a physical value.
                 "aic": rmse + 100.0,
                 "bic": rmse + 101.0,
                 "rmse": rmse,
@@ -1123,22 +864,6 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             },
         )
 
-    @staticmethod
-    def _build_two_peak_model(model_name: str):
-        if model_name == "mos2_double_pvoigt":
-            e2g = PseudoVoigtModel(prefix="e2g_")
-            a1g = PseudoVoigtModel(prefix="a1g_")
-        elif model_name == "mos2_double_lorentz":
-            e2g = LorentzianModel(prefix="e2g_")
-            a1g = LorentzianModel(prefix="a1g_")
-        elif model_name == "mos2_double_gaussian":
-            e2g = GaussianModel(prefix="e2g_")
-            a1g = GaussianModel(prefix="a1g_")
-        else:
-            raise ValueError(f"Unsupported two-peak model: {model_name}")
-        bg = LinearModel(prefix="bg_")
-        return e2g + a1g + bg
-
     def _fit_pl_model(
         self,
         model_name: str,
@@ -1147,83 +872,14 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         cfg: RamanFitConfig,
     ) -> FitCandidate:
         component_keys = cfg.pl_model_components.get(model_name)
-        if component_keys:
-            return self._fit_pl_component_model(
-                model_name=model_name,
-                component_keys=component_keys,
-                x_full=x_full,
-                y_corr=y_corr,
-                cfg=cfg,
-            )
-
-        mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
-        x_fit = x_full[mask]
-        y_fit = y_corr[mask]
-        if x_fit.size < cfg.min_roi_points:
-            raise ValueError(f"Insufficient ROI points for PL model {model_name}")
-
-        if model_name == "pl_single_pvoigt":
-            peak_model = PseudoVoigtModel(prefix="pl_")
-            fraction_guess = 0.5
-        elif model_name == "pl_single_gaussian":
-            peak_model = GaussianModel(prefix="pl_")
-            fraction_guess = 0.0
-        else:
-            raise ValueError(f"Unsupported PL model: {model_name}")
-
-        model = LinearModel(prefix="bg_") + peak_model
-        params = model.make_params()
-        left_base, right_base = _default_baseline_windows_from_roi(
-            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
-        )
-        baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
-            x_fit, y_fit, left_base, right_base
-        )
-        params["bg_slope"].set(value=baseline_slope, min=-2.0, max=2.0)
-        params["bg_intercept"].set(value=baseline_intercept)
-
-        peak_idx = int(np.argmax(y_fit))
-        center_seed = float(x_fit[peak_idx])
-        center_min = float(min(cfg.e2g_bounds))
-        center_max = float(max(cfg.e2g_bounds))
-        if center_max <= center_min:
-            center_min = float(np.min(x_fit))
-            center_max = float(np.max(x_fit))
-        center_guess = float(np.clip(cfg.e2g_init, center_min, center_max))
-        if not np.isfinite(center_guess):
-            center_guess = float(np.clip(center_seed, center_min, center_max))
-
-        sigma_min, sigma_max = _sigma_bounds_for_peak(cfg, "pl")
-        if sigma_max <= sigma_min:
-            sigma_min, sigma_max = cfg.sigma_bounds
-        sigma_guess = float(np.clip(0.5 * (sigma_min + sigma_max), sigma_min, sigma_max))
-        baseline_guess = float(np.percentile(y_fit, 20))
-        height_guess = max(float(np.max(y_fit) - baseline_guess), 1.0e-6)
-        area_guess_lmfit = _height_guess_to_lmfit_area(
-            height_guess=height_guess,
-            sigma_guess=sigma_guess,
-            fraction_guess=fraction_guess,
-        )
-
-        params["pl_center"].set(value=center_guess, min=center_min, max=center_max)
-        params["pl_sigma"].set(value=sigma_guess, min=sigma_min, max=sigma_max)
-        params["pl_amplitude"].set(value=max(area_guess_lmfit, 1.0e-6), min=0.0)
-        if "pl_fraction" in params:
-            params["pl_fraction"].set(value=fraction_guess, min=0.0, max=1.0)
-
-        fit_result = model.fit(y_fit, params, x=x_fit, nan_policy="omit")
-        y_pred_full = model.eval(fit_result.params, x=x_full)
-        return self._candidate_from_result(
+        if not component_keys:
+            raise ValueError(f"PL model {model_name} is not defined in pl.fit.model_components")
+        return self._fit_pl_component_model(
             model_name=model_name,
-            fit_result=fit_result,
-            x_fit=x_fit,
-            y_fit=y_fit,
+            component_keys=component_keys,
             x_full=x_full,
-            y_pred_full=np.asarray(y_pred_full, dtype=float),
-            peak_labels=["PL"],
-            prefix_for_label={"PL": "pl_"},
-            spike_residual_sigma_k=cfg.pl_spike_residual_sigma_k,
-            spike_span_ratio=cfg.pl_spike_span_ratio,
+            y_corr=y_corr,
+            cfg=cfg,
         )
 
     def _fit_pl_component_model(
@@ -1280,6 +936,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 y_fit,
                 center=spec.center_init,
                 half_width=local_half_width,
+                baseline_percentile=cfg.pl_seed_local_baseline_percentile,
             )
             height_guess = max(local_height, dynamic_height * spec.height_scale, 1.0e-6)
             center_guess = float(np.clip(local_center, spec.center_min, spec.center_max))
@@ -1350,6 +1007,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             profile_for_label={spec.key: spec.profile for spec in selected_components},
             spike_residual_sigma_k=cfg.pl_spike_residual_sigma_k,
             spike_span_ratio=cfg.pl_spike_span_ratio,
+            spike_span_percentiles=cfg.pl_spike_span_percentiles,
         )
 
     def _mask_roi(self, x_full: np.ndarray, x_min: float, x_max: float) -> np.ndarray:
@@ -1424,29 +1082,21 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         peak_labels: Sequence[str],
         prefix_for_label: Mapping[str, str],
         profile_for_label: Mapping[str, str] | None = None,
-        spike_residual_sigma_k: float = 12.0,
-        spike_span_ratio: float = 0.60,
+        spike_residual_sigma_k: float = float("nan"),
+        spike_span_ratio: float = float("nan"),
+        spike_span_percentiles: tuple[float, float] = (float("nan"), float("nan")),
     ) -> FitCandidate:
         y_best = fit_result.best_fit
         rmse, r2 = self._fit_quality(y_fit, y_best)
+        # Only PL component fits pass per-component profiles.
+        is_pl_model = profile_for_label is not None
 
-        if model_name in {
-            "peak_2_model",
-            "peak_3_model",
-            "peak_4_model",
-            "peak_5_model",
-            "mos2_double_pvoigt",
-            "pl_single_pvoigt",
-            "pl_a_doublet_pvoigt",
-            "pl_5_component_pvoigt",
-        }:
-            line_profile = "pvoigt"
-        elif model_name == "mos2_double_lorentz":
-            line_profile = "lorentz"
-        elif model_name in {"mos2_double_gaussian", "pl_single_gaussian"}:
-            line_profile = "gaussian"
+        # Raman peak models are pseudo-Voigt; PL components carry their own profile below.
+        if profile_for_label:
+            profiles = set(profile_for_label.values())
+            line_profile = profiles.pop() if len(profiles) == 1 else "mixed"
         else:
-            line_profile = "unknown"
+            line_profile = "pvoigt"
 
         params_out: dict[str, float] = {
             "bg_slope": _safe_param(fit_result.params, "bg_slope"),
@@ -1523,7 +1173,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             dominant_key = dominant_label.lower()
             params_out["dominant_component"] = dominant_key  # type: ignore[assignment]
             # pl_* summary keys belong to PL models only; Raman rows keep lo/e2g/a1g/zo/la.
-            if model_name.startswith("pl_"):
+            if is_pl_model:
                 params_out["pl_position"] = float(dominant_center)
                 params_out["pl_height"] = float(dominant_height)
                 for suffix in ("fwhm", "area", "sigma", "fraction"):
@@ -1544,14 +1194,15 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             "n_params": _finite(getattr(fit_result, "nvarys", 1), 1.0),
         }
 
-        if model_name.startswith("pl_"):
+        if is_pl_model:
             residual = np.asarray(y_fit, dtype=float) - np.asarray(y_best, dtype=float)
             if residual.size:
                 resid_med = float(np.median(residual))
                 resid_mad = float(np.median(np.abs(residual - resid_med)))
                 resid_sigma = max(1.4826 * resid_mad, 1.0e-9)
                 positive_resid = float(np.max(residual))
-                y_span = float(np.percentile(y_fit, 95) - np.percentile(y_fit, 5))
+                span_lo, span_hi = spike_span_percentiles
+                y_span = float(np.percentile(y_fit, span_hi) - np.percentile(y_fit, span_lo))
                 spike_threshold = max(
                     spike_residual_sigma_k * resid_sigma,
                     spike_span_ratio * max(y_span, 1.0e-9),
@@ -1570,68 +1221,6 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
             params=params_out,
             fitted_y=[float(v) for v in y_pred_full],
             metrics=metrics_out,
-        )
-
-    def _fit_two_peak_legacy(
-        self,
-        model_name: str,
-        x_full: np.ndarray,
-        y_corr: np.ndarray,
-        cfg: RamanFitConfig,
-    ) -> FitCandidate:
-        mask = self._mask_roi(x_full, cfg.x_min, cfg.x_max)
-        x_fit = x_full[mask]
-        y_fit = y_corr[mask]
-        if x_fit.size < cfg.min_roi_points:
-            raise ValueError("Insufficient ROI points for two-peak model")
-
-        model = self._build_two_peak_model(model_name)
-        params = model.make_params()
-        baseline_guess = float(np.percentile(y_fit, 20))
-        height_guess = max(float(np.max(y_fit) - baseline_guess), 1.0)
-
-        params["bg_intercept"].set(value=baseline_guess)
-        params["bg_slope"].set(value=0.0, min=-2.0, max=2.0)
-        params["e2g_center"].set(value=cfg.e2g_init, min=cfg.e2g_bounds[0], max=cfg.e2g_bounds[1])
-        params["a1g_center"].set(value=cfg.a1g_init, min=cfg.a1g_bounds[0], max=cfg.a1g_bounds[1])
-        if model_name == "mos2_double_pvoigt":
-            fraction_guess = 0.5
-            e2g_area_guess_lmfit = _height_guess_to_lmfit_area(height_guess, sigma_guess=4.0, fraction_guess=fraction_guess)
-            a1g_area_guess_lmfit = _height_guess_to_lmfit_area(height_guess, sigma_guess=4.0, fraction_guess=fraction_guess)
-        elif model_name == "mos2_double_lorentz":
-            e2g_area_guess_lmfit = height_guess * (np.pi * 4.0)
-            a1g_area_guess_lmfit = height_guess * (np.pi * 4.0)
-        else:
-            e2g_area_guess_lmfit = height_guess * (4.0 * np.sqrt(2.0 * np.pi))
-            a1g_area_guess_lmfit = height_guess * (4.0 * np.sqrt(2.0 * np.pi))
-
-        params["e2g_amplitude"].set(value=max(e2g_area_guess_lmfit, 1.0e-6), min=0.0)
-        params["a1g_amplitude"].set(value=max(a1g_area_guess_lmfit, 1.0e-6), min=0.0)
-
-        if "e2g_sigma" in params:
-            e2g_sigma_min, e2g_sigma_max = _sigma_bounds_for_peak(cfg, "e2g")
-            e2g_sigma_guess = float(np.clip(4.0, e2g_sigma_min, e2g_sigma_max))
-            params["e2g_sigma"].set(value=e2g_sigma_guess, min=e2g_sigma_min, max=e2g_sigma_max)
-        if "a1g_sigma" in params:
-            a1g_sigma_min, a1g_sigma_max = _sigma_bounds_for_peak(cfg, "a1g")
-            a1g_sigma_guess = float(np.clip(4.0, a1g_sigma_min, a1g_sigma_max))
-            params["a1g_sigma"].set(value=a1g_sigma_guess, min=a1g_sigma_min, max=a1g_sigma_max)
-        if "e2g_fraction" in params:
-            params["e2g_fraction"].set(value=0.5, min=0.0, max=1.0)
-        if "a1g_fraction" in params:
-            params["a1g_fraction"].set(value=0.5, min=0.0, max=1.0)
-
-        fit_result = model.fit(y_fit, params, x=x_fit, nan_policy="omit")
-        y_pred_full = model.eval(fit_result.params, x=x_full)
-        return self._candidate_from_result(
-            model_name=model_name,
-            fit_result=fit_result,
-            x_fit=x_fit,
-            y_fit=y_fit,
-            x_full=x_full,
-            y_pred_full=np.asarray(y_pred_full, dtype=float),
-            peak_labels=["E2g", "A1g"],
-            prefix_for_label={"E2g": "e2g_", "A1g": "a1g_"},
         )
 
     def _fit_n_peak_model(
@@ -1801,20 +1390,9 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         modality: str = "raman",
     ) -> FitCandidate:
         if modality == "pl":
-            normalized_model = {
-                "signal_tracking_stub": "pl_single_gaussian",
-                "flat_stub": "pl_single_pvoigt",
-                "fallback_signal_tracking": "pl_single_gaussian",
-                "fallback_flat": "pl_single_pvoigt",
-                "fallback": "pl_single_gaussian",
-            }.get(model_name, model_name)
-            if normalized_model in cfg.pl_model_components or normalized_model in {"pl_single_gaussian", "pl_single_pvoigt"}:
-                return self._fit_pl_model(normalized_model, x_full, y_corr, cfg)
-            raise ValueError(f"Unsupported PL model: {model_name}")
+            return self._fit_pl_model(model_name, x_full, y_corr, cfg)
 
-        if model_name in {"mos2_double_pvoigt", "mos2_double_lorentz", "mos2_double_gaussian"}:
-            return self._fit_two_peak_legacy(model_name, x_full, y_corr, cfg)
-        if model_name in {"peak_2_model", "peak_3_model", "peak_4_model", "peak_5_model"}:
+        if model_name in RAMAN_PEAK_MODELS:
             return self._fit_n_peak_model(
                 model_name=model_name,
                 x_full=x_full,
@@ -2279,8 +1857,6 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                             spectrum=spectrum,
                             baseline_y=list(baseline_y),
                             cfg=cfg,
-                            default_models=self.default_models,
-                            pl_models=self.pl_models,
                             enable_pl=self.enable_pl,
                         )
                         futures[future] = spectrum.spectrum_id
@@ -2439,15 +2015,9 @@ def _fit_single_spectrum_worker(
     spectrum: PreprocessedSpectrum,
     baseline_y: Sequence[float],
     cfg: RamanFitConfig,
-    default_models: Sequence[str],
-    pl_models: Sequence[str],
     enable_pl: bool,
 ) -> _SpectrumFitResult:
-    fitter = LmfitRamanModelEnsembleFitting(
-        default_models=default_models,
-        pl_models=pl_models,
-        enable_pl=enable_pl,
-    )
+    fitter = LmfitRamanModelEnsembleFitting(enable_pl=enable_pl)
     return fitter._fit_spectrum(
         spectrum=spectrum,
         baseline_y=baseline_y,

@@ -1435,3 +1435,13 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 
 - Workflow publishes a GitHub Release with the zipped app folder for `mos2-v*` tags; manual runs still only upload an Artifact.
 - First release: `mos2-v1.0` (commit with build identification).
+
+## Strict Config / Dependency Test (2026-10-30)
+
+- Scope: user pointed out remaining hardcoded values and that before/after identical results cannot prove the code
+  depends on config.yaml (values were copied). Removed all code-side copies; config access is strict.
+- Details: `ARCHITECTURE.md` "Strict Config Access (2026-10-30)".
+- Tests: `tests/test_config_dependency.py` (every config.yaml leaf read strictly, none via `.get(default)`, missing keys
+  raise `ConfigKeyError` naming the key); mutation check (planted fallback + ignored key) detected.
+- Also fixed: parallel fit worker signature (workers silently fell back to sequential) and a circular import in
+  `core/__init__`; covered by a real process-pool test.
