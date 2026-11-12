@@ -9,11 +9,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import importlib
+
 import streamlit as st
 
 BOOTSTRAP_ROOT = Path(__file__).resolve().parents[2]
 if str(BOOTSTRAP_ROOT) not in sys.path:
     sys.path.append(str(BOOTSTRAP_ROOT))
+
+from fitting.mos2_core.core import runtime_paths as _runtime_paths  # noqa: E402
+
+if not hasattr(_runtime_paths, "is_cloud_runtime"):
+    importlib.reload(_runtime_paths)
 
 from fitting.mos2_core.core.runtime_paths import is_cloud_runtime, runtime_project_root  # noqa: E402
 

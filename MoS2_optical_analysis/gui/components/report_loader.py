@@ -11,12 +11,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import importlib
+import sys
+
 import pandas as pd
 import streamlit as st
+
+_BOOTSTRAP_ROOT = Path(__file__).resolve().parents[2]
+if str(_BOOTSTRAP_ROOT) not in sys.path:
+    sys.path.append(str(_BOOTSTRAP_ROOT))
+
+from fitting.mos2_core.core import runtime_paths as _runtime_paths
+
+if not hasattr(_runtime_paths, "is_cloud_runtime"):
+    importlib.reload(_runtime_paths)
 
 from fitting.mos2_core.core.runtime_paths import is_cloud_runtime
 from fitting.mos2_core.core.runtime_paths import raman_config_dir as _bundled_raman_config_dir
 from fitting.mos2_core.core.runtime_paths import runtime_project_root
+from fitting.mos2_core.review import manual_overrides as _manual_overrides_mod
+
+importlib.reload(_manual_overrides_mod)
+
 from fitting.mos2_core.review.manual_overrides import (
     apply_manual_overrides_to_payload,
     override_mtime_ns_for_report,

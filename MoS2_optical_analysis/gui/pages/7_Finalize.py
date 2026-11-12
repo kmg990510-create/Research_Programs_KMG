@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -18,6 +19,11 @@ from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E
 ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
+
+from gui.components import report_loader as _report_loader_mod  # noqa: E402
+
+if not hasattr(_report_loader_mod, "build_projected_csv_bytes"):
+    importlib.reload(_report_loader_mod)
 
 from gui.components.report_loader import (  # noqa: E402
     build_projected_csv_bytes,
