@@ -3,8 +3,8 @@ title: MoS2 Optical Analysis
 emoji: 🔬
 colorFrom: blue
 colorTo: green
-sdk: streamlit
-app_file: gui/Main.py
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 
