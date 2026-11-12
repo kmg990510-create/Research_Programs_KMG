@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
-
-import importlib
 
 import streamlit as st
 
@@ -384,6 +384,8 @@ def _stream_command_output(
             _render_fit_card(overview_slot, "Fit Progress", current_state)
 
     assert process.stdout is not None
+    last_ui_update = 0.0
+    ui_min_interval = 0.25 if is_cloud_runtime() else 0.05
     for raw_line in iter(process.stdout.readline, ""):
         if raw_line == "" and process.poll() is not None:
             break
@@ -432,17 +434,24 @@ def _stream_command_output(
         if report_match:
             artifacts[report_match.group(1).lower()] = report_match.group(2).strip()
 
-        _render_progress()
-
-        display = lines
-        if omitted:
-            display = [f"[... {omitted} earlier lines omitted ...]", *lines]
-        logs.code("\n".join(display), language="text")
+        now = time.monotonic()
+        is_milestone = bool(batch_header or start_match or fit_match or report_match)
+        if is_milestone or (now - last_ui_update >= ui_min_interval):
+            _render_progress()
+            display = lines
+            if omitted:
+                display = [f"[... {omitted} earlier lines omitted ...]", *lines]
+            logs.code("\n".join(display), language="text")
+            last_ui_update = now
 
     process.stdout.close()
     return_code = process.wait()
 
     _render_progress()
+    display = lines
+    if omitted:
+        display = [f"[... {omitted} earlier lines omitted ...]", *lines]
+    logs.code("\n".join(display), language="text")
     return return_code, omitted, artifacts
 
 
@@ -724,15 +733,26 @@ st.subheader("Step 3. Execution Options")
 run_id = st.text_input("Run ID", key="run_analysis_run_id_value", disabled=(run_mode == "batch_subdirs"))
 pattern_default = "*.txt" if modality == "raman" else "*.asc"
 pattern = st.text_input("Pattern", value=pattern_default)
-progress_every = st.number_input("Progress every N files", min_value=1, max_value=1000, value=1, step=1)
-default_workers = max((os.cpu_count() or 2) - 1, 1)
+default_progress_every = 5 if cloud_mode else 1
+progress_every = st.number_input(
+    "Progress every N files",
+    min_value=1,
+    max_value=1000,
+    value=int(default_progress_every),
+    step=1,
+)
+default_workers = 1 if cloud_mode else max((os.cpu_count() or 2) - 1, 1)
+max_workers_allowed = 2 if cloud_mode else 64
 fit_workers = st.number_input(
     "Fit workers (processes)",
     min_value=1,
-    max_value=64,
+    max_value=int(max_workers_allowed),
     value=int(default_workers),
     step=1,
-    help="Spectrum-level multiprocessing worker count. 1 keeps sequential behavior.",
+    help=(
+        "Spectrum-level multiprocessing worker count. "
+        "Defaults to 1 in web/cloud containers to prevent 1 GB RAM Out-Of-Memory (OOM) crashes."
+    ),
 )
 if run_mode == "batch_subdirs":
     st.caption("Batch mode uses each immediate subfolder name as run-id (`Run ID` field disabled).")

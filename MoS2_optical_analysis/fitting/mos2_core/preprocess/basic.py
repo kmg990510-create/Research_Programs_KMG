@@ -195,7 +195,10 @@ class IdentityPreprocessing(PreprocessingStage):
             x = [float(v) for v in s.x]
             y = [float(v) for v in s.y]
             if isinstance(raw_xy_index, dict):
-                raw_xy_index[s.spectrum_id] = {"raw_x": list(x), "raw_y": list(y)}
+                raw_xy_index[s.spectrum_id] = {
+                    "raw_x": [round(float(v), 5) for v in x],
+                    "raw_y": [round(float(v), 4) for v in y],
+                }
 
             is_pl = str(s.modality).lower() == "pl" or str(s.metadata.get("modality", "")).lower() == "pl"
             n_spikes = 0
