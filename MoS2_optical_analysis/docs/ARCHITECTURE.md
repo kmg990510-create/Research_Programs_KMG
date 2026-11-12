@@ -328,7 +328,7 @@ This document describes the current workspace architecture after TASK-006~008 mi
 - Root `Dockerfile`, `.dockerignore`, `requirements.txt`, and `README.md` YAML frontmatter (`sdk: docker`, `app_port: 7860`) support both **Streamlit Community Cloud** (`MoS2_optical_analysis/gui/Main.py`) and **Hugging Face Spaces**.
 - Environment auto-detection (`fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()`):
   - detects cloud hosting via `MOS2_CLOUD_MODE` (`1/true` or `0/false`) or standard cloud markers (`STREAMLIT_SHARING_MODE`, `SPACE_ID`, `SPACE_AUTHOR_NAME`, `/mount/src`, `/home/user/app`)
-  - in cloud mode, GUI upload/export expanders default to `expanded=True`, while local-only controls (`Custom raw folder path` in `1_Run_Analysis.py` and `Open Manual Editor (Desktop)` in `3_All_Spectra_Viewer.py`) are hidden
+  - in cloud mode, GUI upload/export expanders default to `expanded=True`, local-only controls (`Custom raw folder path` in `1_Run_Analysis.py` and `Open Manual Editor (Desktop)` in `3_All_Spectra_Viewer.py`) are hidden, and `1_Run_Analysis.py` defaults `fit_workers=1` (capped at `2`) and `progress_every=5` with throttled live-log rendering (`0.25s`) so multi-process spawning does not exceed Streamlit Cloud's 1 GB RAM container limit
 - Standalone single-file JSON report restoration (`fitting/mos2_core/preprocess/basic.py`, `fitting/mos2_core/analysis/reporting.py`, `gui/pages/3_All_Spectra_Viewer.py`):
   - `PreprocessStage` records pre-ROI raw spectrum arrays (`raw_x`, `raw_y`) in `context.state["spectrum_raw_xy"]`
   - `ReportingStage` embeds `raw_x` and `raw_y` into each `spectra[]` row of `*_fit_report.json` and adds them to `reserved_for_json_only` so `*_fit_parameters.csv` columns remain unchanged
