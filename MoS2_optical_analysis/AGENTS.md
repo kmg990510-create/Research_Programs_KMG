@@ -62,7 +62,9 @@ Run from workspace root (`MoS2_optical_analysis`):
 - When a report JSON is moved/restored/purged, paired CSV + matching override JSON are linked and processed together.
 - Bin entries can be restored or permanently deleted later with explicit confirmation.
 - Web/cloud upload expander in Step 2 stages `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` archives into `data/raw/{modality}/{folder_name}` via `stage_uploaded_raw_files` in `gui/components/report_loader.py`.
-- Sidebar report loader includes an `Upload Report JSON / CSV` expander (`save_uploaded_report_files`) so external reports and override JSONs can be loaded in cloud sessions.
+- Environment auto-detection (`fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()`): checks `MOS2_CLOUD_MODE` override or standard cloud environment markers (`STREAMLIT_SHARING_MODE`, `SPACE_ID`, `/mount/src`, `/home/user/app`). When in cloud mode, upload/export expanders open automatically and desktop-only UI (`Custom raw folder path`, `Open Manual Editor (Desktop)`) is hidden.
+- Sidebar report loader includes `Upload Report JSON / CSV` (`save_uploaded_report_files`) and `Export / Save Intermediate State` (`build_projected_report_json_bytes`, `build_projected_csv_bytes`) so external reports and override JSONs can be loaded and saved mid-review in cloud sessions.
+- Flagged Spectra `Manual Decision Editor` includes `Apply Edits to Active Report` (`apply_table_edits_to_report` -> `upsert_manual_override`), persisting `review_decision` and table parameter edits into `{run_id}_manual_overrides.json`.
 
 ## Manual Refit UI Rules
 
@@ -77,7 +79,7 @@ Run from workspace root (`MoS2_optical_analysis`):
 
 ## Output Contracts
 
-- Raman reports: `data/results/raman/reports/*_fit_report.json`
+- Raman reports: `data/results/raman/reports/*_fit_report.json` (each row in `spectra[]` embeds `raw_x` and `raw_y` for standalone web viewing/refit without requiring original raw files on disk; `raw_x`/`raw_y` are excluded from CSV exports)
 - PL reports: `data/results/pl/reports/*_fit_report.json`
 - CSV pairs: `*_fit_parameters.csv`
 - Manual override records: `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`

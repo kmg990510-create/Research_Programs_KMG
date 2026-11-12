@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -53,3 +54,29 @@ def user_config_path() -> Path:
         if external.exists():
             return external
     return runtime_resource_root() / USER_CONFIG_FILENAME
+
+
+def is_cloud_runtime() -> bool:
+    """Return True when running in a web/cloud container rather than a local desktop session."""
+    if getattr(sys, "frozen", False):
+        return False
+    env = os.environ
+    explicit = str(env.get("MOS2_CLOUD_MODE", "")).strip().lower()
+    if explicit in {"1", "true", "yes", "on"}:
+        return True
+    if explicit in {"0", "false", "no", "off"}:
+        return False
+    if any(
+        env.get(key)
+        for key in (
+            "SPACE_ID",
+            "HF_SPACE_ID",
+            "STREAMLIT_SHARING_MODE",
+            "IS_STREAMLIT_CLOUD",
+        )
+    ):
+        return True
+    if sys.platform.startswith("linux") and not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+

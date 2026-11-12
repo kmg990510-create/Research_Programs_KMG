@@ -19,7 +19,12 @@ ROOT = runtime_project_root(__file__, 1)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.report_loader import choose_report_sidebar, paired_csv_path  # noqa: E402
+from gui.components.report_loader import (  # noqa: E402
+    build_projected_csv_bytes,
+    build_projected_report_json_bytes,
+    choose_report_sidebar,
+    paired_csv_path,
+)
 
 
 st.set_page_config(
@@ -83,17 +88,23 @@ with right:
     st.caption("A single selected run is represented by a JSON report and its paired CSV.")
     st.markdown("`JSON report`")
     st.code(str(report_path), language="text")
+    st.download_button(
+        "Download Report JSON (with Raw & Edits)",
+        data=build_projected_report_json_bytes(payload),
+        file_name=report_path.name,
+        mime="application/json",
+        width="stretch",
+    )
     csv_path = paired_csv_path(report_path)
-    if csv_path.exists():
-        st.markdown("`Paired CSV`")
-        st.code(str(csv_path), language="text")
-        st.download_button(
-            "Download Parameters CSV",
-            data=csv_path.read_bytes(),
-            file_name=csv_path.name,
-            mime="text/csv",
-            width="stretch",
-        )
+    st.markdown("`Paired CSV`")
+    st.code(str(csv_path), language="text")
+    st.download_button(
+        "Download Parameters CSV",
+        data=build_projected_csv_bytes(payload, csv_path),
+        file_name=csv_path.name,
+        mime="text/csv",
+        width="stretch",
+    )
 
     with st.expander("Configuration Snapshot (advanced)", expanded=False):
         st.json(payload.get("config", {}))

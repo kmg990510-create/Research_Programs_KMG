@@ -15,7 +15,12 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.report_loader import choose_report_sidebar, paired_csv_path  # noqa: E402
+from gui.components.report_loader import (  # noqa: E402
+    build_projected_csv_bytes,
+    build_projected_report_json_bytes,
+    choose_report_sidebar,
+    paired_csv_path,
+)
 
 
 st.title("Finalize")
@@ -33,8 +38,9 @@ col2.metric("Flagged", int(counts.get("flagged", 0)))
 col3.metric("Fit Failures", int(payload.get("fit_failure_count", 0)))
 
 st.subheader("Export")
-json_bytes = report_path.read_bytes()
+json_bytes = build_projected_report_json_bytes(payload)
 csv_path = paired_csv_path(report_path)
+csv_bytes = build_projected_csv_bytes(payload, csv_path)
 
 st.download_button(
     "Download Final JSON Report",
@@ -44,10 +50,10 @@ st.download_button(
     width="stretch",
 )
 
-if csv_path.exists():
+if csv_bytes:
     st.download_button(
         "Download Final CSV Parameters",
-        data=csv_path.read_bytes(),
+        data=csv_bytes,
         file_name=csv_path.name,
         mime="text/csv",
         width="stretch",

@@ -278,15 +278,19 @@ GUI pages read reports only from:
 - `data/results/raman/reports`
 - `data/results/pl/reports`
 
-Each page sidebar also includes an `Upload Report JSON / CSV` expander so previously exported
-`*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json` files can be uploaded directly in web/cloud sessions.
+Each page sidebar also includes:
+- `Upload Report JSON / CSV` expander so previously exported `*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json` files can be uploaded directly in web/cloud sessions.
+- `Export / Save Intermediate State` expander so the active report (with all manual refits, model overrides, and review decisions merged in) can be downloaded as a single standalone `*_fit_report.json` or `*_fit_parameters.csv` at any point.
 
 ## Cloud / Hugging Face Spaces Deployment
 
-- The top-level YAML frontmatter configures Hugging Face Spaces (`sdk: streamlit`, `app_file: gui/Main.py`).
+- The top-level YAML frontmatter (`sdk: docker`, `app_port: 7860`), root `Dockerfile`, and root `requirements.txt` support both **Streamlit Community Cloud** (`MoS2_optical_analysis/gui/Main.py`) and **Hugging Face Spaces**.
+- `fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()` automatically detects web/cloud execution (or `MOS2_CLOUD_MODE=1/0`), auto-expanding upload/export panels and hiding local desktop-only buttons (`Open Manual Editor (Desktop)` and custom local path input).
+- **Standalone Single-File JSON Restoration**: each spectrum row in `*_fit_report.json` embeds pre-ROI `raw_x` and `raw_y` arrays (excluded from `*_fit_parameters.csv`), allowing **All Spectra Viewer** and in-browser **Web Manual Refit** to work from a single uploaded `_fit_report.json` even when original `.txt`/`.asc` files are not present on disk.
+- **Flagged Spectra Persistence**: in **Flagged Spectra**, `Apply Edits to Active Report` saves `review_decision` and table peak parameter edits directly into `{run_id}_manual_overrides.json` so they carry over to **All Spectra Viewer**, **Finalize**, and exported JSON/CSV files.
 - In **Run Analysis -> Step 2**, use `Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)` to upload `.txt`, `.asc`,
   Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` folder archives directly into `data/raw/{raman,pl}`.
 - After a pipeline run finishes on **Run Analysis**, generated JSON/CSV reports can be downloaded immediately from
-  `Generated Artifacts` or from **Finalize**.
+  `Generated Artifacts`, the sidebar `Export / Save Intermediate State` expander, or **Finalize**.
 - Cross-OS path resolution in `resolve_source_file` normalizes Windows/Linux separators and matches `data/raw/...`
   relative paths so reports created on Windows can be inspected on Linux cloud instances.

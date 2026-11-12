@@ -106,5 +106,5 @@ with right_col:
     st.subheader("Manual Decision Editor")
     source = flagged if not flagged.empty else df.head(20)
     edited = render_parameter_editor(source, key="flagged_editor")
-    render_changes_download(source, edited, file_stem=Path(report_path).stem)
+    render_changes_download(source, edited, file_stem=Path(report_path).stem, report_path=Path(report_path))
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import json
 import re
@@ -13,11 +14,13 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from fitting.mos2_core.core.runtime_paths import is_cloud_runtime
 from fitting.mos2_core.core.runtime_paths import raman_config_dir as _bundled_raman_config_dir
 from fitting.mos2_core.core.runtime_paths import runtime_project_root
 from fitting.mos2_core.review.manual_overrides import (
     apply_manual_overrides_to_payload,
     override_mtime_ns_for_report,
+    override_path_for_report,
 )
 
 SUPPORTED_MODALITIES = ("raman", "pl")
@@ -121,6 +124,62 @@ def _infer_upload_modality(filename: str, content_bytes: bytes, fallback: str) -
     return fallback if fallback in SUPPORTED_MODALITIES else "raman"
 
 
+_JSON_ONLY_ROW_KEYS = frozenset(
+    {
+        "all_candidates",
+        "fit_params",
+        "fit_metrics",
+        "fitted_y",
+        "raw_x",
+        "raw_y",
+    }
+)
+
+
+def build_projected_report_json_bytes(payload: dict[str, Any]) -> bytes:
+    """Serialize projected report payload (including embedded raw_x/raw_y and manual overrides) to JSON bytes."""
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def build_projected_csv_bytes(payload: dict[str, Any], fallback_csv_path: Path | None = None) -> bytes:
+    """Build parameters CSV bytes from projected spectra rows so manual overrides/decisions are included."""
+    spectra = payload.get("spectra", [])
+    if not isinstance(spectra, list) or not spectra:
+        if fallback_csv_path is not None and fallback_csv_path.exists():
+            return fallback_csv_path.read_bytes()
+        return b""
+
+    base_fields: list[str] = []
+    if fallback_csv_path is not None and fallback_csv_path.exists():
+        try:
+            with fallback_csv_path.open("r", encoding="utf-8", errors="replace", newline="") as fp:
+                reader = csv.reader(fp)
+                header = next(reader, None)
+                if header:
+                    base_fields = [str(col) for col in header if str(col) not in _JSON_ONLY_ROW_KEYS]
+        except Exception:
+            base_fields = []
+
+    known_set = set(base_fields)
+    extra_fields = sorted(
+        {
+            str(key)
+            for row in spectra
+            if isinstance(row, dict)
+            for key in row.keys()
+            if str(key) not in known_set and str(key) not in _JSON_ONLY_ROW_KEYS
+        }
+    )
+    fieldnames = base_fields + extra_fields
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in spectra:
+        if isinstance(row, dict):
+            writer.writerow(row)
+    return buf.getvalue().encode("utf-8")
+
+
 def save_uploaded_report_files(
     uploaded_files: list[Any],
     default_modality: str = "raman",
@@ -128,6 +187,11 @@ def save_uploaded_report_files(
 ) -> list[Path]:
     target_root = base_results_dir if base_results_dir is not None else results_dir()
     saved_paths: list[Path] = []
+    uploaded_names = {
+        Path(str(getattr(item, "name", "") or "")).name
+        for item in uploaded_files
+        if getattr(item, "name", None)
+    }
     for item in uploaded_files:
         raw_name = Path(str(getattr(item, "name", "") or "")).name
         if not raw_name:
@@ -144,14 +208,22 @@ def save_uploaded_report_files(
         dest_path = dest_dir / raw_name
         dest_path.write_bytes(bytes(content))
         saved_paths.append(dest_path)
+        if raw_name.endswith("_fit_report.json"):
+            override_file = override_path_for_report(dest_path)
+            if override_file.name not in uploaded_names and override_file.exists():
+                try:
+                    override_file.unlink()
+                except OSError:
+                    pass
     return saved_paths
 
 
 def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict | None, pd.DataFrame]:
     files = list_report_json_files()
+    cloud_mode = is_cloud_runtime()
     st.sidebar.subheader("1) Report Source")
 
-    with st.sidebar.expander("Upload Report JSON / CSV", expanded=not bool(files)):
+    with st.sidebar.expander("Upload Report JSON / CSV", expanded=(cloud_mode or not bool(files))):
         uploaded = st.file_uploader(
             "Upload *_fit_report.json, *_fit_parameters.csv, or *_manual_overrides.json",
             type=["json", "csv"],
@@ -172,6 +244,8 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
             ):
                 saved = save_uploaded_report_files(uploaded, default_modality=upload_mod)
                 if saved:
+                    load_report_payload.clear()
+                    load_spectra_dataframe.clear()
                     st.success(f"Saved {len(saved)} file(s).")
                     st.rerun()
 
@@ -193,6 +267,27 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
     payload = load_report_payload(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
     df = load_spectra_dataframe(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
     st.sidebar.caption(f"Path: {selected_path}")
+
+    with st.sidebar.expander("Export / Save Intermediate State", expanded=cloud_mode):
+        st.caption("Download the current report (includes raw spectra & all manual edits) to resume later.")
+        csv_candidate = paired_csv_path(selected_path)
+        st.download_button(
+            "Export Intermediate JSON",
+            data=build_projected_report_json_bytes(payload),
+            file_name=selected_path.name,
+            mime="application/json",
+            key=f"{key_prefix}_sidebar_export_json",
+            use_container_width=True,
+        )
+        st.download_button(
+            "Export Parameters CSV",
+            data=build_projected_csv_bytes(payload, csv_candidate),
+            file_name=csv_candidate.name,
+            mime="text/csv",
+            key=f"{key_prefix}_sidebar_export_csv",
+            use_container_width=True,
+        )
+
     st.sidebar.divider()
     return selected_path, payload, df
 

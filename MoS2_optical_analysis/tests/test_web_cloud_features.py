@@ -155,3 +155,98 @@ def test_web_manual_refit_controller_and_api_roundtrip(tmp_path: Path) -> None:
     res_manual = api.submit_refit(ManualRefitRequest.from_payload(req_payload))
     assert res_manual["status"] == "ok"
     assert len(res_manual["fitted_y"]) == len(x)
+
+
+def test_is_cloud_runtime_honors_env_override(monkeypatch) -> None:
+    from fitting.mos2_core.core.runtime_paths import is_cloud_runtime
+
+    monkeypatch.setenv("MOS2_CLOUD_MODE", "1")
+    assert is_cloud_runtime() is True
+    monkeypatch.setenv("MOS2_CLOUD_MODE", "0")
+    assert is_cloud_runtime() is False
+
+
+def test_standalone_report_embeds_raw_xy_only_in_json_and_merges_overrides_on_export(
+    tmp_path: Path,
+) -> None:
+    import pandas as pd
+    from fitting.mos2_core.core.default_stages import build_default_context, build_default_stages
+    from fitting.mos2_core.core.pipeline import run_pipeline
+    from fitting.mos2_core.io import generate_dummy_spectra
+    from fitting.mos2_core.review.manual_overrides import upsert_manual_override
+    from gui.components.parameter_editor import apply_table_edits_to_report
+    from gui.components.report_loader import (
+        build_projected_csv_bytes,
+        build_projected_report_json_bytes,
+        load_report_payload,
+        load_spectra_dataframe,
+    )
+
+    workspace_root = Path(__file__).resolve().parents[1]
+    config_dir = workspace_root / "fitting" / "mos2_raman" / "config"
+    raw_spectra = generate_dummy_spectra(count=2)
+    ctx = build_default_context(
+        run_id="standalone_test",
+        artifact_dir=tmp_path,
+        config_dir=config_dir,
+    )
+    stages = build_default_stages(config=ctx.config)
+    result = run_pipeline(raw_spectra=raw_spectra, stages=stages, context=ctx)
+    assert result.reports
+    report_json = Path(result.reports[0].path)
+    report_csv = Path(result.reports[1].path)
+    assert report_json.exists()
+    assert report_csv.exists()
+
+    raw_payload = json.loads(report_json.read_text(encoding="utf-8"))
+    first_row = raw_payload["spectra"][0]
+    assert isinstance(first_row.get("raw_x"), list) and len(first_row["raw_x"]) > 10
+    assert isinstance(first_row.get("raw_y"), list) and len(first_row["raw_y"]) == len(first_row["raw_x"])
+
+    csv_df = pd.read_csv(report_csv)
+    assert "raw_x" not in csv_df.columns
+    assert "raw_y" not in csv_df.columns
+
+    # Apply manual override + Flagged Spectra table edit
+    spec_id = str(first_row["spectrum_id"])
+    upsert_manual_override(
+        report_json=report_json,
+        spectrum_id=spec_id,
+        action_type="model_override",
+        selected_model="peak_3_model",
+        params={"e2g_position": 385.123},
+        metrics={"rmse": 0.42},
+        fitted_y=[1.0, 2.0, 3.0],
+        operator_note="model_switch",
+    )
+    orig_df = load_spectra_dataframe(str(report_json))
+    edited_df = orig_df.copy()
+    edited_df.loc[edited_df["spectrum_id"] == spec_id, "review_decision"] = "accepted"
+    edited_df.loc[edited_df["spectrum_id"] == spec_id, "a1g_position"] = 405.678
+    count = apply_table_edits_to_report(
+        original=orig_df,
+        edited=edited_df,
+        report_path=report_json,
+    )
+    assert count == 1
+
+    # Merged JSON export should preserve both model_override (e2g_position) and review_decision/a1g_position
+    projected_payload = load_report_payload(str(report_json), cache_bust_mtime_ns=1, manual_overrides_mtime_ns=2)
+    merged_json = json.loads(build_projected_report_json_bytes(projected_payload).decode("utf-8"))
+    merged_row = next(r for r in merged_json["spectra"] if r["spectrum_id"] == spec_id)
+    assert merged_row["selected_model"] == "peak_3_model"
+    assert merged_row["e2g_position"] == 385.123
+    assert merged_row["a1g_position"] == 405.678
+    assert merged_row["review_decision"] == "accepted"
+    assert merged_row["reviewed"] is True
+
+    # Merged CSV export should exclude raw_x/raw_y and include updated values
+    merged_csv_df = pd.read_csv(io.BytesIO(build_projected_csv_bytes(projected_payload, report_csv)))
+    assert "raw_x" not in merged_csv_df.columns
+    assert "raw_y" not in merged_csv_df.columns
+    csv_row = merged_csv_df.loc[merged_csv_df["spectrum_id"] == spec_id].iloc[0]
+    assert csv_row["selected_model"] == "peak_3_model"
+    assert float(csv_row["e2g_position"]) == 385.123
+    assert float(csv_row["a1g_position"]) == 405.678
+    assert csv_row["review_decision"] == "accepted"
+

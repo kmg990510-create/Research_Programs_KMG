@@ -325,7 +325,21 @@ This document describes the current workspace architecture after TASK-006~008 mi
 
 ## Web / Cloud Mode & Hugging Face Spaces Support (2026-11-12)
 
-- `README.md` includes Hugging Face Spaces YAML frontmatter (`sdk: streamlit`, `app_file: gui/Main.py`).
+- Root `Dockerfile`, `.dockerignore`, `requirements.txt`, and `README.md` YAML frontmatter (`sdk: docker`, `app_port: 7860`) support both **Streamlit Community Cloud** (`MoS2_optical_analysis/gui/Main.py`) and **Hugging Face Spaces**.
+- Environment auto-detection (`fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()`):
+  - detects cloud hosting via `MOS2_CLOUD_MODE` (`1/true` or `0/false`) or standard cloud markers (`STREAMLIT_SHARING_MODE`, `SPACE_ID`, `SPACE_AUTHOR_NAME`, `/mount/src`, `/home/user/app`)
+  - in cloud mode, GUI upload/export expanders default to `expanded=True`, while local-only controls (`Custom raw folder path` in `1_Run_Analysis.py` and `Open Manual Editor (Desktop)` in `3_All_Spectra_Viewer.py`) are hidden
+- Standalone single-file JSON report restoration (`fitting/mos2_core/preprocess/basic.py`, `fitting/mos2_core/analysis/reporting.py`, `gui/pages/3_All_Spectra_Viewer.py`):
+  - `PreprocessStage` records pre-ROI raw spectrum arrays (`raw_x`, `raw_y`) in `context.state["spectrum_raw_xy"]`
+  - `ReportingStage` embeds `raw_x` and `raw_y` into each `spectra[]` row of `*_fit_report.json` and adds them to `reserved_for_json_only` so `*_fit_parameters.csv` columns remain unchanged
+  - `3_All_Spectra_Viewer.py` falls back to embedded `raw_x`/`raw_y` when `resolve_source_file` returns `None`, allowing a single uploaded `_fit_report.json` to render raw/fitted overlays and run in-browser manual refit without raw `.txt`/`.asc` files on disk
+- Intermediate & final override-merged exports (`fitting/mos2_core/review/manual_overrides.py`, `gui/components/report_loader.py`, `gui/Main.py`, `gui/pages/7_Finalize.py`):
+  - `build_projected_report_json_bytes` and `build_projected_csv_bytes` serialize the active report with all `{run_id}_manual_overrides.json` changes merged in
+  - `choose_report_sidebar` exposes an `Export / Save Intermediate State` expander so users can download merged `_fit_report.json` / `_fit_parameters.csv` at any point and re-upload the single JSON in a later session
+  - uploading a `_fit_report.json` without a companion `_manual_overrides.json` clears any stale override file for the same `run_id`
+- Flagged Spectra decision & parameter persistence (`gui/components/parameter_editor.py`, `gui/pages/2_Flagged_Spectra.py`):
+  - `Apply Edits to Active Report` calls `apply_table_edits_to_report` -> `upsert_manual_override(..., action_type="flagged_table_edit", review_decision=...)`
+  - `_latest_items_by_spectrum` merges chronological overrides per spectrum so subsequent `review_decision` edits preserve earlier `fitted_y`/`selected_model` refits
 - Raw input staging for web/cloud (`gui/components/report_loader.py::stage_uploaded_raw_files`, wired in `gui/pages/1_Run_Analysis.py` Step 2):
   - accepts `.txt`, `.asc`, Raman mapping `.csv`, and `.zip` archives via `st.file_uploader`
   - extracts and writes into `data/raw/{modality}/{folder_name}` (blocking `..` traversal and `__MACOSX` entries)
