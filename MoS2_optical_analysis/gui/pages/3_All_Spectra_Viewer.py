@@ -30,8 +30,11 @@ from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.science_settings import fwhm_warn_limits  # noqa: E402
 from gui.components.manual_refit_contract import (  # noqa: E402
     build_editor_request,
+    extract_peak_rows_from_row,
     validate_editor_response,
 )
+from gui.desktop_editor.controller import ManualEditorController  # noqa: E402
+from gui.desktop_editor.models import EditorRequest  # noqa: E402
 from gui.components.spectrum_viewer import (  # noqa: E402
     load_raw_xy,
     render_fit_summary,
@@ -605,6 +608,124 @@ if manual_action_cols[1].button("Clear Manual Result", use_container_width=True)
     if manual_key in manual_refit_cache:
         manual_refit_cache.pop(manual_key, None)
         st.rerun()
+
+with st.expander("Web Manual Refit (In-Browser Editor for Cloud/Web)", expanded=False):
+    st.caption(
+        "Edit peak parameters directly in the browser without launching a desktop PySide6 window."
+    )
+    web_modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
+    row_for_peaks = dict(display_row)
+    row_for_peaks.setdefault("modality", web_modality)
+    initial_peaks = extract_peak_rows_from_row(row_for_peaks)
+    if not initial_peaks:
+        st.info("No editable peak parameters found for the current spectrum/model.")
+    else:
+        web_editor_key = (
+            f"web_peak_editor_{_sanitize_filename(report_path.stem)}_"
+            f"{_sanitize_filename(spectrum_id)}_{_sanitize_filename(str(display_row.get('selected_model', '')))}"
+        )
+        peaks_df = pd.DataFrame(initial_peaks)
+        edited_peaks_df = st.data_editor(
+            peaks_df,
+            width="stretch",
+            num_rows="fixed",
+            hide_index=True,
+            disabled=["peak"],
+            column_config={
+                "peak": st.column_config.TextColumn("Peak"),
+                "center": st.column_config.NumberColumn("Center", format="%.4f"),
+                "height": st.column_config.NumberColumn("Height", min_value=0.0, format="%.4f"),
+                "fwhm": st.column_config.NumberColumn("FWHM", min_value=1.0e-6, format="%.4f"),
+                "fraction": st.column_config.NumberColumn(
+                    "Fraction (eta)", min_value=0.0, max_value=1.0, step=0.05, format="%.3f"
+                ),
+                "fixed_fraction": st.column_config.CheckboxColumn("Fix F"),
+                "fixed_center": st.column_config.CheckboxColumn("Fix C"),
+                "fixed_height": st.column_config.CheckboxColumn("Fix H"),
+                "fixed_fwhm": st.column_config.CheckboxColumn("Fix W"),
+            },
+            key=web_editor_key,
+        )
+        edited_peak_records = edited_peaks_df.to_dict(orient="records")
+        web_req_payload = build_editor_request(
+            report_path=report_path,
+            spectrum_id=spectrum_id,
+            modality=web_modality,
+            source_file=str(source_path),
+            selected_model=str(display_row.get("selected_model", "")).strip(),
+            calibration_offset=0.0,
+            row_snapshot=display_row,
+            x=[float(v) for v in x_for_plot],
+            y=[float(v) for v in y_raw],
+        )
+        web_req_payload["peaks"] = edited_peak_records
+        try:
+            web_ctrl = ManualEditorController(EditorRequest.from_payload(web_req_payload))
+            live_metrics = web_ctrl.preview_metrics()
+            pm_cols = st.columns(2)
+            pm_cols[0].metric(
+                "Live Preview RMSE",
+                f"{live_metrics.rmse:.4f}" if live_metrics.rmse is not None else "NA",
+            )
+            pm_cols[1].metric(
+                "Live Preview AIC",
+                f"{live_metrics.aic:.2f}" if live_metrics.aic is not None else "NA",
+            )
+        except Exception:
+            pass
+
+        web_note = st.text_input(
+            "Operator note (optional)",
+            value="",
+            key=f"{web_editor_key}_note",
+        )
+        web_btn_cols = st.columns(2)
+        apply_web_manual = web_btn_cols[0].button(
+            "Apply Manual Refit (Web)",
+            type="primary",
+            use_container_width=True,
+            key=f"{web_editor_key}_apply_btn",
+        )
+        apply_web_autofit = web_btn_cols[1].button(
+            "Auto Fit from Current Peaks (Web)",
+            use_container_width=True,
+            key=f"{web_editor_key}_autofit_btn",
+        )
+        if apply_web_manual or apply_web_autofit:
+            try:
+                web_req_payload["reason"] = (
+                    "web_auto_fit" if apply_web_autofit else "manual_refit_from_web"
+                )
+                web_req_payload["operator_note"] = web_note.strip()
+                api = SingleSpectrumRefitAPI(project_root=ROOT)
+                req_obj = ManualRefitRequest.from_payload(web_req_payload)
+                refit_payload = (
+                    api.submit_auto_refit(req_obj)
+                    if apply_web_autofit
+                    else api.submit_refit(req_obj)
+                )
+                if str(refit_payload.get("status", "")).lower() != "ok":
+                    raise RuntimeError(str(refit_payload.get("message", "Web refit failed")))
+                after_row = _build_after_row(before_row=display_row, refit_payload=refit_payload)
+                override_path = upsert_manual_override(
+                    report_json=report_path,
+                    spectrum_id=spectrum_id,
+                    action_type="manual_refit",
+                    selected_model=str(refit_payload.get("selected_model", "")),
+                    params=refit_payload.get("params", {}),
+                    metrics=refit_payload.get("metrics", {}),
+                    fitted_y=refit_payload.get("fitted_y", []),
+                    operator_note=web_note.strip() or web_req_payload["reason"],
+                )
+                manual_refit_cache[manual_key] = {
+                    "after_row": after_row,
+                    "refit_payload": refit_payload,
+                    "override_path": str(override_path),
+                }
+                st.success(f"Web manual refit applied and saved: {override_path}")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Web manual refit failed: {exc}")
 
 manual_state = manual_refit_cache.get(manual_key)
 if isinstance(manual_state, dict):
