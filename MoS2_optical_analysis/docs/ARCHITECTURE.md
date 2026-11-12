@@ -322,3 +322,22 @@ This document describes the current workspace architecture after TASK-006~008 mi
   key-tracking config and asserts every config.yaml leaf is read strictly and none via `.get(default)`; plus
   missing-key runs that must raise `ConfigKeyError` naming the key. Verified by planting a `.get("r2_min", 0.95)`
   and an ignored key: both detected.
+
+## Web / Cloud Mode & Hugging Face Spaces Support (2026-11-12)
+
+- `README.md` includes Hugging Face Spaces YAML frontmatter (`sdk: streamlit`, `app_file: gui/Main.py`).
+- Raw input staging for web/cloud (`gui/components/report_loader.py::stage_uploaded_raw_files`, wired in `gui/pages/1_Run_Analysis.py` Step 2):
+  - accepts `.txt`, `.asc`, Raman mapping `.csv`, and `.zip` archives via `st.file_uploader`
+  - extracts and writes into `data/raw/{modality}/{folder_name}` (blocking `..` traversal and `__MACOSX` entries)
+  - optionally auto-splits uploaded Raman mapping CSVs (`FILETYPE=RAMAN SPECTRUM (MAPPING)`) into `Y###-X###.txt` via `split_mapping_csv`
+  - adds direct JSON/CSV download buttons under `Generated Artifacts` in `1_Run_Analysis.py`
+- Sidebar report uploader (`gui/components/report_loader.py::save_uploaded_report_files`, wired in `choose_report_sidebar`):
+  - accepts `*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json`
+  - auto-detects modality (`raman` vs `pl`) from filename/payload and writes into `data/results/{modality}/{reports,manual_refits}`
+- Cross-OS raw file resolution (`gui/components/spectrum_viewer.py::resolve_source_file`):
+  - normalizes Windows/Linux path separators (`\` -> `/`) and resolves relative suffixes starting at `data/raw/...` when reports contain foreign absolute paths
+- In-browser manual refit editor (`gui/pages/3_All_Spectra_Viewer.py`):
+  - adds `Web Manual Refit (In-Browser Editor for Cloud/Web)` expander alongside the existing desktop `PySide6` launcher
+  - edits peak rows (`center`, `height`, `fwhm`, `fraction`, `Fix F/C/H/W`) via `st.data_editor`
+  - computes live preview `RMSE` and `AIC` via `ManualEditorController`
+  - runs `SingleSpectrumRefitAPI.submit_refit` (`Apply Manual Refit (Web)`) or `submit_auto_refit` (`Auto Fit from Current Peaks (Web)`) and persists overrides via `upsert_manual_override`

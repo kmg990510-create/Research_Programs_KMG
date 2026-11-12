@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
+import re
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -93,9 +96,84 @@ def load_spectra_dataframe(
     return pd.DataFrame()
 
 
+def _infer_upload_modality(filename: str, content_bytes: bytes, fallback: str) -> str:
+    lower_name = filename.lower()
+    if lower_name.startswith("pl_") or "_pl_" in lower_name:
+        return "pl"
+    if lower_name.startswith("raman_") or "_raman_" in lower_name:
+        return "raman"
+    if lower_name.endswith(".json"):
+        try:
+            data = json.loads(content_bytes.decode("utf-8", errors="replace"))
+            if isinstance(data, dict):
+                mod = str(data.get("modality", "")).strip().lower()
+                if mod in SUPPORTED_MODALITIES:
+                    return mod
+                spectra = data.get("spectra")
+                if isinstance(spectra, list) and spectra and isinstance(spectra[0], dict):
+                    row_mod = str(spectra[0].get("modality", "")).strip().lower()
+                    if row_mod in SUPPORTED_MODALITIES:
+                        return row_mod
+                    if "pl_position" in spectra[0] or "a0_position" in spectra[0]:
+                        return "pl"
+        except Exception:
+            pass
+    return fallback if fallback in SUPPORTED_MODALITIES else "raman"
+
+
+def save_uploaded_report_files(
+    uploaded_files: list[Any],
+    default_modality: str = "raman",
+    base_results_dir: Path | None = None,
+) -> list[Path]:
+    target_root = base_results_dir if base_results_dir is not None else results_dir()
+    saved_paths: list[Path] = []
+    for item in uploaded_files:
+        raw_name = Path(str(getattr(item, "name", "") or "")).name
+        if not raw_name:
+            continue
+        content = item.getvalue() if hasattr(item, "getvalue") else item.read()
+        if not isinstance(content, (bytes, bytearray)):
+            continue
+        modality = _infer_upload_modality(raw_name, bytes(content), default_modality)
+        if raw_name.endswith("_manual_overrides.json"):
+            dest_dir = target_root / modality / "manual_refits"
+        else:
+            dest_dir = target_root / modality / "reports"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / raw_name
+        dest_path.write_bytes(bytes(content))
+        saved_paths.append(dest_path)
+    return saved_paths
+
+
 def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict | None, pd.DataFrame]:
     files = list_report_json_files()
     st.sidebar.subheader("1) Report Source")
+
+    with st.sidebar.expander("Upload Report JSON / CSV", expanded=not bool(files)):
+        uploaded = st.file_uploader(
+            "Upload *_fit_report.json, *_fit_parameters.csv, or *_manual_overrides.json",
+            type=["json", "csv"],
+            accept_multiple_files=True,
+            key=f"{key_prefix}_report_uploader",
+        )
+        if uploaded:
+            upload_mod = st.selectbox(
+                "Default modality for upload",
+                options=list(SUPPORTED_MODALITIES),
+                index=0,
+                key=f"{key_prefix}_report_upload_modality",
+            )
+            if st.button(
+                "Save Uploaded Report(s)",
+                key=f"{key_prefix}_report_upload_save_btn",
+                use_container_width=True,
+            ):
+                saved = save_uploaded_report_files(uploaded, default_modality=upload_mod)
+                if saved:
+                    st.success(f"Saved {len(saved)} file(s).")
+                    st.rerun()
 
     if not files:
         st.sidebar.warning(
@@ -125,4 +203,85 @@ def sidebar_filters_header() -> None:
 
 def sidebar_advanced_header() -> None:
     st.sidebar.subheader("3) Advanced")
+
+
+def _is_raman_mapping_csv_bytes(data: bytes) -> bool:
+    head = data[:16384].decode("utf-8", errors="replace")
+    return "FILETYPE=RAMAN SPECTRUM (MAPPING)" in head.upper() or "X,Y,Z,XINDEX,YINDEX,ZINDEX," in head
+
+
+def stage_uploaded_raw_files(
+    uploaded_files: list[Any],
+    *,
+    modality: str,
+    folder_name: str,
+    base_raw_dir: Path | None = None,
+    split_raman_mapping: bool = True,
+) -> dict[str, Any]:
+    """Save uploaded spectrum files (.txt, .asc, .csv, .zip) into data/raw/{modality}/{folder_name}."""
+    from fitting.mos2_raman.split_mapping_csv import split_mapping_csv
+
+    mod = modality.strip().lower() if modality.strip().lower() in SUPPORTED_MODALITIES else "raman"
+    safe_folder = re.sub(r"[^\w\-]+", "_", folder_name.strip()).strip("_") or "uploaded_sample"
+    raw_root = base_raw_dir if base_raw_dir is not None else (project_root() / "data" / "raw" / mod)
+    target_dir = (raw_root / safe_folder).resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    written_files = 0
+    split_summaries: list[str] = []
+    allowed_suffixes = {".txt", ".asc", ".csv"}
+
+    def _handle_single_file(dest_path: Path, file_bytes: bytes) -> None:
+        nonlocal written_files
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(file_bytes)
+        written_files += 1
+        if (
+            split_raman_mapping
+            and mod == "raman"
+            and dest_path.suffix.lower() == ".csv"
+            and _is_raman_mapping_csv_bytes(file_bytes)
+        ):
+            out_dir = dest_path.parent if len(uploaded_files) == 1 else dest_path.with_suffix("")
+            res = split_mapping_csv(dest_path, out_dir=out_dir, overwrite=True)
+            written_files += res.written
+            split_summaries.append(
+                f"{dest_path.name} -> {res.written}/{res.expected} points ({res.out_dir.name})"
+            )
+
+    for item in uploaded_files:
+        raw_name = Path(str(getattr(item, "name", "") or "")).name
+        if not raw_name:
+            continue
+        content = item.getvalue() if hasattr(item, "getvalue") else item.read()
+        if not isinstance(content, (bytes, bytearray)):
+            continue
+        data_bytes = bytes(content)
+        suffix = Path(raw_name).suffix.lower()
+
+        if suffix == ".zip":
+            with zipfile.ZipFile(io.BytesIO(data_bytes)) as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        continue
+                    rel_parts = [
+                        part
+                        for part in Path(member.filename.replace("\\", "/")).parts
+                        if part not in ("", ".", "..", "/", "\\") and not part.startswith("__MACOSX")
+                    ]
+                    if not rel_parts or rel_parts[-1].startswith("."):
+                        continue
+                    member_suffix = Path(rel_parts[-1]).suffix.lower()
+                    if member_suffix not in allowed_suffixes:
+                        continue
+                    dest = target_dir.joinpath(*rel_parts)
+                    _handle_single_file(dest, zf.read(member))
+        elif suffix in allowed_suffixes:
+            _handle_single_file(target_dir / raw_name, data_bytes)
+
+    return {
+        "target_dir": target_dir,
+        "written_files": written_files,
+        "split_summaries": split_summaries,
+    }
 

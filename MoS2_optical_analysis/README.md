@@ -1,4 +1,14 @@
-﻿# MoS2 Fit Workspace
+﻿---
+title: MoS2 Optical Analysis
+emoji: 🔬
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+app_file: gui/Main.py
+pinned: false
+---
+
+# MoS2 Fit Workspace
 
 Current workspace is organized into `fitting`, `gui`, and `data`.
 
@@ -204,6 +214,12 @@ Distribution minimum:
   - before/after overlay and metrics are shown
   - manual override is saved to `data/results/{raman,pl}/manual_refits/{run_id}_manual_overrides.json`
   - request/response IPC JSON files are temporary runtime artifacts and are not kept as durable result files
+- For cloud/web deployments where external desktop windows cannot open, **All Spectra Viewer** also includes a
+  `Web Manual Refit (In-Browser Editor for Cloud/Web)` expander:
+  - edits `center`, `height`, `fwhm`, `fraction`, and fix flags (`Fix F`, `Fix C`, `Fix H`, `Fix W`) directly in the browser table
+  - shows live preview `RMSE` and `AIC` via `ManualEditorController`
+  - supports both `Apply Manual Refit (Web)` (`submit_refit`) and `Auto Fit from Current Peaks (Web)` (`submit_auto_refit`)
+  - writes overrides to the same `{run_id}_manual_overrides.json` contract
 
 Direct desktop editor launch:
 
@@ -261,3 +277,16 @@ If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
 GUI pages read reports only from:
 - `data/results/raman/reports`
 - `data/results/pl/reports`
+
+Each page sidebar also includes an `Upload Report JSON / CSV` expander so previously exported
+`*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json` files can be uploaded directly in web/cloud sessions.
+
+## Cloud / Hugging Face Spaces Deployment
+
+- The top-level YAML frontmatter configures Hugging Face Spaces (`sdk: streamlit`, `app_file: gui/Main.py`).
+- In **Run Analysis -> Step 2**, use `Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)` to upload `.txt`, `.asc`,
+  Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` folder archives directly into `data/raw/{raman,pl}`.
+- After a pipeline run finishes on **Run Analysis**, generated JSON/CSV reports can be downloaded immediately from
+  `Generated Artifacts` or from **Finalize**.
+- Cross-OS path resolution in `resolve_source_file` normalizes Windows/Linux separators and matches `data/raw/...`
+  relative paths so reports created on Windows can be inspected on Linux cloud instances.

@@ -55,13 +55,23 @@ PL_DEFAULT_VIEW_MIN_EV = 1.4
 def resolve_source_file(source_value: Any, project_root: Path) -> Path | None:
     if not isinstance(source_value, str) or not source_value.strip():
         return None
-    candidate = Path(source_value)
-    if candidate.is_absolute() and candidate.exists():
-        return candidate
+    normalized = source_value.strip().replace("\\", "/")
+    for raw_str in (source_value.strip(), normalized):
+        candidate = Path(raw_str)
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+        rel_candidate = project_root / candidate
+        if rel_candidate.exists():
+            return rel_candidate
 
-    rel_candidate = project_root / candidate
-    if rel_candidate.exists():
-        return rel_candidate
+    lower_norm = normalized.lower()
+    marker = "data/raw/"
+    idx = lower_norm.find(marker)
+    if idx != -1:
+        subpath = normalized[idx:]
+        fallback_candidate = project_root / Path(subpath)
+        if fallback_candidate.exists():
+            return fallback_candidate
     return None
 
 

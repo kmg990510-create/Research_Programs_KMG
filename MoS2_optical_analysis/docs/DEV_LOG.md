@@ -1445,3 +1445,22 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
   raise `ConfigKeyError` naming the key); mutation check (planted fallback + ignored key) detected.
 - Also fixed: parallel fit worker signature (workers silently fell back to sequential) and a circular import in
   `core/__init__`; covered by a real process-pool test.
+
+## Web / Cloud Mode & Hugging Face Spaces Support (2026-11-12)
+
+- Scope: enable full cloud/web execution (e.g. Hugging Face Spaces / Streamlit Community Cloud) while keeping local desktop behavior unchanged.
+- Related Files:
+  - `gui/components/report_loader.py` (`stage_uploaded_raw_files`, `save_uploaded_report_files`, sidebar report upload expander)
+  - `gui/components/spectrum_viewer.py` (`resolve_source_file` cross-OS path normalization and `data/raw/...` suffix resolution)
+  - `gui/pages/1_Run_Analysis.py` (Step 2 raw file/ZIP/mapping CSV upload expander + `Generated Artifacts` direct JSON/CSV download buttons)
+  - `gui/pages/3_All_Spectra_Viewer.py` (`Web Manual Refit (In-Browser Editor for Cloud/Web)` expander using `st.data_editor`, `ManualEditorController`, and `SingleSpectrumRefitAPI`)
+  - `README.md` (Hugging Face Spaces YAML frontmatter and cloud deployment documentation)
+  - `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEV_LOG.md`
+  - `tests/test_web_cloud_features.py`
+- Key Behaviors Added:
+  1. Raw file & archive upload in **Run Analysis**: users can upload `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` folder archives into `data/raw/{raman,pl}/<folder_name>` directly from the browser.
+  2. In-browser manual refit in **All Spectra Viewer**: users on web/cloud hosts can edit peak `center`, `height`, `fwhm`, `fraction`, and `Fix F/C/H/W` flags in a browser table, inspect live preview `RMSE`/`AIC`, and trigger `Apply Manual Refit (Web)` or `Auto Fit from Current Peaks (Web)` without needing a local `PySide6` display.
+  3. Sidebar report upload & cross-OS path resolution: existing `*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json` files can be uploaded from the sidebar, and `resolve_source_file` normalizes Windows/Linux separators (`\` -> `/`).
+- Tests & Validation:
+  - `pytest`: 37 passed (`tests/test_web_cloud_features.py` + all existing config/packaging/PL/splitter tests).
+  - Pipeline & GUI smoke: Raman/PL dummy pipelines, Raman single & batch runs, and `AppTest` smoke on `Main.py`, `1_Run_Analysis.py`, and `3_All_Spectra_Viewer.py` all pass.

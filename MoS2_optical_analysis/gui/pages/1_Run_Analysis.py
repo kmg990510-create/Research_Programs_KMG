@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from gui.components import data_bin as _data_bin  # noqa: E402
+from gui.components.report_loader import stage_uploaded_raw_files  # noqa: E402
 
 STAGES = ("fit", "select", "review")
 SPECTRUM_EXTENSIONS = ("*.txt", "*.asc")
@@ -600,6 +601,59 @@ else:
         st.warning(f"No batch parent folders found under: {base_raw_dir}")
 
 st.subheader("Step 2. Choose Source Folder")
+with st.expander("Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)", expanded=not bool(known_folders)):
+    st.caption(
+        "Upload *.txt, *.asc, Raman mapping *.csv, or a *.zip archive into data/raw for web/cloud analysis."
+    )
+    uploaded_raw_files = st.file_uploader(
+        "Select spectrum files or ZIP archive",
+        type=["txt", "asc", "csv", "zip"],
+        accept_multiple_files=True,
+        key=f"run_analysis_raw_uploader::{modality}",
+    )
+    if uploaded_raw_files:
+        first_stem = Path(str(getattr(uploaded_raw_files[0], "name", "uploaded_sample"))).stem
+        default_upload_folder = re.sub(r"[^\w\-]+", "_", first_stem).strip("_") or "uploaded_sample"
+        upload_folder_name = st.text_input(
+            "Target folder name under data/raw",
+            value=default_upload_folder,
+            key=f"run_analysis_upload_folder_name::{modality}",
+        )
+        split_mapping_opt = (
+            st.checkbox(
+                "Auto-split Raman mapping CSV into per-point Y###-X###.txt files",
+                value=True,
+                key="run_analysis_split_mapping_csv",
+            )
+            if modality == "raman"
+            else False
+        )
+        if st.button(
+            "Stage Uploaded Files into Raw Folder",
+            type="secondary",
+            use_container_width=True,
+            key=f"run_analysis_stage_upload_btn::{modality}",
+        ):
+            try:
+                stage_info = stage_uploaded_raw_files(
+                    uploaded_raw_files,
+                    modality=modality,
+                    folder_name=upload_folder_name,
+                    base_raw_dir=base_raw_dir,
+                    split_raman_mapping=bool(split_mapping_opt),
+                )
+                _discover_txt_folders.clear()
+                _discover_batch_parent_folders.clear()
+                staged_dir = str(stage_info["target_dir"])
+                st.session_state[f"run_analysis_staged_dir::{modality}"] = staged_dir
+                msg = f"Staged {stage_info['written_files']} file(s) into {staged_dir}"
+                if stage_info["split_summaries"]:
+                    msg += " | Split: " + "; ".join(stage_info["split_summaries"])
+                st.success(msg)
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Failed to stage uploaded files: {exc}")
+
 source_mode = st.radio(
     "Folder source",
     options=["known", "custom"],
@@ -610,7 +664,9 @@ source_mode = st.radio(
 selected_known = ""
 if source_mode == "known":
     options = known_folders if known_folders else [str(base_raw_dir)]
-    selected_known = st.selectbox("Raw folder", options=options)
+    staged_pref = st.session_state.get(f"run_analysis_staged_dir::{modality}", "")
+    default_idx = options.index(staged_pref) if staged_pref in options else 0
+    selected_known = st.selectbox("Raw folder", options=options, index=default_idx)
 
 custom_folder = ""
 if source_mode == "custom":
@@ -816,7 +872,30 @@ if run_clicked:
         st.caption(f"Large output detected. {omitted} earlier lines were hidden to keep the page responsive.")
     if artifacts:
         st.subheader("Generated Artifacts")
+        dl_cols = st.columns(2)
         if "json" in artifacts:
             st.code(artifacts["json"], language="text")
+            json_art_path = Path(artifacts["json"])
+            if not json_art_path.is_absolute():
+                json_art_path = (ROOT / json_art_path).resolve()
+            if json_art_path.exists():
+                dl_cols[0].download_button(
+                    "Download Report JSON",
+                    data=json_art_path.read_bytes(),
+                    file_name=json_art_path.name,
+                    mime="application/json",
+                    use_container_width=True,
+                )
         if "csv" in artifacts:
             st.code(artifacts["csv"], language="text")
+            csv_art_path = Path(artifacts["csv"])
+            if not csv_art_path.is_absolute():
+                csv_art_path = (ROOT / csv_art_path).resolve()
+            if csv_art_path.exists():
+                dl_cols[1].download_button(
+                    "Download Parameters CSV",
+                    data=csv_art_path.read_bytes(),
+                    file_name=csv_art_path.name,
+                    mime="text/csv",
+                    use_container_width=True,
+                )

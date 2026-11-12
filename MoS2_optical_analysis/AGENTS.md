@@ -61,6 +61,8 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `manual_refits/*_manual_overrides.json`
 - When a report JSON is moved/restored/purged, paired CSV + matching override JSON are linked and processed together.
 - Bin entries can be restored or permanently deleted later with explicit confirmation.
+- Web/cloud upload expander in Step 2 stages `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` archives into `data/raw/{modality}/{folder_name}` via `stage_uploaded_raw_files` in `gui/components/report_loader.py`.
+- Sidebar report loader includes an `Upload Report JSON / CSV` expander (`save_uploaded_report_files`) so external reports and override JSONs can be loaded in cloud sessions.
 
 ## Manual Refit UI Rules
 
@@ -71,6 +73,7 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Mode switching is exposed as top icon buttons (`Move`, `Zoom`, `Edit`).
 - Peak table includes editable `fraction` with full fix flags: `Fix F`, `Fix C`, `Fix H`, `Fix W`.
 - Toggling any fix flag must preserve current zoom/view state.
+- All Spectra Viewer also provides an in-browser `Web Manual Refit` expander (`st.data_editor` + `ManualEditorController` live preview + `SingleSpectrumRefitAPI` `submit_refit` / `submit_auto_refit`) for web/cloud hosts where `PySide6` windows cannot be opened.
 
 ## Output Contracts
 
