@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import importlib
+
 import pandas as pd
 import streamlit as st
 
@@ -12,12 +14,23 @@ BOOTSTRAP_ROOT = Path(__file__).resolve().parents[1]
 if str(BOOTSTRAP_ROOT) not in sys.path:
     sys.path.append(str(BOOTSTRAP_ROOT))
 
+from fitting.mos2_core.core import runtime_paths as _runtime_paths  # noqa: E402
 from fitting.mos2_core.core.build_info import format_build_label, load_build_info  # noqa: E402
 from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
+from fitting.mos2_core.review import manual_overrides as _manual_overrides  # noqa: E402
+
+if not hasattr(_runtime_paths, "is_cloud_runtime"):
+    importlib.reload(_runtime_paths)
+    importlib.reload(_manual_overrides)
 
 ROOT = runtime_project_root(__file__, 1)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
+
+from gui.components import report_loader as _report_loader_mod  # noqa: E402
+
+if not hasattr(_report_loader_mod, "build_projected_csv_bytes"):
+    importlib.reload(_report_loader_mod)
 
 from gui.components.report_loader import (  # noqa: E402
     build_projected_csv_bytes,
