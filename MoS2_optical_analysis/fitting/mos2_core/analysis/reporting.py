@@ -160,6 +160,9 @@ class RamanFitReportGenerator(ReportGenerationStage):
         json_path = out_dir / f"{run_id}_fit_report.json"
         csv_path = out_dir / f"{run_id}_fit_parameters.csv"
         metadata_index = context.state.get("spectrum_metadata", {})
+        raw_xy_index = context.state.get("spectrum_raw_xy", {})
+        if not isinstance(raw_xy_index, dict):
+            raw_xy_index = {}
         fit_ensemble_cache = context.state.get("fit_ensemble_cache", {})
         active_cfg = context.config.get(run_modality, {}) if isinstance(context.config, dict) else {}
         if not isinstance(active_cfg, dict):
@@ -225,6 +228,11 @@ class RamanFitReportGenerator(ReportGenerationStage):
             row.setdefault("fit_status", "valid")
             row.setdefault("invalid_reasons", [])
             row.setdefault("attention_reasons", [])
+            raw_xy = raw_xy_index.get(accepted.spectrum_id, {})
+            if isinstance(raw_xy, dict):
+                if isinstance(raw_xy.get("raw_x"), list) and isinstance(raw_xy.get("raw_y"), list):
+                    row["raw_x"] = list(raw_xy["raw_x"])
+                    row["raw_y"] = list(raw_xy["raw_y"])
             if include_selected_fitted_y:
                 row["fitted_y"] = accepted.fit.fitted_y
             spectra_rows.append(row)
@@ -400,7 +408,14 @@ class RamanFitReportGenerator(ReportGenerationStage):
         if run_modality == "pl":
             insert_at = fieldnames.index("attention_reasons") + 1
             fieldnames[insert_at:insert_at] = ["pl_position", "pl_fwhm", "pl_area", "pl_height"]
-        reserved_for_json_only = {"all_candidates", "fit_params", "fit_metrics", "fitted_y"}
+        reserved_for_json_only = {
+            "all_candidates",
+            "fit_params",
+            "fit_metrics",
+            "fitted_y",
+            "raw_x",
+            "raw_y",
+        }
         known_fields = set(fieldnames)
         extra_fieldnames = sorted(
             {

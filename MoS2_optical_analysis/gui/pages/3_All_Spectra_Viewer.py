@@ -13,7 +13,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
+from fitting.mos2_core.core.runtime_paths import is_cloud_runtime, runtime_project_root  # noqa: E402
 
 ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
@@ -391,9 +391,21 @@ if pd.notna(work_df.at[index, "_nav_y"]) and pd.notna(work_df.at[index, "_nav_x"
 st.caption(f"Row coverage: {(index + 1) / max(len(work_df), 1) * 100:.1f}%")
 
 source_path = resolve_source_file(row.get("source_file"), ROOT)
-if source_path is None:
-    st.error("`source_file` is missing or invalid in this report row. Re-run pipeline with latest report format.")
+embedded_raw_x = row.get("raw_x")
+embedded_raw_y = row.get("raw_y")
+has_embedded_raw = (
+    isinstance(embedded_raw_x, list)
+    and isinstance(embedded_raw_y, list)
+    and len(embedded_raw_x) == len(embedded_raw_y)
+    and len(embedded_raw_x) > 0
+)
+if source_path is None and not has_embedded_raw:
+    st.error(
+        "`source_file` is missing on disk and this report row has no embedded `raw_x`/`raw_y`. "
+        "Re-run pipeline with the latest report format or upload the matching raw spectrum file."
+    )
     st.stop()
+source_path_str = str(source_path) if source_path is not None else str(row.get("source_file") or f"{spectrum_id}.txt")
 
 all_candidates = row.get("all_candidates", [])
 if not isinstance(all_candidates, list):
@@ -460,7 +472,11 @@ if selected_candidate is not None:
         st.success(f"Model override saved: {override_path}")
         st.rerun()
 
-x_raw, y_raw = load_raw_xy(str(source_path))
+if source_path is not None:
+    x_raw, y_raw = load_raw_xy(str(source_path))
+else:
+    x_raw = [float(v) for v in embedded_raw_x]
+    y_raw = [float(v) for v in embedded_raw_y]
 modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
 try:
     cal_offset = float(display_row.get("calibration_offset", 0.0) or 0.0)
@@ -531,85 +547,92 @@ if "manual_refit_cache" not in st.session_state or not isinstance(st.session_sta
 manual_refit_cache: dict[str, dict[str, Any]] = st.session_state["manual_refit_cache"]
 manual_key = _manual_cache_key(report_path=report_path, spectrum_id=spectrum_id)
 
+cloud_mode = is_cloud_runtime()
 st.divider()
-st.subheader("Manual Refit (PySide6 Editor)")
-st.caption("Open external desktop editor for this spectrum, then return and apply single-spectrum refit.")
+if not cloud_mode:
+    st.subheader("Manual Refit (PySide6 Editor)")
+    st.caption("Open external desktop editor for this spectrum, then return and apply single-spectrum refit.")
 
-manual_action_cols = st.columns([2, 1])
-open_key = f"open_manual_editor_{_sanitize_filename(report_path.stem)}_{_sanitize_filename(spectrum_id)}"
-if manual_action_cols[0].button("Open Manual Editor (Desktop)", use_container_width=True, key=open_key):
-    modality = _resolve_modality(payload=payload, row=row, report_path=report_path)
-    request_payload = build_editor_request(
-        report_path=report_path,
-        spectrum_id=spectrum_id,
-        modality=modality,
-        source_file=str(source_path),
-        selected_model=str(display_row.get("selected_model", "")).strip(),
-        calibration_offset=0.0,
-        row_snapshot=display_row,
-        x=[float(v) for v in x_for_plot],
-        y=[float(v) for v in y_raw],
-    )
-    try:
-        with tempfile.TemporaryDirectory(prefix="mos2_manual_editor_") as tmpdir:
-            request_path = Path(tmpdir) / "request.json"
-            editor_output_path = Path(tmpdir) / "editor_response.json"
-            request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    manual_action_cols = st.columns([2, 1])
+    open_key = f"open_manual_editor_{_sanitize_filename(report_path.stem)}_{_sanitize_filename(spectrum_id)}"
+    if manual_action_cols[0].button("Open Manual Editor (Desktop)", use_container_width=True, key=open_key):
+        modality = _resolve_modality(payload=payload, row=row, report_path=report_path)
+        request_payload = build_editor_request(
+            report_path=report_path,
+            spectrum_id=spectrum_id,
+            modality=modality,
+            source_file=source_path_str,
+            selected_model=str(display_row.get("selected_model", "")).strip(),
+            calibration_offset=0.0,
+            row_snapshot=display_row,
+            x=[float(v) for v in x_for_plot],
+            y=[float(v) for v in y_raw],
+        )
+        try:
+            with tempfile.TemporaryDirectory(prefix="mos2_manual_editor_") as tmpdir:
+                request_path = Path(tmpdir) / "request.json"
+                editor_output_path = Path(tmpdir) / "editor_response.json"
+                request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-            with st.spinner("Launching desktop editor. Save and close the editor to continue..."):
-                process = _launch_desktop_editor(request_path=request_path, output_path=editor_output_path)
+                with st.spinner("Launching desktop editor. Save and close the editor to continue..."):
+                    process = _launch_desktop_editor(request_path=request_path, output_path=editor_output_path)
 
-            if process.returncode != 0 and not editor_output_path.exists():
-                stderr_text = process.stderr.strip() if process.stderr else ""
-                stdout_text = process.stdout.strip() if process.stdout else ""
-                debug_text = stderr_text or stdout_text or "No process output available"
-                st.error(f"Desktop editor failed (exit={process.returncode}). {debug_text}")
-            elif not editor_output_path.exists():
-                st.warning("Desktop editor closed without saving. No manual refit was applied.")
-            else:
-                editor_response = json.loads(editor_output_path.read_text(encoding="utf-8"))
-                valid, reason = validate_editor_response(editor_response)
-                if not valid:
-                    raise ValueError(reason)
+                if process.returncode != 0 and not editor_output_path.exists():
+                    stderr_text = process.stderr.strip() if process.stderr else ""
+                    stdout_text = process.stdout.strip() if process.stdout else ""
+                    debug_text = stderr_text or stdout_text or "No process output available"
+                    st.error(f"Desktop editor failed (exit={process.returncode}). {debug_text}")
+                elif not editor_output_path.exists():
+                    st.warning("Desktop editor closed without saving. No manual refit was applied.")
+                else:
+                    editor_response = json.loads(editor_output_path.read_text(encoding="utf-8"))
+                    valid, reason = validate_editor_response(editor_response)
+                    if not valid:
+                        raise ValueError(reason)
 
-                merged_request = dict(request_payload)
-                merged_request["selected_model"] = str(
-                    editor_response.get("selected_model", request_payload["selected_model"])
-                )
-                merged_request["peaks"] = editor_response.get("peaks", request_payload.get("peaks", []))
-                merged_request["reason"] = str(editor_response.get("reason", "manual_refit_from_desktop"))
-                merged_request["operator_note"] = str(editor_response.get("operator_note", ""))
+                    merged_request = dict(request_payload)
+                    merged_request["selected_model"] = str(
+                        editor_response.get("selected_model", request_payload["selected_model"])
+                    )
+                    merged_request["peaks"] = editor_response.get("peaks", request_payload.get("peaks", []))
+                    merged_request["reason"] = str(editor_response.get("reason", "manual_refit_from_desktop"))
+                    merged_request["operator_note"] = str(editor_response.get("operator_note", ""))
 
-                api = SingleSpectrumRefitAPI(project_root=ROOT)
-                refit_payload = api.submit_refit(ManualRefitRequest.from_payload(merged_request))
-                after_row = _build_after_row(before_row=display_row, refit_payload=refit_payload)
+                    api = SingleSpectrumRefitAPI(project_root=ROOT)
+                    refit_payload = api.submit_refit(ManualRefitRequest.from_payload(merged_request))
+                    after_row = _build_after_row(before_row=display_row, refit_payload=refit_payload)
 
-                override_path = upsert_manual_override(
-                    report_json=report_path,
-                    spectrum_id=spectrum_id,
-                    action_type="manual_refit",
-                    selected_model=str(refit_payload.get("selected_model", "")),
-                    params=refit_payload.get("params", {}),
-                    metrics=refit_payload.get("metrics", {}),
-                    fitted_y=refit_payload.get("fitted_y", []),
-                    operator_note=str(merged_request.get("operator_note", "")),
-                )
+                    override_path = upsert_manual_override(
+                        report_json=report_path,
+                        spectrum_id=spectrum_id,
+                        action_type="manual_refit",
+                        selected_model=str(refit_payload.get("selected_model", "")),
+                        params=refit_payload.get("params", {}),
+                        metrics=refit_payload.get("metrics", {}),
+                        fitted_y=refit_payload.get("fitted_y", []),
+                        operator_note=str(merged_request.get("operator_note", "")),
+                    )
 
-                manual_refit_cache[manual_key] = {
-                    "after_row": after_row,
-                    "refit_payload": refit_payload,
-                    "override_path": str(override_path),
-                }
-                st.success(f"Manual refit applied and saved: {override_path}")
-    except Exception as exc:
-        st.error(f"Manual refit processing failed: {exc}")
+                    manual_refit_cache[manual_key] = {
+                        "after_row": after_row,
+                        "refit_payload": refit_payload,
+                        "override_path": str(override_path),
+                    }
+                    st.success(f"Manual refit applied and saved: {override_path}")
+        except Exception as exc:
+            st.error(f"Manual refit processing failed: {exc}")
 
-if manual_action_cols[1].button("Clear Manual Result", use_container_width=True):
-    if manual_key in manual_refit_cache:
+    if manual_action_cols[1].button("Clear Manual Result", use_container_width=True):
+        if manual_key in manual_refit_cache:
+            manual_refit_cache.pop(manual_key, None)
+            st.rerun()
+else:
+    st.subheader("Manual Refit (Web / Cloud Mode)")
+    if manual_key in manual_refit_cache and st.button("Clear Manual Result", use_container_width=False):
         manual_refit_cache.pop(manual_key, None)
         st.rerun()
 
-with st.expander("Web Manual Refit (In-Browser Editor for Cloud/Web)", expanded=False):
+with st.expander("Web Manual Refit (In-Browser Editor for Cloud/Web)", expanded=cloud_mode):
     st.caption(
         "Edit peak parameters directly in the browser without launching a desktop PySide6 window."
     )
@@ -651,7 +674,7 @@ with st.expander("Web Manual Refit (In-Browser Editor for Cloud/Web)", expanded=
             report_path=report_path,
             spectrum_id=spectrum_id,
             modality=web_modality,
-            source_file=str(source_path),
+            source_file=source_path_str,
             selected_model=str(display_row.get("selected_model", "")).strip(),
             calibration_offset=0.0,
             row_snapshot=display_row,

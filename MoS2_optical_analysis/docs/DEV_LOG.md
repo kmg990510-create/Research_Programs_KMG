@@ -1464,3 +1464,25 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Tests & Validation:
   - `pytest`: 37 passed (`tests/test_web_cloud_features.py` + all existing config/packaging/PL/splitter tests).
   - Pipeline & GUI smoke: Raman/PL dummy pipelines, Raman single & batch runs, and `AppTest` smoke on `Main.py`, `1_Run_Analysis.py`, and `3_All_Spectra_Viewer.py` all pass.
+
+## Cloud Runtime Auto-Detection, Standalone JSON Restoration & Intermediate State Sync (2026-11-12)
+
+- Scope: resolve stateless cloud workflow gaps so users can run analysis on the web, save/export intermediate state as a single file, re-upload that single JSON later (with full raw/fitted overlay and manual refit support), and persist Flagged Spectra review decisions.
+- Related Files:
+  - `fitting/mos2_core/core/runtime_paths.py` (`is_cloud_runtime()`)
+  - `fitting/mos2_core/preprocess/basic.py` (preserve `spectrum_raw_xy` in pipeline context state)
+  - `fitting/mos2_core/analysis/reporting.py` (embed `raw_x`, `raw_y` in `_fit_report.json` rows; exclude from CSV via `reserved_for_json_only`)
+  - `fitting/mos2_core/review/manual_overrides.py` (`review_decision` field support, chronological field merging across multiple override actions, partial `params`/`metrics` projection)
+  - `gui/components/report_loader.py` (`build_projected_report_json_bytes`, `build_projected_csv_bytes`, `Export / Save Intermediate State` sidebar expander, stale override cleanup on single-report upload, cloud auto-expand)
+  - `gui/components/parameter_editor.py` (`apply_table_edits_to_report`, `Apply Edits to Active Report` button)
+  - `gui/pages/1_Run_Analysis.py`, `gui/pages/2_Flagged_Spectra.py`, `gui/pages/3_All_Spectra_Viewer.py`, `gui/pages/7_Finalize.py`, `gui/Main.py`
+  - `tests/test_web_cloud_features.py`, `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEV_LOG.md`
+- Key Behaviors Added:
+  1. **Environment Auto-Detection (`is_cloud_runtime()`)**: detects Streamlit Community Cloud / Hugging Face Spaces or `MOS2_CLOUD_MODE` override, auto-expanding upload/export expanders and hiding local-only controls (`Open Manual Editor (Desktop)`, `Custom raw folder path`).
+  2. **Problem 1 -> Solution 1 (Standalone Single-JSON Restoration)**: `*_fit_report.json` now embeds `raw_x` and `raw_y` in each spectrum row while keeping `*_fit_parameters.csv` unchanged. `3_All_Spectra_Viewer.py` falls back to embedded `raw_x`/`raw_y` when `source_file` is absent on disk, enabling full spectrum viewing and in-browser manual refit from a single uploaded JSON file.
+  3. **Problem 2 (Intermediate & Final Override Synchronization)**: all JSON/CSV download buttons (`Main.py`, `7_Finalize.py`, and the new sidebar `Export / Save Intermediate State` expander) export the override-projected payload (`build_projected_report_json_bytes`, `build_projected_csv_bytes`) so manual refits, model overrides, and review decisions are never lost across sessions.
+  4. **Problem 3 (Flagged Spectra Decision Persistence)**: `2_Flagged_Spectra.py` now includes an `Apply Edits to Active Report` button that writes `review_decision` and edited peak parameters directly into `{run_id}_manual_overrides.json`.
+- Tests & Validation:
+  - `pytest`: 39 passed (`tests/test_web_cloud_features.py` expanded with `test_is_cloud_runtime_honors_env_override` and `test_standalone_report_embeds_raw_xy_only_in_json_and_merges_overrides_on_export`, plus `tests/test_config_dependency.py` strict config check).
+  - Pipeline & GUI smoke: Raman/PL dummy pipelines and `AppTest` smoke in both local and `MOS2_CLOUD_MODE=1` modes pass without errors.
+

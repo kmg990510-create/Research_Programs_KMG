@@ -190,9 +190,12 @@ class IdentityPreprocessing(PreprocessingStage):
             return meta
 
         output: list[PreprocessedSpectrum] = []
+        raw_xy_index = context.state.setdefault("spectrum_raw_xy", {})
         for s in spectra:
             x = [float(v) for v in s.x]
             y = [float(v) for v in s.y]
+            if isinstance(raw_xy_index, dict):
+                raw_xy_index[s.spectrum_id] = {"raw_x": list(x), "raw_y": list(y)}
 
             is_pl = str(s.modality).lower() == "pl" or str(s.metadata.get("modality", "")).lower() == "pl"
             n_spikes = 0

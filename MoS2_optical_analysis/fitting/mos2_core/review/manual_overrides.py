@@ -59,12 +59,13 @@ def upsert_manual_override(
     metrics: Mapping[str, Any] | None = None,
     fitted_y: list[float] | None = None,
     operator_note: str = "",
+    review_decision: str | None = None,
 ) -> Path:
     override_path = override_path_for_report(report_json)
     override_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = _load_override_doc(override_path)
-    item = {
+    item: dict[str, Any] = {
         "spectrum_id": str(spectrum_id),
         "action_type": str(action_type),
         "selected_model": str(selected_model),
@@ -74,6 +75,8 @@ def upsert_manual_override(
         "operator_note": str(operator_note or ""),
         "updated_at_utc": now_utc_iso(),
     }
+    if review_decision is not None and str(review_decision).strip():
+        item["review_decision"] = str(review_decision).strip()
     payload.setdefault("schema_version", "manual_overrides.v1")
     payload["report_json"] = str(report_json)
     payload["updated_at_utc"] = item["updated_at_utc"]
@@ -90,19 +93,46 @@ def _updated_rank(value: Any) -> tuple[int, str]:
 
 
 def _latest_items_by_spectrum(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    ordered = [item for item in items if isinstance(item, dict) and str(item.get("spectrum_id", "")).strip()]
+    ordered.sort(key=lambda item: _updated_rank(item.get("updated_at_utc")))
     latest: dict[str, dict[str, Any]] = {}
-    for item in items:
-        if not isinstance(item, dict):
-            continue
+    for item in ordered:
         spectrum_id = str(item.get("spectrum_id", "")).strip()
-        if not spectrum_id:
-            continue
         current = latest.get(spectrum_id)
         if current is None:
-            latest[spectrum_id] = item
+            latest[spectrum_id] = deepcopy(item)
             continue
-        if _updated_rank(item.get("updated_at_utc")) >= _updated_rank(current.get("updated_at_utc")):
-            latest[spectrum_id] = item
+        merged = deepcopy(current)
+        if str(item.get("selected_model", "")).strip():
+            merged["selected_model"] = str(item.get("selected_model", "")).strip()
+        item_params = item.get("params")
+        if isinstance(item_params, dict) and item_params:
+            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
+                merged["params"] = dict(item_params)
+            else:
+                base_params = dict(merged.get("params") or {})
+                base_params.update(item_params)
+                merged["params"] = base_params
+        item_metrics = item.get("metrics")
+        if isinstance(item_metrics, dict) and item_metrics:
+            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
+                merged["metrics"] = dict(item_metrics)
+            else:
+                base_metrics = dict(merged.get("metrics") or {})
+                base_metrics.update(item_metrics)
+                merged["metrics"] = base_metrics
+        item_fitted_y = item.get("fitted_y")
+        if isinstance(item_fitted_y, list) and item_fitted_y:
+            merged["fitted_y"] = list(item_fitted_y)
+        if str(item.get("review_decision", "")).strip():
+            merged["review_decision"] = str(item["review_decision"]).strip()
+        if str(item.get("action_type", "")).strip():
+            merged["action_type"] = str(item["action_type"]).strip()
+        if str(item.get("operator_note", "")).strip():
+            merged["operator_note"] = str(item["operator_note"]).strip()
+        if str(item.get("updated_at_utc", "")).strip():
+            merged["updated_at_utc"] = str(item["updated_at_utc"]).strip()
+        latest[spectrum_id] = merged
     return latest
 
 
@@ -139,18 +169,37 @@ def apply_manual_overrides_to_payload(payload: Mapping[str, Any], report_json: P
             row["selected_model"] = selected_model
 
         params = item.get("params")
-        if isinstance(params, dict):
+        if isinstance(params, dict) and params:
             row.update(params)
-            row["fit_params"] = dict(params)
+            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
+                row["fit_params"] = dict(params)
+            elif isinstance(row.get("fit_params"), dict):
+                merged_fp = dict(row["fit_params"])
+                merged_fp.update(params)
+                row["fit_params"] = merged_fp
+            else:
+                row["fit_params"] = dict(params)
 
         metrics = item.get("metrics")
-        if isinstance(metrics, dict):
+        if isinstance(metrics, dict) and metrics:
             row.update(metrics)
-            row["fit_metrics"] = dict(metrics)
+            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
+                row["fit_metrics"] = dict(metrics)
+            elif isinstance(row.get("fit_metrics"), dict):
+                merged_fm = dict(row["fit_metrics"])
+                merged_fm.update(metrics)
+                row["fit_metrics"] = merged_fm
+            else:
+                row["fit_metrics"] = dict(metrics)
 
         fitted_y = item.get("fitted_y")
-        if isinstance(fitted_y, list):
+        if isinstance(fitted_y, list) and fitted_y:
             row["fitted_y"] = fitted_y
+
+        review_decision = str(item.get("review_decision", "")).strip()
+        if review_decision:
+            row["review_decision"] = review_decision
+            row["reviewed"] = review_decision != "auto"
 
         row["manual_override"] = True
         row["manual_override_action"] = str(item.get("action_type", "manual_refit"))

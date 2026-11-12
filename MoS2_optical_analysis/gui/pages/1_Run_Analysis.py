@@ -11,7 +11,7 @@ from typing import Any
 
 import streamlit as st
 
-from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
+from fitting.mos2_core.core.runtime_paths import is_cloud_runtime, runtime_project_root  # noqa: E402
 
 ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
@@ -600,8 +600,12 @@ else:
     if not known_folders:
         st.warning(f"No batch parent folders found under: {base_raw_dir}")
 
+cloud_mode = is_cloud_runtime()
 st.subheader("Step 2. Choose Source Folder")
-with st.expander("Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)", expanded=not bool(known_folders)):
+with st.expander(
+    "Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)",
+    expanded=(cloud_mode or not bool(known_folders)),
+):
     st.caption(
         "Upload *.txt, *.asc, Raman mapping *.csv, or a *.zip archive into data/raw for web/cloud analysis."
     )
@@ -654,12 +658,15 @@ with st.expander("Upload Raw Spectra / Mapping CSV / ZIP (Web & Cloud)", expande
             except Exception as exc:
                 st.error(f"Failed to stage uploaded files: {exc}")
 
-source_mode = st.radio(
-    "Folder source",
-    options=["known", "custom"],
-    horizontal=True,
-    help="Known: choose from discovered folders. Custom: enter any absolute/relative path.",
-)
+if cloud_mode:
+    source_mode = "known"
+else:
+    source_mode = st.radio(
+        "Folder source",
+        options=["known", "custom"],
+        horizontal=True,
+        help="Known: choose from discovered folders. Custom: enter any absolute/relative path.",
+    )
 
 selected_known = ""
 if source_mode == "known":
