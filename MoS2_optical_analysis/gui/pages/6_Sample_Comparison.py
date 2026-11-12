@@ -12,6 +12,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+BOOTSTRAP_ROOT = Path(__file__).resolve().parents[2]
+if str(BOOTSTRAP_ROOT) not in sys.path:
+    sys.path.append(str(BOOTSTRAP_ROOT))
+
 from fitting.mos2_core.core.runtime_paths import runtime_project_root  # noqa: E402
 from fitting.mos2_core.review.manual_overrides import override_mtime_ns_for_report  # noqa: E402
 
