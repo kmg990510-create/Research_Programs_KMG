@@ -14,7 +14,7 @@
 Research_Programs_KMG/
   AGENTS.md                 공통 원칙 (이 문서)
   MoS2_optical_analysis/    Raman/PL 분석
-  FET_analysis/             FET 분석 (새로 작성, 아직 없음)
+  FET_analysis/             FET 분석 (새로 작성 중, 진행 단계는 FET_analysis/AGENTS.md)
   labkit/                   공용 코드 (아직 없음, 6장 참고)
   legacy/                   이전 프로그램. 참고용이며 수정하지 않고 코드를 가져오지 않는다
 ```
@@ -96,7 +96,8 @@ Research_Programs_KMG/
 ## 6. 공용 코드 (`labkit`)
 
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
-- 후보: Plotly 테마, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
+- 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
+- 만드는 시점은 FET 화면을 만들 때다. MoS2가 `labkit`을 쓰려면 Dockerfile과 PyInstaller 설정도 같이 바꿔야 하므로 그때 함께 한다.
 - `labkit`에는 특정 측정 방법(Raman, FET)에 대한 지식을 넣지 않는다.
 
 ## 7. 테스트와 Git

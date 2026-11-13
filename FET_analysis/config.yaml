@@ -1,0 +1,86 @@
+# FET_analysis 설정 파일.
+# 과학적 수치와 장비 파일 해석 규칙은 여기에만 둔다.
+# 코드에는 기본값이 없다: 키가 없으면 ConfigKeyError가 난다.
+
+# 소자 치수와 게이트 절연막의 배치 기본값. 소자별 값은 화면에서 덮어쓴다.
+device:
+  W_um: 10.0      # 채널 폭 (µm)
+  L_um: 5.0       # 채널 길이 (µm)
+  t_ox_nm: 300.0  # 게이트 절연막 두께 (nm)
+  eps_r: 3.9      # 게이트 절연막 비유전율 (SiO2 = 3.9)
+
+# 소자 이름 해석. 예: "#600_4_ATP_B2" -> 그룹 "#600_4_ATP", 위치 "B2".
+naming:
+  token_separator: "_"               # 이름을 토큰으로 나누는 문자
+  position_pattern: "^[A-Z]\\d{1,2}$" # 위치 토큰 (영문 대문자 1개 + 숫자 1~2개)
+
+# 곡선 종류 판정 (transfer: Vg를 sweep, output: Vd를 sweep).
+classification:
+  # 연속한 두 점 사이에서 값이 바뀐 비율이 이 값 이상이면 sweep한 전압으로 본다.
+  swept_min_change_fraction: 0.5
+  # 이 값(V) 이하의 차이는 변화로 보지 않는다.
+  voltage_change_tolerance_V: 1.0e-9
+
+readers:
+  # Keysight B1500 (EasyEXPERT) CSV 내보내기. 파일 하나에 측정 하나.
+  b1500_csv:
+    extensions: [".csv"]
+    # 파일 앞부분에 이 태그로 시작하는 줄이 있으면 B1500 파일로 본다.
+    signature_tags: ["SetupTitle", "PrimitiveTest", "TestParameter"]
+    signature_scan_lines: 20
+    column_names_tag: "DataName"   # 열 이름 줄의 태그
+    data_row_tag: "DataValue"      # 데이터 줄의 태그
+    header_tags: ["TestParameter", "MetaData"]  # "태그, 키, 값..." 형식의 헤더 줄
+    # 내부 열 이름 -> 장비 열 이름 (앞에 있을수록 우선). 부호 있는 전류가 abs* 보다 우선한다.
+    columns:
+      Vg: ["Vg", "Vbg", "Vtg"]
+      Vd: ["Vd"]
+      Vs: ["Vs"]
+      Id: ["Id", "absId"]
+      Ig: ["Ig", "Ibg", "Itg", "absIg", "absIbg"]
+      Is: ["Is"]
+      time: ["time"]
+    fields:
+      channel_voltage_names: "Channel.VName"     # 채널별 전압 이름
+      bias_values: "Measurement.Bias.Source"     # 채널별 bias (sweep 채널은 시작값)
+      sweep_start: "Measurement.Primary.Start"
+      sweep_stop: "Measurement.Primary.Stop"
+      sweep_locus: "Measurement.Primary.Locus"
+      sweep_points: "Measurement.Primary.Count"
+      record_time: "TestRecord.RecordTime"
+      remarks: "TestRecord.Remarks"
+    dual_sweep_locus_value: "Double"             # 왕복 sweep일 때의 Locus 값
+    record_time_format: "%m/%d/%Y %H:%M:%S"
+    # 파일 이름의 "[소자 이름 ; ...]" 에서 소자 이름을 꺼낸다.
+    filename_label_pattern: "\\[\\s*(?P<label>[^;\\]]+?)\\s*;"
+    run_id: "1"                                  # 파일당 측정이 하나이므로 고정
+
+  # Keithley 4200A (Clarius) .xls 워크북. 측정 하나가 시트 하나.
+  clarius_xls:
+    extensions: [".xls"]
+    settings_sheet_names: ["Settings", "Setting"]
+    columns:
+      Vg: ["GateV", "Vg", "Vgs"]
+      Vd: ["DrainV", "Vd", "Vds"]
+      Vs: ["SourceV", "Vs"]
+      Id: ["DrainI", "Id", "Ids"]
+      Ig: ["GateI", "Ig", "Igs"]
+      Is: ["SourceI", "Is"]
+      time: ["Time", "time"]
+    # 시트 이름이 이 형식이면 사용자가 이름을 붙이지 않은 측정이다: 그룹은 파일 이름에서 얻는다.
+    unnamed_run_pattern: "^Run\\s*\\d+$"
+    settings:
+      block_separator_prefix: "====="   # 측정별 블록을 나누는 줄
+      terminal_header: "Device Terminal" # 단자별 표의 머리 줄
+      terminals:
+        drain: "Drain"
+        source: "Source"
+        gate: "Gate"
+      fields:
+        bias: "Start/Bias"
+        stop: "Stop"
+        step: "Step"
+        dual_sweep: "Dual Sweep"
+        measured_at: "Last Executed"
+      dual_sweep_enabled_value: "Enabled"
+      measured_at_format: "%m/%d/%Y %H:%M:%S"
