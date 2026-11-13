@@ -27,3 +27,43 @@
   - output 곡선은 판정만 한다. 실제 output 측정 파일이 없어 합성 데이터로만 확인했다.
   - p-type 실제 파일도 없다.
   - `labkit/` 공용 패키지는 만들지 않았다. 화면을 만드는 4단계에서 MoS2 배포 설정(Dockerfile, PyInstaller)과 함께 다룬다.
+
+## 2단계: transfer 파라미터 추출 (2026-11-13)
+
+- 범위: transfer 곡선에서 off/on 전류, gm, Vth 두 가지, SS, 이동도, 히스테리시스, 구간별 누설을 추출하고 상태와 사유를 매긴다. 결과 파일 저장과 화면은 없다.
+- 파일:
+  - `config.yaml`의 `analysis` 항목
+  - `fet_core/analysis/settings.py`, `sweeps.py`, `numeric.py`, `transfer.py`, `results.py`
+  - `fet_core/config.py` (`Config.boolean` 추가)
+  - `tests/test_transfer.py` (24개), `tests/test_config.py`
+- 방법은 `AGENTS.md`의 "Transfer 분석 규칙"에 정리했다.
+- 설계하면서 바꾼 것 (시험 결과에 따른 결정):
+  1. gm 기울기 추정: 처음에는 Theil-Sen을 썼으나, 창 안에 전류 계단이 있으면 절반 가까운 쌍이 계단을 걸쳐 기울기가 커졌다. "창 길이의 1/4만큼 떨어진 두 점" 기울기의 중앙값으로 바꿨다. 계단 하나는 쌍의 1/3 이하에만 걸린다.
+  2. gm peak: 잡음이 있는 곡선의 최댓값은 위로 치우친다. 이웃 창끼리 이동 중앙값을 낸 뒤 최댓값을 잡고, 기울기 오차가 5%를 넘으면 창을 넓힌다.
+  3. "잡음 크기만큼 낮은 값도 peak로 인정해 가장 이른 창을 고르는" 방식도 시험했으나 버렸다. gm이 천천히 오르는 실제 소자에서 peak보다 훨씬 앞을 골라 Vth와 이동도가 관례(최대 gm)에서 벗어났다.
+  4. off 구간 길이는 점 개수가 아니라 전압(2 V, 최소 5점)으로 정한다. 1 V 간격 측정에서 11점 고정 창은 off 구간에 들어가지 않는 경우가 많았다.
+  5. `gm_peak_at_sweep_edge`는 "참고" 수준으로 뒀다. 실제 측정 88개 sweep 중 64개가 해당해서, attention으로 두면 상태가 구분력을 잃는다.
+  6. SS 구간의 누설은 사유가 아니라 수치(`ss_window_leak_median`)로만 남긴다. off 근처에서는 게이트 전류계 바닥이 드레인 전류보다 큰 것이 보통이다.
+- 검증:
+  - `pytest`: 54 passed, 2 skipped. `FET_REAL_DATA_DIR` 지정 시 62 passed.
+  - 합성 곡선(정답: Vth 5 V, SS 800 mV/dec, 이동도 20 cm²/Vs), 잡음 없음, 간격 0.1 / 0.5 / 1 V: Vth 4.95~4.99 V, 이동도 19.8~19.9, SS 801~825 (1 V 간격에서 +3%), off 전류 정확.
+  - 잡음 2% (0.5 V 간격), 5% (0.1 V 간격): Vth 5.0~6.0 V, 이동도 20.1~20.8, SS 708~803.
+  - p-type은 n-type과 부호만 반대인 값이 나온다. 히스테리시스 3 V는 3.00 V로 복원된다. 전류 계단(on 전류의 20%)을 넣어도 gm은 3% 이내다.
+  - 실제 측정 4개 폴더(측정 44개, sweep 88개): invalid 0, valid 56, attention 32. 사유는 `gm_noisy` 23, `off_plateau_not_found` 13, `leakage_dominated_transition` 3, `on_state_leakage` 1.
+  - 현재 legacy 프로그램을 같은 기본 설정으로 실행한 결과와 forward sweep 44개 비교 (legacy는 44개 모두 `good`):
+    - 정전류 Vth: 38개가 0.01 V 이내로 일치.
+    - on 전류: 중앙값 +5%, 44개 모두 25% 이내.
+    - 이동도: 중앙값 차이 −0.2%, 10% 이내 20개, 25% 이내 34개.
+    - SS: 중앙값 차이 −0.6%, 10% 이내 21개, 25% 이내 31개.
+    - 선형 외삽 Vth: 중앙값 차이 −0.7 V, 2 V 이내 19개, 5 V 이내 28개.
+    - off 전류: 중앙값 −36% (이쪽이 더 낮은 바닥 구간을 고른다).
+  - 차이가 큰 소자를 원자료로 확인한 것:
+    - `INTL#216_C9_BG`: 전류가 오르내리며 뛰는 소자. legacy는 계단 하나를 gm peak로 잡아 2.19 cm²/Vs, 이쪽은 넓은 창으로 0.15이고 `gm_noisy`.
+    - `INTL#215_D3_BG`: gm이 15~25 V에서 최대였다가 줄어든다. 이쪽은 18.5 V, legacy는 53 V를 골랐다.
+    - `INTL185_C4`: 50~55 V 구간에서 기울기가 일시적으로 커진다. 이쪽은 그 구간을 peak로 잡아 31, legacy는 21. 어느 쪽이 맞는지는 판단하지 못했다.
+- 확인하지 못한 것 / 한계:
+  - 실제 p-type, 단방향 sweep, 여러 Vds로 측정한 소자 파일이 없어 합성 데이터로만 확인했다.
+  - 합성 모델은 gm이 최댓값에서 평평하다. 실제 소자처럼 gm이 peak 뒤에 줄어드는 경우의 정답 시험은 없다.
+  - SS는 "가장 가파른 구간"이라 잡음이 크면 실제보다 작게 나온다 (잡음 5%에서 −11%).
+  - 선형 외삽 Vth는 gm peak 위치에 민감하다. sweep 끝에서 gm이 아직 오르는 소자는 sweep 범위에 따라 값이 달라진다.
+  - output 곡선 분석은 없다 (`curve_not_analysed`로 기록만 한다).
