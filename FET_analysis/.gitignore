@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Measurement data and results stay local (folders are kept, contents are not)
+data/raw/*
+!data/raw/.gitkeep
+data/results/*
+!data/results/.gitkeep

@@ -5,6 +5,7 @@ Data analysis programs.
 | Folder | Description |
 | --- | --- |
 | [`MoS2_optical_analysis`](MoS2_optical_analysis/README.md) | MoS2 Raman/PL spectrum fitting pipeline with a Streamlit GUI and a Windows exe build |
+| [`FET_analysis`](FET_analysis/README.md) | FET transfer/output measurement analysis (in progress: instrument readers and data model) |
 
 ## Windows exe builds (GitHub Actions)
 
