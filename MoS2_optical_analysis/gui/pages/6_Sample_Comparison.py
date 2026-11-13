@@ -24,12 +24,21 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from gui.components import report_loader as _report_loader  # noqa: E402
+from gui.components.paper_theme import CATEGORICAL, export_config  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
+from gui.components.scatter_style import (  # noqa: E402
+    LEGEND_POSITIONS,
+    TICK_DIRECTIONS,
+    ScatterStyle,
+    apply_scatter_style,
+)
 from gui.components.science_settings import strain_doping_settings  # noqa: E402
 
 list_report_json_files = _report_loader.list_report_json_files
 load_spectra_dataframe = _report_loader.load_spectra_dataframe
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
+sidebar_section = _report_loader.sidebar_section
+sidebar_filters_section = _report_loader.sidebar_filters_section
 
 DOPING_N_AXIS_LABEL = "Doping n (10^13 cm^-2)"
 
@@ -755,7 +764,6 @@ for report in report_files:
     file_labels[label] = report
 
 default_count = min(max(int(sample_cfg.get("default_report_count", 4)), 1), len(file_labels))
-st.sidebar.subheader("1) Report Source")
 status_options = ["valid", "attention", "invalid"]
 status_default_raw = status_cfg.get("allowed_default", ["valid", "attention"])
 if isinstance(status_default_raw, list):
@@ -764,12 +772,13 @@ else:
     status_default = ["valid", "attention"]
 if not status_default:
     status_default = ["valid", "attention"]
-with st.sidebar.expander("2) Filters", expanded=True):
+with sidebar_section("1) Reports"):
     selected_file_labels = st.multiselect(
         "Reports to compare",
         options=list(file_labels.keys()),
         default=list(file_labels.keys())[:default_count],
     )
+with sidebar_filters_section(expanded=False):
     status_filter_on = st.checkbox(
         "Filter by fit_status",
         value=bool(status_cfg.get("enabled_default", True)),
@@ -814,7 +823,7 @@ if not raw_sample_frames:
 if invalid_excluded_for_analysis > 0:
     st.caption(f"Excluded invalid rows from analysis: {invalid_excluded_for_analysis}")
 
-palette = px.colors.qualitative.Dark24 + px.colors.qualitative.Plotly
+palette = list(CATEGORICAL) + px.colors.qualitative.Dark24 + px.colors.qualitative.Plotly
 default_colors_by_id = {
     sample_id: palette[i % len(palette)]
     for i, sample_id in enumerate(raw_sample_frames.keys())
@@ -822,19 +831,23 @@ default_colors_by_id = {
 
 display_name_by_id: dict[str, str] = {}
 display_color_by_id: dict[str, str] = {}
-with st.sidebar.expander("3) Basic Display", expanded=True):
+samples_box = sidebar_section("3) Samples")
+with samples_box:
+    st.caption("Display name and colour for each report.")
     for sample_id in raw_sample_frames:
         default_name = raw_sample_default_names[sample_id]
         path = raw_sample_paths[sample_id]
-        display_name = st.text_input(
-            f"Name: {default_name}",
+        name_col, color_col = st.columns([5, 1], vertical_alignment="bottom")
+        display_name = name_col.text_input(
+            default_name,
             value=default_name,
             key=f"sample_cmp_name::{path.as_posix()}",
         )
-        display_color = st.color_picker(
+        display_color = color_col.color_picker(
             f"Color: {default_name}",
             value=default_colors_by_id[sample_id],
             key=f"sample_cmp_color::{path.as_posix()}",
+            label_visibility="collapsed",
         )
         display_name_by_id[sample_id] = display_name.strip() or default_name
         display_color_by_id[sample_id] = display_color
@@ -852,7 +865,7 @@ for sample_id, frame in raw_sample_frames.items():
     color_map[final_name] = display_color_by_id[sample_id]
 
 if duplicate_name_resolved:
-    st.sidebar.caption("Duplicate display names were auto-suffixed (e.g., '(2)').")
+    samples_box.caption("Duplicate display names were auto-suffixed (e.g., '(2)').")
 
 pl_flags = [_is_pl_frame(frame) for frame in sample_frames.values()]
 if any(pl_flags):
@@ -862,43 +875,53 @@ if any(pl_flags):
     _render_pl_comparison(sample_frames)
     st.stop()
 
-with st.sidebar.expander("4) Advanced Model Params", expanded=False):
+with sidebar_section("4) Analysis", expanded=False):
+    ref_sample = st.selectbox(
+        "Reference sample",
+        options=list(sample_frames.keys()),
+        index=0,
+        help="Its mean E2g / A1g positions are the zero point for strain and doping.",
+    )
+    m1, m2 = st.columns(2)
+    center_options = ["median", "mean"]
+    center_default = str(sample_cfg.get("center_metric_default", "median")).strip().lower()
+    center_index = center_options.index(center_default) if center_default in center_options else 0
+    center_metric = m1.selectbox("Center metric", options=center_options, index=center_index)
+
+    error_options = ["std", "sem", "mad", "iqr"]
+    error_default = str(sample_cfg.get("error_metric_default", "std")).strip().lower()
+    error_index = error_options.index(error_default) if error_default in error_options else 0
+    error_metric = m2.selectbox("Error metric", options=error_options, index=error_index)
+
+    st.markdown("**Strain / doping coefficients**")
     st.caption("Defaults are placeholders. Use calibrated values when available.")
-    s_e = st.number_input(
+    k1, k2 = st.columns(2)
+    s_e = k1.number_input(
         "S_E",
         value=coefficients["s_e"],
         format="%.4f",
         help="E2g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
-    s_a = st.number_input(
+    s_a = k2.number_input(
         "S_A",
         value=coefficients["s_a"],
         format="%.4f",
         help="A1g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
-    d_e = st.number_input(
+    d_e = k1.number_input(
         "D_E",
         value=coefficients["d_e"],
         format="%.4f",
         help="E2g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
-    d_a = st.number_input(
+    d_a = k2.number_input(
         "D_A",
         value=coefficients["d_a"],
         format="%.4f",
         help="A1g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
 
-    center_options = ["median", "mean"]
-    center_default = str(sample_cfg.get("center_metric_default", "median")).strip().lower()
-    center_index = center_options.index(center_default) if center_default in center_options else 0
-    center_metric = st.selectbox("Center metric", options=center_options, index=center_index)
-
-    error_options = ["std", "sem", "mad", "iqr"]
-    error_default = str(sample_cfg.get("error_metric_default", "std")).strip().lower()
-    error_index = error_options.index(error_default) if error_default in error_options else 0
-    error_metric = st.selectbox("Error metric", options=error_options, index=error_index)
-
+with sidebar_section("5) Figure", expanded=False):
     overlay_scatter = st.checkbox(
         "Overlay point clouds on errorbars",
         value=bool(sample_cfg.get("overlay_scatter_default", True)),
@@ -907,7 +930,6 @@ with st.sidebar.expander("4) Advanced Model Params", expanded=False):
         "Show absolute isolines",
         value=bool(isoline_cfg.get("show_default", True)),
     )
-
     isoline_density_options = ["light", "normal"]
     isoline_density_default = str(isoline_cfg.get("density_default", "light")).strip().lower()
     if isoline_density_default not in isoline_density_options:
@@ -916,7 +938,48 @@ with st.sidebar.expander("4) Advanced Model Params", expanded=False):
         "Isoline density",
         options=isoline_density_options,
         index=isoline_density_options.index(isoline_density_default),
+        disabled=not show_absolute_isolines,
     )
+
+    st.markdown("**Style**")
+    use_paper_style = st.checkbox("Paper style", value=True, key="sample_cmp_style_enabled")
+    style_off = not use_paper_style
+    fs1, fs2 = st.columns(2)
+    scatter_style = ScatterStyle(
+        font_size=fs1.number_input(
+            "Font size", 8, 28, ScatterStyle.font_size, 1, key="sample_cmp_style_font", disabled=style_off
+        ),
+        height_px=fs2.number_input(
+            "Height (px)", 300, 1200, ScatterStyle.height_px, 20, key="sample_cmp_style_height", disabled=style_off
+        ),
+        point_size=fs1.number_input(
+            "Point size", 2, 24, ScatterStyle.point_size, 1, key="sample_cmp_style_point", disabled=style_off
+        ),
+        center_size=fs2.number_input(
+            "Center size", 4, 30, ScatterStyle.center_size, 1, key="sample_cmp_style_center", disabled=style_off
+        ),
+        errorbar_width=fs1.number_input(
+            "Error bar width", 0.5, 5.0, ScatterStyle.errorbar_width, 0.1, key="sample_cmp_style_errorbar", disabled=style_off
+        ),
+        point_opacity=fs2.slider(
+            "Point opacity", 0.1, 1.0, ScatterStyle.point_opacity, 0.05, key="sample_cmp_style_opacity", disabled=style_off
+        ),
+        legend_position=st.selectbox("Legend", LEGEND_POSITIONS, key="sample_cmp_style_legend", disabled=style_off),
+        tick_direction=st.radio(
+            "Tick direction", TICK_DIRECTIONS, horizontal=True, key="sample_cmp_style_ticks", disabled=style_off
+        ),
+        point_outline=st.checkbox(
+            "White outline on points", value=ScatterStyle.point_outline, key="sample_cmp_style_outline", disabled=style_off
+        ),
+        show_grid=st.checkbox("Show grid", value=ScatterStyle.show_grid, key="sample_cmp_style_grid", disabled=style_off),
+        pretty_labels=st.checkbox(
+            "Superscripts in labels (cm⁻¹)", value=ScatterStyle.pretty_labels, key="sample_cmp_style_pretty", disabled=style_off
+        ),
+    )
+    style_image_format = st.radio(
+        "Image download format", ["png", "svg"], horizontal=True, key="sample_cmp_style_image", disabled=style_off
+    )
+
 selected_step_cfg = (
     isoline_steps_cfg.get(isoline_density, {})
     if isinstance(isoline_steps_cfg, dict)
@@ -929,7 +992,6 @@ n_step = float(
     selected_step_cfg.get("n_step", 0.1)
 )
 
-ref_sample = st.sidebar.selectbox("Reference sample", options=list(sample_frames.keys()), index=0)
 ref_e2g, ref_a1g = _extract_vectors(sample_frames[ref_sample], ["e2g_position", "a1g_position"])
 if ref_e2g.size == 0:
     st.error("Reference sample has no valid E2g/A1g positions after filtering.")
@@ -1046,6 +1108,15 @@ if not any(
     st.warning("No plottable numeric data after filtering.")
     st.stop()
 
+def _show_styled(fig: go.Figure) -> None:
+    """Render a comparison figure with the sidebar figure style."""
+    if not use_paper_style:
+        st.plotly_chart(fig, width="stretch")
+        return
+    apply_scatter_style(fig, scatter_style)
+    st.plotly_chart(fig, width="stretch", theme=None, config=export_config("sample_comparison", style_image_format))
+
+
 tab_epsn, tab_absolute, tab_nfwhm, tab_fwhm, tab_lo = st.tabs(
     [
         "eps-n",
@@ -1068,7 +1139,7 @@ with tab_epsn:
                 y_label=DOPING_N_AXIS_LABEL,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         with c2:
             fig = _build_errorbar_figure(
                 data=epsn_maps,
@@ -1081,7 +1152,7 @@ with tab_epsn:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
     else:
         st.info("No valid eps-n data in the selected reports.")
 
@@ -1097,7 +1168,7 @@ with tab_nfwhm:
                 y_label="A1g FWHM (cm^-1)",
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
 
             fig = _build_errorbar_figure(
                 data=n_a1g_maps,
@@ -1110,7 +1181,7 @@ with tab_nfwhm:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid n vs A1g FWHM data.")
     with right:
@@ -1126,7 +1197,7 @@ with tab_nfwhm:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid n vs E2g FWHM data.")
 
@@ -1182,7 +1253,7 @@ with tab_absolute:
                 eps_range=isoline_eps_range,
                 n_range=isoline_n_range,
             )
-        st.plotly_chart(fig, width="stretch")
+        _show_styled(fig)
     else:
         st.info("No valid absolute E2g/A1g position data.")
 
@@ -1210,7 +1281,7 @@ with tab_fwhm:
         fig.update_layout(height=720)
         fig.update_xaxes(fixedrange=False)
         fig.update_yaxes(fixedrange=False)
-        st.plotly_chart(fig, width="stretch")
+        _show_styled(fig)
     else:
         st.info("No valid E2g/A1g FWHM pair data.")
 
@@ -1240,7 +1311,7 @@ with tab_lo:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid LO ratio vs n data.")
 
@@ -1256,7 +1327,7 @@ with tab_lo:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=True,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid LO ratio vs eps data.")
 
@@ -1273,7 +1344,7 @@ with tab_lo:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=False,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid LO ratio vs A1g FWHM data.")
 
@@ -1289,7 +1360,7 @@ with tab_lo:
                 overlay_scatter=overlay_scatter,
                 add_zero_lines=False,
             )
-            st.plotly_chart(fig, width="stretch")
+            _show_styled(fig)
         else:
             st.info("No valid LO ratio vs E2g FWHM data.")
 

@@ -55,7 +55,8 @@ from gui.components.spectrum_viewer import (  # noqa: E402
 
 choose_report_sidebar = _report_loader.choose_report_sidebar
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
-sidebar_filters_header = getattr(_report_loader, "sidebar_filters_header", lambda: None)
+sidebar_filters_section = _report_loader.sidebar_filters_section
+sidebar_section = _report_loader.sidebar_section
 
 _POINT_TOKEN_RE = re.compile(r"Y(?P<y>\d+)-X(?P<x>\d+)", re.IGNORECASE)
 PL_DEFAULT_VIEW_MIN_EV = 1.4
@@ -256,20 +257,20 @@ fallback_x_max = float(x_window_cfg.get("fallback_max", 430.0))
 peak_padding = float(x_window_cfg.get("peak_padding", 18.0))
 
 work_df = df.copy()
-sidebar_filters_header()
+filters_box = sidebar_filters_section()
 if "map_id" in work_df.columns:
     map_options = ["ALL"] + sorted(work_df["map_id"].dropna().astype(str).unique().tolist())
-    selected_map = st.sidebar.selectbox("Map filter", map_options, key="all_spectra_map_filter")
+    selected_map = filters_box.selectbox("Map filter", map_options, key="all_spectra_map_filter")
     if selected_map != "ALL":
         work_df = work_df[work_df["map_id"].astype(str) == selected_map]
 
 if "selected_model" in work_df.columns:
     model_options = ["ALL"] + sorted(work_df["selected_model"].dropna().astype(str).unique().tolist())
-    selected_model = st.sidebar.selectbox("Model filter", model_options, key="all_spectra_model_filter")
+    selected_model = filters_box.selectbox("Model filter", model_options, key="all_spectra_model_filter")
     if selected_model != "ALL":
         work_df = work_df[work_df["selected_model"].astype(str) == selected_model]
 
-search_text = st.sidebar.text_input("Spectrum ID contains", value="", key="all_spectra_search")
+search_text = filters_box.text_input("Spectrum ID contains", value="", key="all_spectra_search")
 if search_text.strip():
     work_df = work_df[work_df["spectrum_id"].astype(str).str.contains(search_text.strip(), case=False, regex=False)]
 
@@ -302,7 +303,7 @@ else:
 
 grid_mask = work_df["_nav_y"].notna() & work_df["_nav_x"].notna()
 has_grid_navigation = bool(grid_mask.any())
-st.sidebar.subheader("3) Spectrum Navigation")
+nav_box = sidebar_section("3) Navigation")
 
 if max_index == 0:
     _set_linear_index(0)
@@ -312,7 +313,7 @@ if max_index == 0:
             st.session_state["all_spectra_nav_y"] = int(only_row["_nav_y"])
         if pd.notna(only_row.get("_nav_x")):
             st.session_state["all_spectra_nav_x"] = int(only_row["_nav_x"])
-    st.sidebar.caption("Only one spectrum matches current filters.")
+    nav_box.caption("Only one spectrum matches current filters.")
     index = 0
 elif has_grid_navigation:
     nav_df = work_df.loc[grid_mask, ["_nav_y", "_nav_x"]].copy()
@@ -329,7 +330,7 @@ elif has_grid_navigation:
     if selected_y_state is None or int(selected_y_state) not in y_options:
         st.session_state["all_spectra_nav_y"] = current_y
     selected_y = int(
-        st.sidebar.select_slider(
+        nav_box.select_slider(
             "Row index (Y)",
             options=y_options,
             value=int(st.session_state["all_spectra_nav_y"]),
@@ -351,14 +352,14 @@ elif has_grid_navigation:
     st.session_state["all_spectra_nav_x"] = default_x
 
     selected_x = int(
-        st.sidebar.select_slider(
+        nav_box.select_slider(
             "Spectrum index (X)",
             options=x_options,
             value=int(st.session_state["all_spectra_nav_x"]),
             key="all_spectra_nav_x",
         )
     )
-    st.sidebar.caption("Coordinate navigation keeps X/Y control in one place.")
+    nav_box.caption("Coordinate navigation keeps X/Y control in one place.")
 
     match_mask = ((work_df["_nav_y"] == selected_y) & (work_df["_nav_x"] == selected_x)).fillna(False)
     matched_indexes = work_df.index[match_mask].tolist()
@@ -371,7 +372,7 @@ elif has_grid_navigation:
 
     _set_linear_index(index)
 else:
-    _ = st.sidebar.slider(
+    _ = nav_box.slider(
         "Spectrum index",
         0,
         max_index,
@@ -379,7 +380,7 @@ else:
         key="all_spectra_index_slider",
         on_change=_sync_index_from_slider,
     )
-    _ = st.sidebar.number_input(
+    _ = nav_box.number_input(
         "Spectrum index (number)",
         min_value=0,
         max_value=max_index,
