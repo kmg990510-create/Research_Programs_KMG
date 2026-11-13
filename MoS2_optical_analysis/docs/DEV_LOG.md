@@ -1486,3 +1486,75 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
   - `pytest`: 39 passed (`tests/test_web_cloud_features.py` expanded with `test_is_cloud_runtime_honors_env_override` and `test_standalone_report_embeds_raw_xy_only_in_json_and_merges_overrides_on_export`, plus `tests/test_config_dependency.py` strict config check).
   - Pipeline & GUI smoke: Raman/PL dummy pipelines and `AppTest` smoke in both local and `MOS2_CLOUD_MODE=1` modes pass without errors.
 
+
+## Map Viewer Prototype: Paper-Style Plotly Theme, Style Panel, Point Selection (2026-11-13)
+
+- Scope: experimental page to evaluate (a) a paper-style Plotly look, (b) on-screen figure style editing, and (c) selecting map points to record review decisions. The existing `4_Map_Viewer.py` and the global theme (`plot_theme.py`) are unchanged.
+- Related Files:
+  - `gui/components/paper_theme.py` (opt-in template: boxed axes, outside ticks, no grid; image-download config)
+  - `gui/components/map_figure.py` (`MapStyle`, `build_map_figure`, style preset YAML save/load; no Streamlit import)
+  - `gui/components/map_editing.py` (`selected_ids_from_event`, `apply_decision` -> `upsert_manual_override` with `action_type="map_viewer_edit"`)
+  - `gui/pages/8_Map_Viewer_Prototype.py`
+  - `tests/test_map_viewer_prototype.py`
+- Key Behaviors:
+  1. The map is a heatmap with an invisible square scatter layer on top; the scatter layer carries hover, click, box and lasso selection (Plotly heatmaps do not report selections).
+  2. Streamlit forces `clickmode="event"` while the drag mode is box/lasso, so a single click is reported only in `Mouse mode = Click` (drag mode `zoom`).
+  3. The selection is kept in `st.session_state` and drawn as outlines by the figure builder, so it survives style changes and reruns.
+  4. Streamlit overrides the figure font and paper colour from a template; `build_map_figure` sets them on the layout directly.
+  5. Style presets are saved to `data/style_presets/map/*.yaml` (runtime user data, git-ignored).
+  6. `rejected` points can be hidden from the map (drawn as missing cells); the fit report JSON is never modified.
+- Tests & Validation:
+  - `pytest`: 44 passed.
+  - Browser check on `proto_map_SampleA` (SampleA 9x9 Raman map, 81 spectra): box selection (12 points), click selection with spectrum overlay, `rejected` decision written to `proto_map_SampleA_manual_overrides.json`, live colormap / value-label changes.
+  - Not checked: lasso selection, preset save/load buttons in the browser, image download, PL reports, cloud mode.
+
+## Map Physical Axes and Sample Comparison Figure Style (2026-11-13)
+
+- Scope: (1) the map prototype can show physical coordinates instead of point indices; (2) Sample Comparison scatter / error-bar figures get an adjustable paper-style look.
+- Related Files:
+  - `gui/components/map_figure.py` (`MapStyle.axis_mode`, `axis_unit`, `x_start/x_end/y_start/y_end`, `to_physical`, `default_axis_labels`)
+  - `gui/pages/8_Map_Viewer_Prototype.py` (`Axis coordinates` controls in the Figure style tab)
+  - `gui/components/scatter_style.py` (`ScatterStyle`, `apply_scatter_style`, `pretty_label`; no Streamlit import)
+  - `gui/pages/6_Sample_Comparison.py` (sidebar `5) Figure Style`, `_show_styled`, default sample colours)
+  - `tests/test_map_viewer_prototype.py`, `tests/test_scatter_style.py`
+- Key Behaviors:
+  1. `Axis coordinates = Physical`: the lowest and highest scan index are placed at Start and End, points evenly spaced in between; the unit is free text (default `µm`). Axis labels follow the mode and unit until edited. The map keeps a 1:1 physical aspect ratio. Equal Start and End falls back to point index with a warning.
+  2. Physical axis settings are part of `MapStyle`, so they are saved in style presets.
+  3. Sample Comparison Raman tabs: `5) Figure Style` controls font size, height, point size / opacity / outline, centre marker size, error-bar width, grid, tick direction, legend position, superscript labels (`cm^-1` -> `cm⁻¹`, `eps` -> `ε`) and image download format. `Paper style` off restores the previous look.
+  4. Default sample colours start with the Okabe-Ito colourblind-safe set (previously Dark24); per-sample colour pickers are unchanged.
+  5. Inputs that are only sometimes relevant (`Color min/max`, axis Start/End/Unit) are always rendered and disabled when unused: Streamlit discards the stored value of a keyed widget on runs where it is not drawn.
+- Tests & Validation:
+  - `pytest`: 49 passed.
+  - Browser check: map with X 0-20 µm / Y 0-10 µm on `proto_map_SampleA`; Sample Comparison `eps-n` and `FWHM Pair` tabs with the paper style.
+  - Not checked: the other Sample Comparison tabs (`Absolute Positions`, `n vs FWHM`, `LO Ratio`), changing the Figure Style controls in the browser, PL comparison (unchanged, still the old look), LO ratio heatmap (unchanged).
+  - Known limit: with non-square physical cells the selection outline stays square.
+
+## Sample Comparison Sidebar Regrouping (2026-11-13)
+
+- Scope: the sidebar had an empty `1) Report Source` heading, the report picker inside `2) Filters`, `Reference sample` floating between two expanders, and display options mixed into `4) Advanced Model Params`.
+- Related Files: `gui/pages/6_Sample_Comparison.py`
+- New layout (all expanders, in this order):
+  1. `1) Reports`: reports to compare
+  2. `2) Filters`: `fit_status` filter
+  3. `3) Samples`: display name and colour on one row per report
+  4. `4) Analysis`: reference sample, center / error metric, strain-doping coefficients (Raman only)
+  5. `5) Figure`: point-cloud overlay, isolines, and the figure style controls (Raman only)
+- Controls that have no effect are disabled instead of hidden (`Isoline density` without isolines, style controls with `Paper style` off).
+- No change to calculations or defaults.
+- Tests & Validation: `pytest` 49 passed; `AppTest` run of the page without exceptions; browser check with all five expanders open.
+
+## Sidebar Sections Unified Across Pages (2026-11-13)
+
+- Scope: every page sidebar is now built only from numbered, collapsible sections; no widget sits outside a section.
+- Related Files:
+  - `gui/components/report_loader.py` (`sidebar_section`, `sidebar_filters_section`, `choose_report_sidebar`; removed `sidebar_filters_header` / `sidebar_advanced_header`)
+  - `gui/pages/3_All_Spectra_Viewer.py`, `gui/pages/4_Map_Viewer.py`, `gui/pages/5_Model_Comparison.py`, `gui/pages/6_Sample_Comparison.py`
+  - root `AGENTS.md` (sidebar rule)
+- Layout:
+  - `1) Report` (all single-report pages): report selector, path, then `Upload Report JSON / CSV` and `Export / Save Intermediate State` nested inside. The selector now comes before upload; with no reports the section shows the warning and an open upload box. Cloud mode still opens upload/export automatically.
+  - `2) Filters`: All Spectra Viewer, Map Viewer, Model Comparison, Sample Comparison.
+  - Page sections: `3) Navigation` (All Spectra Viewer, was `3) Spectrum Navigation`), `3) Ratio Builder` (Map Viewer), `3) Samples` / `4) Analysis` / `5) Figure` (Sample Comparison, which uses `1) Reports` because it selects several).
+  - The divider under the report block is gone.
+- Widget keys and behaviour are unchanged.
+- Tests & Validation: `pytest` 49 passed; `AppTest` run of `Main.py` and pages 2-8 without exceptions; browser check of All Spectra Viewer and Map Viewer sidebars.
+  - Not checked in the browser: Main, Flagged Spectra, Model Comparison, Finalize, the no-report state, cloud mode. `1_Run_Analysis.py` has no sidebar controls and was not changed.

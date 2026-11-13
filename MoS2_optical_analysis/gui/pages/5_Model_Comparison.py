@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 
 from gui.components.fit_plot_component import render_metric_histogram  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
-from gui.components.report_loader import choose_report_sidebar, sidebar_filters_header  # noqa: E402
+from gui.components.report_loader import choose_report_sidebar, sidebar_filters_section  # noqa: E402
 
 apply_plotly_theme()
 
@@ -41,12 +41,12 @@ if "selected_model" not in df.columns:
 
 work_df = df.copy()
 if "fit_status" in work_df.columns:
-    sidebar_filters_header()
+    filters_box = sidebar_filters_section()
     status_options = ["valid", "attention", "invalid"]
     work_df["fit_status"] = work_df["fit_status"].astype(str).str.strip().str.lower()
     available = [item for item in status_options if item in set(work_df["fit_status"].dropna().tolist())]
     default_statuses = [item for item in ["valid", "attention"] if item in available] or available
-    selected_statuses = st.sidebar.multiselect(
+    selected_statuses = filters_box.multiselect(
         "Allowed fit_status values",
         options=status_options,
         default=default_statuses,

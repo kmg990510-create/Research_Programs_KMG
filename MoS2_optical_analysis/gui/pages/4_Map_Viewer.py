@@ -19,7 +19,11 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.report_loader import choose_report_sidebar, sidebar_filters_header  # noqa: E402
+from gui.components.report_loader import (  # noqa: E402
+    choose_report_sidebar,
+    sidebar_filters_section,
+    sidebar_section,
+)
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
 
 
@@ -51,14 +55,14 @@ if df.empty:
 
 work_df = _add_derived_map_parameters(df)
 status_options = ["valid", "attention", "invalid"]
-sidebar_filters_header()
+filters_box = sidebar_filters_section()
 if "fit_status" in work_df.columns:
     work_df["fit_status"] = work_df["fit_status"].astype(str).str.strip().str.lower()
     available_statuses = set(work_df["fit_status"].dropna().tolist())
     default_statuses = [s for s in ["valid", "attention"] if s in available_statuses]
     if not default_statuses:
         default_statuses = [s for s in status_options if s in available_statuses] or ["valid", "attention"]
-    selected_statuses = st.sidebar.multiselect(
+    selected_statuses = filters_box.multiselect(
         "Allowed fit_status values",
         options=status_options,
         default=default_statuses,
@@ -69,7 +73,7 @@ if "fit_status" in work_df.columns:
         st.stop()
     work_df = work_df[work_df["fit_status"].isin(selected_statuses)]
 else:
-    st.sidebar.caption("fit_status column not found: status filter disabled.")
+    filters_box.caption("fit_status column not found: status filter disabled.")
 
 if work_df.empty:
     st.warning("No rows left after fit_status filter.")
@@ -81,7 +85,7 @@ ratio_numeric_candidates = [
     for col in work_df.columns
     if pd.api.types.is_numeric_dtype(work_df[col]) and col not in {"map_x", "map_y"}
 ]
-with st.sidebar.expander("3) Ratio Builder", expanded=False):
+with sidebar_section("3) Ratio Builder", expanded=False):
     enable_custom_ratio = st.checkbox(
         "Enable custom ratio (numerator / denominator)",
         value=False,

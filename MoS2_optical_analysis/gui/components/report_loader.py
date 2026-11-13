@@ -234,12 +234,21 @@ def save_uploaded_report_files(
     return saved_paths
 
 
-def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict | None, pd.DataFrame]:
-    files = list_report_json_files()
-    cloud_mode = is_cloud_runtime()
-    st.sidebar.subheader("1) Report Source")
+REPORT_SECTION = "1) Report"
+FILTERS_SECTION = "2) Filters"
 
-    with st.sidebar.expander("Upload Report JSON / CSV", expanded=(cloud_mode or not bool(files))):
+
+def sidebar_section(title: str, expanded: bool = True):
+    """Numbered, collapsible sidebar section. Every page builds its sidebar from these."""
+    return st.sidebar.expander(title, expanded=expanded)
+
+
+def sidebar_filters_section(expanded: bool = True):
+    return sidebar_section(FILTERS_SECTION, expanded=expanded)
+
+
+def _render_report_upload(key_prefix: str, expanded: bool) -> None:
+    with st.expander("Upload Report JSON / CSV", expanded=expanded):
         uploaded = st.file_uploader(
             "Upload *_fit_report.json, *_fit_parameters.csv, or *_manual_overrides.json",
             type=["json", "csv"],
@@ -265,55 +274,53 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
                     st.success(f"Saved {len(saved)} file(s).")
                     st.rerun()
 
-    if not files:
-        st.sidebar.warning(
-            "No report JSON found in data/results/{raman,pl}/reports."
-        )
-        return None, None, pd.DataFrame()
 
-    labels = [
-        f"{path.name}  ({datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
-        for path in files
-    ]
-    selected_label = st.sidebar.selectbox("Select report", labels, key=f"{key_prefix}_report")
-    selected_path = files[labels.index(selected_label)]
+def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict | None, pd.DataFrame]:
+    """Sidebar section 1: pick a report, with upload and export tucked underneath."""
+    files = list_report_json_files()
+    cloud_mode = is_cloud_runtime()
 
-    selected_mtime_ns = int(selected_path.stat().st_mtime_ns)
-    overrides_mtime_ns = override_mtime_ns_for_report(selected_path)
-    payload = load_report_payload(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
-    df = load_spectra_dataframe(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
-    st.sidebar.caption(f"Path: {selected_path}")
+    with sidebar_section(REPORT_SECTION):
+        if not files:
+            st.warning("No report JSON found in data/results/{raman,pl}/reports.")
+            _render_report_upload(key_prefix, expanded=True)
+            return None, None, pd.DataFrame()
 
-    with st.sidebar.expander("Export / Save Intermediate State", expanded=cloud_mode):
-        st.caption("Download the current report (includes raw spectra & all manual edits) to resume later.")
-        csv_candidate = paired_csv_path(selected_path)
-        st.download_button(
-            "Export Intermediate JSON",
-            data=build_projected_report_json_bytes(payload),
-            file_name=selected_path.name,
-            mime="application/json",
-            key=f"{key_prefix}_sidebar_export_json",
-            use_container_width=True,
-        )
-        st.download_button(
-            "Export Parameters CSV",
-            data=build_projected_csv_bytes(payload, csv_candidate),
-            file_name=csv_candidate.name,
-            mime="text/csv",
-            key=f"{key_prefix}_sidebar_export_csv",
-            use_container_width=True,
-        )
+        labels = [
+            f"{path.name}  ({datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
+            for path in files
+        ]
+        selected_label = st.selectbox("Select report", labels, key=f"{key_prefix}_report")
+        selected_path = files[labels.index(selected_label)]
 
-    st.sidebar.divider()
+        selected_mtime_ns = int(selected_path.stat().st_mtime_ns)
+        overrides_mtime_ns = override_mtime_ns_for_report(selected_path)
+        payload = load_report_payload(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
+        df = load_spectra_dataframe(str(selected_path), selected_mtime_ns, overrides_mtime_ns)
+        st.caption(f"Path: {selected_path}")
+
+        _render_report_upload(key_prefix, expanded=cloud_mode)
+        with st.expander("Export / Save Intermediate State", expanded=cloud_mode):
+            st.caption("Download the current report (includes raw spectra & all manual edits) to resume later.")
+            csv_candidate = paired_csv_path(selected_path)
+            st.download_button(
+                "Export Intermediate JSON",
+                data=build_projected_report_json_bytes(payload),
+                file_name=selected_path.name,
+                mime="application/json",
+                key=f"{key_prefix}_sidebar_export_json",
+                use_container_width=True,
+            )
+            st.download_button(
+                "Export Parameters CSV",
+                data=build_projected_csv_bytes(payload, csv_candidate),
+                file_name=csv_candidate.name,
+                mime="text/csv",
+                key=f"{key_prefix}_sidebar_export_csv",
+                use_container_width=True,
+            )
+
     return selected_path, payload, df
-
-
-def sidebar_filters_header() -> None:
-    st.sidebar.subheader("2) Filters")
-
-
-def sidebar_advanced_header() -> None:
-    st.sidebar.subheader("3) Advanced")
 
 
 def _is_raman_mapping_csv_bytes(data: bytes) -> bool:
