@@ -84,3 +84,75 @@ readers:
         measured_at: "Last Executed"
       dual_sweep_enabled_value: "Enabled"
       measured_at_format: "%m/%d/%Y %H:%M:%S"
+
+# transfer 곡선 분석. 전압은 "켜지는 방향" 기준으로 다룬다 (p-type은 Vg 부호를 뒤집어 n-type처럼 계산).
+analysis:
+  min_points: 10   # 한 방향 sweep에 필요한 최소 점 수
+
+  sweep:
+    # 진행 방향과 반대로 움직인 점의 비율이 이 값을 넘으면 non_monotonic_sweep 경고.
+    non_monotonic_max_fraction: 0.05
+
+  # 극성 판정: Vg가 높은 쪽 끝과 낮은 쪽 끝의 log10|Id| 중앙값을 비교한다.
+  polarity:
+    edge_fraction: 0.2   # 양 끝에서 쓰는 점의 비율
+    min_decades: 1.0     # 이만큼 차이가 나야 n 또는 p로 판정 (아니면 unknown)
+
+  # 전이 구간: log10|Id|가 낮은 수준에서 높은 수준으로 올라가는 Vg 범위.
+  transition:
+    low_percentile: 5.0         # 낮은 전류 수준 (백분위)
+    high_percentile: 95.0       # 높은 전류 수준 (백분위)
+    lower_fraction: 0.1         # 전이 시작: 두 수준 사이의 이 비율 지점
+    upper_fraction: 0.9         # 전이 끝
+    smooth_window_points: 5     # 판정에 쓰는 이동 중앙값 창 (점)
+    min_span_decades: 1.0       # 두 수준의 차이가 이보다 작으면 게이트 변조 없음
+
+  # off 전류: 전이 이전의 안정된 저전류 구간에서 구한다 (고정된 점 개수가 아님).
+  off_current:
+    window_V: 2.0                      # 대표 구간이 덮어야 하는 최소 전압 범위
+    window_min_points: 5               # 대표 구간의 최소 점 수
+    max_std_decades: 0.3               # 구간 안 log10|Id| 표준편차 상한
+    max_slope_decades_per_V: 0.1       # 구간 기울기 절댓값 상한
+    noise_weight: 0.5                  # 구간 선택 점수 = 중앙값 + noise_weight * 표준편차
+
+  on_current:
+    window_points: 5   # 가장 많이 켜진 쪽 끝에서 중앙값을 내는 점 수
+
+  # 트랜스컨덕턴스: 이동 창 안에서 "창 길이의 1/4만큼 떨어진 두 점의 기울기"들의 중앙값.
+  # 전류가 한 번 계단처럼 뛰어도 흔들리지 않는다.
+  gm:
+    method: lagged_median_slope
+    window_V: 2.0                # 창이 덮어야 하는 최소 전압 범위
+    window_min_points: 5         # 창의 최소 점 수
+    # 최댓값의 (1 - 이 값) 이상인 창 중 가장 먼저 나오는 것을 peak로 삼는다 (평평한 최댓값 대응).
+    peak_plateau_tolerance: 0.01
+    # gm 기울기의 상대 표준오차(최댓값 부근)가 이 값보다 크면 창을 2배씩 넓혀 다시 계산한다.
+    max_relative_noise: 0.05
+    # 창은 sweep 전체 범위의 이 비율까지만 넓힌다.
+    max_window_fraction: 0.25
+
+  vth:
+    # 선형 외삽 Vth에서 Vds/2를 빼는지 여부 (선형 영역 보정). 결과에 방법 이름으로 기록된다.
+    subtract_half_vds: false
+    const_current_nA_per_um: 1.0   # 정전류 Vth 기준: 채널 폭 1 µm당 전류 (nA)
+
+  # subthreshold swing: log10|Id| 대 Vg가 가장 가파른 직선 구간.
+  ss:
+    window_min_points: 5
+    window_max_points: 20
+    min_r2: 0.95                 # 직선 맞춤의 결정계수 하한
+    min_span_decades: 0.5        # 구간이 덮어야 하는 전류 범위
+
+  mobility:
+    # 같은 소자의 측정 중 |Vds|가 가장 작은 것에서만 이동도를 낸다. 같다고 보는 상대 오차.
+    vds_relative_tolerance: 1.0e-6
+    # |Vds|가 (gm peak 위치 - Vth)의 이 배수를 넘으면 선형 영역이 아니라는 경고.
+    max_vds_over_overdrive: 1.0
+
+  # 게이트 누설은 평가만 한다. 점을 지우지 않는다.
+  leakage:
+    transition_ratio_warn: 1.0   # 전이 구간 |Ig|/|Id| 중앙값이 이 이상이면 경고
+    on_ratio_warn: 0.1           # on 구간 |Ig|/|Id| 중앙값이 이 이상이면 경고
+
+  quality:
+    min_on_off_decades: 2.0      # on/off 비가 이보다 작으면 경고

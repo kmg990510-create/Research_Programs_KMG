@@ -70,6 +70,13 @@ class Config:
         self._read.add(path)
         return value
 
+    def boolean(self, path: str) -> bool:
+        value = self._lookup(path)
+        if not isinstance(value, bool):
+            raise self._wrong_type(path, "true or false", value)
+        self._read.add(path)
+        return value
+
     def text(self, path: str) -> str:
         value = self._lookup(path)
         if not isinstance(value, str):

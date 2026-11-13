@@ -14,6 +14,12 @@ FET_analysis/
     model.py           표준 내부 모델: Measurement, DeviceGeometry, WarningRecord, LoadResult
     naming.py          소자 이름 해석 (이름 규칙을 아는 유일한 모듈)
     synth.py           정답을 아는 합성 transfer 곡선
+    analysis/
+      settings.py      AnalysisSettings (analysis.* 설정 키를 읽는 유일한 모듈)
+      sweeps.py        forward / backward sweep 분리
+      numeric.py       이동 중앙값, 점프에 강한 기울기, 이동 직선 맞춤
+      transfer.py      transfer 곡선 추출, 배치 분석 (디스크에 쓰지 않음)
+      results.py       SweepResult, 상태와 사유 목록
     io/
       loader.py        reader 선택, 폴더 읽기, 중복 파일 처리
       tables.py        reader 공용: 열 매칭, 표준 표 만들기, 곡선 종류 판정, Vds 결정
@@ -71,6 +77,59 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | `timestamp_unparsed` | info | 측정 시각 형식이 예상과 다름 |
 | `duplicate_file` | info | 다른 파일과 내용이 같아 건너뜀 |
 
+## Transfer 분석 규칙 (2단계)
+
+- 계산은 "켜지는 방향" 좌표에서 한다: n-type은 `u = Vg`, p-type은 `u = −Vg`, 전류는 `|Id|`. 결과의 전압은 실제 `Vg`로 되돌려 적는다.
+- 극성은 Vg 양 끝의 `log10|Id|` 차이로 판정한다. 판정하지 못하면 추출하지 않고 `no_gate_modulation`(invalid)으로 둔다.
+- 왕복 sweep은 시작 전압에서 가장 먼 점에서 나눈다. `forward`는 시작점에서 멀어지는 방향, `backward`는 돌아오는 방향이다.
+- 결과는 측정 하나의 sweep 방향마다 `SweepResult` 하나다. 추출하지 못한 값은 `None`이다.
+
+| 항목 | 방법 | 방법 이름 |
+| --- | --- | --- |
+| 전이 구간 | `log10|Id|`의 5·95 백분위 사이를 10%~90% 지나는 범위 | |
+| off 전류 | 전이 이전에서 평평하고 조용한 구간 중 가장 낮은 것의 중앙값 | `stable_plateau` (없으면 `lowest_window`) |
+| on 전류 | 가장 많이 켜진 쪽 끝 5점의 중앙값 | |
+| gm | 이동 창마다 "창 길이의 1/4만큼 떨어진 두 점의 기울기"들의 중앙값, 이웃 창끼리 이동 중앙값, 그 최댓값 | `lagged_median_slope` |
+| Vth (선형 외삽) | gm peak에서의 접선이 전류 0과 만나는 전압 | `linear_extrapolation_at_gm_peak` |
+| Vth (정전류) | `|Id|`가 `W × 1 nA/µm`를 마지막으로 넘는 전압 (로그 보간) | |
+| SS | 전이 구간에서 `log10|Id|` 대 Vg가 가장 가파른 직선 구간 (R² ≥ 0.95, 0.5 decade 이상) | |
+| 이동도 | `gm·L / (W·Cox·|Vds|)`, 같은 소자의 측정 중 `|Vds|`가 가장 작은 것에서만 | `linear_regime_gm_peak` |
+| 히스테리시스 | backward의 Vth − forward의 Vth (선형 외삽, 정전류 각각) | |
+| 누설 | off / 전이 / on 구간과 SS 구간의 `|Ig|/|Id|` 중앙값·최댓값 (평가만) | |
+
+- gm 창은 기본 2 V이고, peak 부근 기울기의 상대 표준오차가 5%를 넘으면 2배씩 넓힌다 (sweep 범위의 25%까지). 최종 오차는 `gm_relative_error`로 남긴다.
+- gm peak이 평평하면(최댓값의 1% 이내) 가장 먼저 나오는 창을 고른다.
+- 이동도는 선형 영역 식이다. `|Vds|`가 gate overdrive보다 크면 `mobility_outside_linear_regime`을 남긴다.
+- 치수는 배치 기본값(`config.yaml`의 `device`)을 쓰고, `analyze_transfer_batch`의 `geometry_overrides`로 측정별 값을 덮어쓴다.
+
+### 상태와 사유
+
+- 상태는 `valid` / `attention` / `invalid`이고, 사유 목록(`fet_core/analysis/results.py`의 `REASONS`)에서만 정한다.
+- 사유는 `SweepResult.reasons`와 `WarningRecord` 양쪽에 같은 코드로 남는다.
+- 통계에 넣을지는 `counts_in_summary` 하나로 판단한다 (invalid가 아니면 포함).
+
+| 사유 | 상태 | 뜻 |
+| --- | --- | --- |
+| `insufficient_points` | invalid | 점이 너무 적음 |
+| `no_gate_sweep` | invalid | 게이트 전압이 변하지 않음 |
+| `no_gate_modulation` | invalid | 게이트 전압에 따라 전류가 충분히 변하지 않음 |
+| `short_backward_sweep` | attention | backward sweep이 너무 짧아 분석하지 않음 |
+| `non_monotonic_sweep` | attention | 게이트 전압이 한 방향으로 움직이지 않음 |
+| `off_state_not_reached` | attention | sweep이 off 상태까지 가지 않음 |
+| `off_plateau_not_found` | attention | 안정된 off 구간이 없어 가장 낮은 구간을 씀 |
+| `gm_not_extracted` | attention | gm peak을 찾지 못함 |
+| `gm_noisy` | attention | 창을 최대로 넓혀도 gm 오차가 큼 |
+| `vth_const_current_not_found` | attention | 전류가 정전류 기준을 넘지 않음 |
+| `ss_not_extracted` | attention | 품질 기준을 만족하는 subthreshold 구간이 없음 |
+| `vds_missing` | attention | Vds를 몰라 이동도를 내지 않음 |
+| `mobility_outside_linear_regime` | attention | `|Vds|`가 gate overdrive에 비해 작지 않음 |
+| `leakage_dominated_transition` | attention | 전이 구간에서 누설이 드레인 전류만큼 큼 |
+| `on_state_leakage` | attention | on 구간에서 누설이 눈에 띔 |
+| `low_on_off_ratio` | attention | on/off 비가 작음 |
+| `gm_peak_at_sweep_edge` | 참고 (valid) | sweep 끝에서 gm이 아직 오르는 중: gm과 이동도는 하한 |
+
+"참고" 사유는 결과에 기록되지만 검토 대상으로 올리지 않는다.
+
 ## 설정 규칙
 
 - 과학적 수치와 파일 해석 규칙은 `config.yaml`에만 둔다. 키마다 한국어 주석을 단다.
@@ -98,7 +157,7 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | --- | --- | --- |
 | 0 | 뼈대, 규칙 문서, 설정, 테스트 틀 | 완료 |
 | 1 | 측정 모델, reader 2종, 합성 곡선 생성기 | 완료 |
-| 2 | transfer 추출 (전처리, off/on, gm, Vth, SS, 이동도, 히스테리시스, 누설, 품질) | 예정 |
+| 2 | transfer 추출 (전처리, off/on, gm, Vth, SS, 이동도, 히스테리시스, 누설, 품질) | 완료 |
 | 3 | 배치 실행, 출력 파일, CLI | 예정 |
 | 4 | Streamlit 페이지 (Run, Review, Device Viewer, Compare, Finalize) | 예정 |
 | 5 | 그래프에서 구간 수동 지정, 위치 맵 | 예정 |

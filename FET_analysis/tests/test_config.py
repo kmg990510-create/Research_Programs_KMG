@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from fet_core.analysis.settings import AnalysisSettings
 from fet_core.config import Config, ConfigKeyError, load_config
 from fet_core.io import b1500_csv, clarius_xls
 from fet_core.io.loader import load_files
@@ -31,6 +32,7 @@ def test_every_config_key_is_read(tmp_path: Path, curve) -> None:
     """A key nobody reads is dead configuration: remove it or use it."""
     config = load_config()
     DeviceGeometry.from_config(config)
+    AnalysisSettings.from_config(config)
     csv_path = write_b1500_csv(tmp_path / "Transfer [S#1_B3_BG ; (1) x].csv", curve)
     load_files([csv_path], config)
     sheets = {"S1_B2": clarius_data_rows(curve), "Settings": clarius_settings_rows(["S1_B2"])}
@@ -38,3 +40,11 @@ def test_every_config_key_is_read(tmp_path: Path, curve) -> None:
     for reader in (b1500_csv, clarius_xls):
         config.text_list(f"readers.{reader.NAME}.extensions")
     assert config.unread_keys() == set()
+
+
+def test_unknown_gm_method_is_rejected() -> None:
+    config = load_config()
+    data = config.as_dict()
+    data["analysis"]["gm"]["method"] = "savgol"
+    with pytest.raises(ConfigKeyError, match="analysis.gm.method"):
+        AnalysisSettings.from_config(Config(data))
