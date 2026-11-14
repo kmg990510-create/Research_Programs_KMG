@@ -82,7 +82,9 @@ def _turn_on_arrays(data: pd.DataFrame, sign: float) -> tuple[np.ndarray, np.nda
     return merged.index.to_numpy(dtype=float), merged["i"].to_numpy(), merged["g"].to_numpy()
 
 
-def _blank_result(measurement: Measurement, sweep: str, polarity: str, n_points: int) -> SweepResult:
+def _blank_result(
+    measurement: Measurement, sweep: str, polarity: str, n_points: int, geometry: DeviceGeometry
+) -> SweepResult:
     return SweepResult(
         source_file=measurement.source_file.name,
         run_id=measurement.run_id,
@@ -93,6 +95,10 @@ def _blank_result(measurement: Measurement, sweep: str, polarity: str, n_points:
         polarity=polarity,
         vds_V=measurement.conditions.get("vds_V"),
         n_points=n_points,
+        W_um=geometry.W_um,
+        L_um=geometry.L_um,
+        t_ox_nm=geometry.t_ox_nm,
+        eps_r=geometry.eps_r,
     )
 
 
@@ -198,7 +204,7 @@ def _analyze_branch(
     sign = -1.0 if polarity == POLARITY_P else 1.0
     u, current, gate = _turn_on_arrays(branch.data, sign)
     n = u.size
-    result = _blank_result(measurement, branch.direction, polarity, n)
+    result = _blank_result(measurement, branch.direction, polarity, n, geometry)
     positive = current > 0
     if n < s.min_points or int(positive.sum()) < s.min_points:
         result.add_reason("insufficient_points")
@@ -390,7 +396,7 @@ def analyze_measurement(
 
     results: list[SweepResult] = []
     if not branches:
-        result = _blank_result(measurement, FORWARD, polarity, len(measurement.data))
+        result = _blank_result(measurement, FORWARD, polarity, len(measurement.data), geometry)
         for code, _ in issues:
             result.add_reason(code)
         results.append(result)

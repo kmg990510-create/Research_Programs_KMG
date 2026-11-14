@@ -73,6 +73,11 @@ class SweepResult:
     polarity: str
     vds_V: float | None
     n_points: int
+    # geometry the values below were computed with
+    W_um: float
+    L_um: float
+    t_ox_nm: float
+    eps_r: float
     # quality
     status: str = STATUS_VALID
     reasons: tuple[str, ...] = ()
