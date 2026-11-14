@@ -27,10 +27,10 @@ FET_analysis/
       export.py        결과 파일 쓰기
     cli.py             명령줄 진입점 (python -m fet_core)
   gui/                 Streamlit 화면. 분석 로직을 두지 않는다
-    Main.py
+    Run.py             진입 페이지 (배치, 치수, 방법 옵션)
     state.py           데이터 폴더, 활성 배치, 분석 캐시, 사이드바 1) 2) 구획
-    components/figures.py   Plotly 그림 (streamlit을 import하지 않음)
-    pages/             1_Run, 2_Review, 3_Device_Viewer, 4_Compare, 5_Finalize
+    components/        figures.py (Plotly 그림), values.py (추출값 표). streamlit을 import하지 않음
+    pages/             1_Devices, 2_Compare, 3_Finalize
     io/
       loader.py        reader 선택, 폴더 읽기, 중복 파일 처리
       tables.py        reader 공용: 열 매칭, 표준 표 만들기, 곡선 종류 판정, Vds 결정
@@ -50,7 +50,7 @@ FET_analysis/
 # 배치 하나 분석 후 결과 파일 쓰기 (기본 출력: data/results/<배치 이름>)
 .\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch
 # 화면
-.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+.\.venv\Scripts\python.exe -m streamlit run gui/Run.py
 # 테스트
 .\.venv\Scripts\python.exe -m pytest
 # 실제 측정 폴더까지 검사 (폴더 안의 각 하위 폴더가 배치 하나)
@@ -175,7 +175,9 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 - 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `gui/components/figures.py`에 둔다.
 - 모든 페이지는 `gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
-- 사이드바는 번호 붙은 구획만 쓴다: `1) Run`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시), 그다음 페이지별 구획(`3) Device`, `3) Groups`).
+- 사이드바는 번호 붙은 구획 두 개만 쓴다: `1) Batch`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시). 필터 선택은 모든 페이지가 공유하고, 기본값은 아무것도 숨기지 않는다.
+- 저장 규칙: 결정, 메모, 그룹 이름·순서는 바꾸는 즉시 `review.json`에 쓴다 (저장 버튼 없음). 다시 분석해야 하는 치수와 방법 옵션만 `Apply` / `Save per-device geometry` 버튼을 쓴다.
+- sweep 방향 하나가 목록의 한 행이다. 값과 결정은 그 행의 것이고, 그림에는 같은 측정의 다른 방향이 흐리게 같이 그려진다.
 - 데이터 폴더는 `FET_analysis/data`이고, 환경 변수 `FET_DATA_ROOT`로 바꿀 수 있다 (테스트가 쓴다).
 - 그림은 `labkit.plot_theme.apply_paper_layout`으로 모양을 맞추고 `st.plotly_chart(..., theme=None)`으로 그린다.
 - 페이지 맨 위의 `sys.path` 4줄은 `fet_core`, `gui`, `labkit`을 찾기 위한 것이다.
@@ -183,9 +185,8 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | 페이지 | 하는 일 |
 | --- | --- |
 | Run | 파일 업로드로 배치 만들기, 배치 기본 치수와 방법 옵션, 소자별 치수, 파일 목록과 경고 |
-| Review | attention / invalid sweep 표에서 결정과 메모 입력, 사유 설명 |
-| Device Viewer | 소자 하나의 log / linear 그림 (off 구간, SS 직선, gm 접선, Vth 표시), 추출값 표, 결정 저장 |
-| Compare | 그룹별 overlay, 지표별 box + 점, 그룹 통계 표, 그룹 이름과 순서 |
+| Devices | Detail: 왼쪽 sweep 목록(attention 먼저), 오른쪽에 고른 행의 log / linear 그림(off 구간, SS 직선, gm 접선, Vth 표시)과 `Approve` / `Reject` / `Clear`, 메모, 추출값 표. Gallery: 모든 소자의 작은 그림 격자(상태별 색), 패널을 누르면 Detail로 이동 |
+| Compare | 지표 여러 개의 box + 점을 2열로, 그룹별 overlay(통계에 드는 sweep만), 그룹 통계 표, 그룹 이름과 순서 |
 | Finalize | 그룹 요약, 결과 파일 쓰기, zip 내려받기 |
 
 ## 설정 규칙

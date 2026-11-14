@@ -22,7 +22,7 @@ python -m venv .venv
 
 ```powershell
 # 화면
-.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+.\.venv\Scripts\python.exe -m streamlit run gui/Run.py
 
 # 명령줄: 분석하고 data/results/<배치 이름>/ 에 결과 파일 쓰기
 .\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch

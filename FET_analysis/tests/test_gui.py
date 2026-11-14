@@ -13,14 +13,12 @@ from fet_core.synth import transfer_curve
 from tests.conftest import write_b1500_csv
 
 GUI = Path(__file__).resolve().parents[1] / "gui"
-PAGES = ["Main.py", "pages/1_Run.py", "pages/2_Review.py", "pages/3_Device_Viewer.py", "pages/4_Compare.py", "pages/5_Finalize.py"]
+PAGES = ["Run.py", "pages/1_Devices.py", "pages/2_Compare.py", "pages/3_Finalize.py"]
 SECTIONS = {
-    "Main.py": ["1) Run"],
-    "pages/1_Run.py": ["1) Run"],
-    "pages/2_Review.py": ["1) Run", "2) Filters"],
-    "pages/3_Device_Viewer.py": ["1) Run", "2) Filters", "3) Device"],
-    "pages/4_Compare.py": ["1) Run", "2) Filters", "3) Groups"],
-    "pages/5_Finalize.py": ["1) Run"],
+    "Run.py": ["1) Batch"],
+    "pages/1_Devices.py": ["1) Batch", "2) Filters"],
+    "pages/2_Compare.py": ["1) Batch", "2) Filters"],
+    "pages/3_Finalize.py": ["1) Batch"],
 }
 
 
@@ -65,7 +63,7 @@ def test_page_runs_without_any_batch(tmp_path: Path, monkeypatch, page: str) -> 
 
 
 def test_run_page_stores_batch_geometry(data_root: Path) -> None:
-    at = run_page("pages/1_Run.py")
+    at = run_page("Run.py")
     width = next(w for w in at.number_input if w.label.startswith("Channel width"))
     width.set_value(20.0)
     next(b for b in at.button if b.label == "Apply").click()
@@ -76,21 +74,57 @@ def test_run_page_stores_batch_geometry(data_root: Path) -> None:
     assert review.vth_subtract_half_vds is False
 
 
-def test_device_viewer_saves_a_decision(data_root: Path) -> None:
-    at = run_page("pages/3_Device_Viewer.py")
-    assert len(at.metric) >= 5 and at.metric[0].value in {"valid", "attention", "invalid"}
-    decision = next(r for r in at.radio if r.label == "Decision for this sweep")
-    decision.set_value("rejected")
-    at.run()
-    next(b for b in at.button if b.label == "Save decision").click()
+def test_devices_decision_is_saved_at_once_and_moves_on(data_root: Path) -> None:
+    at = run_page("pages/1_Devices.py")
+    listed = at.dataframe[0].value
+    # sweeps that need a look come first, and the first row is the one drawn
+    assert listed["status"].iloc[0] != "✓" and listed[""].tolist()[0] == "▶"
+    first = at.session_state["fet_devices_selected"]
+    next(b for b in at.button if b.label == "Reject").click()
     at.run()
     assert [str(e.value) for e in at.exception] == []
     review = load_review(data_root / "results" / "demo" / "review.json")
-    assert list(review.decisions.values()) == ["rejected"]
+    assert review.decisions == {first: "rejected"}
+    assert at.session_state["fet_devices_selected"] != first  # moved to the next sweep
+
+    next(b for b in at.button if b.label == "Previous").click()
+    at.run()
+    assert at.session_state["fet_devices_selected"] == first
+    note = next(t for t in at.text_input if t.label == "Note")
+    note.set_value("probe slipped")
+    at.run()
+    next(b for b in at.button if b.label == "Clear").click()
+    at.run()
+    review = load_review(data_root / "results" / "demo" / "review.json")
+    assert review.decisions == {} and review.notes == {first: "probe slipped"}
+
+
+def test_devices_gallery_draws_every_device(data_root: Path) -> None:
+    at = run_page("pages/1_Devices.py")
+    at.radio[0].set_value("Gallery")
+    at.run()
+    assert [str(e.value) for e in at.exception] == []
+    assert not at.dataframe  # the list belongs to the detail view
+
+
+def test_filters_are_shared_between_pages(data_root: Path) -> None:
+    at = run_page("pages/1_Devices.py")
+    status = next(m for m in at.multiselect if m.label == "Status")
+    assert set(status.value) == set(status.options)  # nothing is hidden by default
+    keys = {m.label: m.key for m in at.multiselect}
+    other = run_page("pages/2_Compare.py")
+    assert {m.label: m.key for m in other.sidebar.multiselect} == keys
+
+
+def test_compare_saves_group_names_at_once(data_root: Path) -> None:
+    at = run_page("pages/2_Compare.py")
+    assert [str(e.value) for e in at.exception] == []
+    assert [t.label for t in at.tabs] == ["Statistics", "Overlay", "Summary table", "Group names and order"]
+    assert not any(b.label.startswith("Save") for b in at.button)
 
 
 def test_finalize_writes_the_result_files(data_root: Path) -> None:
-    at = run_page("pages/5_Finalize.py")
+    at = run_page("pages/3_Finalize.py")
     next(b for b in at.button if b.label == "Write result files").click()
     at.run()
     assert [str(e.value) for e in at.exception] == []

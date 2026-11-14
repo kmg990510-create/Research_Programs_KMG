@@ -46,12 +46,13 @@ Research_Programs_KMG/
 ### 페이지 순서
 
 모든 프로그램이 같은 흐름을 쓴다. 해당 없는 단계는 생략하되 순서는 바꾸지 않는다.
+검토할 항목이 수십 개 수준이면 Review와 Viewer를 한 페이지로 합친다: 목록과 선택한 항목의 그래프·결정을 나란히 둔다 (FET `Devices`).
 
 | 단계 | 하는 일 | MoS2 | FET |
 | --- | --- | --- | --- |
 | Run | 데이터 선택, 설정, 분석 실행 | `1_Run_Analysis` | 파일 불러오기, 치수·분석 설정 |
-| Review | 의심 항목 확인, 수정·제외 | `2_Flagged_Spectra` | 경고가 있는 소자 목록 |
-| Viewer | 개별 항목 상세 | `3_All_Spectra_Viewer`, `4_Map_Viewer` | 소자별 gm / Vth / SS 진단 |
+| Review | 의심 항목 확인, 수정·제외 | `2_Flagged_Spectra` | `Devices` (목록 + 그래프 + 결정) |
+| Viewer | 개별 항목 상세 | `3_All_Spectra_Viewer`, `4_Map_Viewer` | `Devices` 안의 Detail / Gallery 보기 |
 | Compare | 그룹·시료 비교 | `5_Model_Comparison`, `6_Sample_Comparison` | 그룹 overlay, boxplot |
 | Finalize | 확정, 내보내기 | `7_Finalize` | export |
 
@@ -59,6 +60,9 @@ Research_Programs_KMG/
 
 - 사이드바에서는 데이터·결과를 고르고, 본문에서는 결과를 본다.
 - 사이드바는 번호 붙은 접이식 구획으로만 구성한다: `1) Report`, `2) Filters`, 그다음 페이지별 구획. 구획 밖에 입력란을 두지 않는다 (MoS2 `report_loader.sidebar_section`).
+- 필터 선택은 페이지를 옮겨도 유지되고, 기본값은 아무것도 숨기지 않는다.
+- 판단(승인·제외)은 근거가 되는 그래프와 같은 화면에서 한다.
+- 다시 계산할 필요가 없는 수정(결정, 메모, 이름)은 즉시 저장한다. 다시 계산해야 하는 입력만 `Apply` 버튼을 쓴다.
 - 효과가 없는 입력란은 숨기지 않고 비활성화한다.
 - 기본값만으로 분석이 실행되어야 한다. 자주 안 쓰는 설정은 `Advanced` expander에 넣는다.
 - 분석 결과에 영향을 주는 입력(FET의 `W`, `L`, `t_ox`, `eps_r` 등)은 Run 단계에서 항상 보이고 결과에 기록된다.
