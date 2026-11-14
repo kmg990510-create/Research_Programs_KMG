@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from fet_core.analysis.results import SweepResult
 from fet_core.analysis.sweeps import Branch
@@ -240,4 +241,57 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
     apply_paper_layout(fig, height=height)
     fig.update_xaxes(tickmode="array", tickvals=list(range(len(groups))), ticktext=groups, range=[-0.6, len(groups) - 0.4], ticks="")
     fig.update_yaxes(title_text=metric_label(metric), exponentformat="power")
+    return fig
+
+
+STATUS_COLORS = {"valid": INK, "attention": "#E69F00", "invalid": MARK}  # in order of severity
+
+
+def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) -> go.Figure:
+    """Every device as a small log-scale panel, coloured by status.
+
+    ``panels``: dicts with ``title`` and ``curves``; a curve has ``key``, ``label``,
+    ``vg``, ``current`` (A), ``status`` and ``rejected``. ``trace.meta`` is the
+    curve key, and traces are added in panel order, so a click maps back to a sweep.
+    """
+    severity = list(STATUS_COLORS)
+    columns = max(1, min(columns, len(panels)))
+    rows = -(-len(panels) // columns)
+    fig = make_subplots(
+        rows=rows,
+        cols=columns,
+        shared_xaxes="all",
+        shared_yaxes="all",
+        subplot_titles=[panel["title"] for panel in panels],
+        horizontal_spacing=0.012,
+        vertical_spacing=min(0.08, 0.5 / rows),
+    )
+    for index, panel in enumerate(panels):
+        worst = "valid"
+        for curve in panel["curves"]:
+            rejected = bool(curve["rejected"])
+            if severity.index(curve["status"]) > severity.index(worst):
+                worst = curve["status"]
+            fig.add_trace(
+                go.Scatter(
+                    x=curve["vg"],
+                    y=_positive(np.abs(np.asarray(curve["current"], dtype=float))),
+                    mode="lines+markers",  # a click is reported only for a trace that has markers
+                    marker={"size": 6, "opacity": 0},
+                    meta=curve["key"],
+                    line={"color": MUTED if rejected else STATUS_COLORS[curve["status"]], "width": 1.6, "dash": "dot" if rejected else "solid"},
+                    hovertemplate=f"{panel['title']} · {curve['label']}<br>Vg=%{{x}} V<br>%{{y:.3e}} A<extra></extra>",
+                    showlegend=False,
+                ),
+                row=index // columns + 1,
+                col=index % columns + 1,
+            )
+        fig.layout.annotations[index].update(font={"size": 12, "color": STATUS_COLORS[worst]})
+    apply_paper_layout(fig, font_size=11, height=row_height * rows + 90)
+    fig.update_yaxes(type="log", exponentformat="power")
+    fig.update_xaxes(showticklabels=True)
+    # hoverdistance -1: a click anywhere in a panel picks the nearest point of that panel
+    fig.update_layout(margin={"l": 64, "r": 10, "t": 40, "b": 54}, dragmode="zoom", hovermode="closest", hoverdistance=-1)
+    fig.add_annotation(text="Vg (V)", xref="paper", yref="paper", x=0.5, y=0, yshift=-40, showarrow=False, font={"size": 13})
+    fig.add_annotation(text="|Id| (A)", xref="paper", yref="paper", x=0, y=0.5, xshift=-54, textangle=-90, showarrow=False, font={"size": 13})
     return fig

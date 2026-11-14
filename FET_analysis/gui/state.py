@@ -77,7 +77,7 @@ def _cached_run(folder: str, signature: tuple, analysis_inputs: str) -> Run:
 def choose_batch() -> str | None:
     """Sidebar section 1: pick the batch. Returns None when there is none yet."""
     batches = list_batches()
-    with sidebar_section("1) Run"):
+    with sidebar_section("1) Batch"):
         if not batches:
             st.caption("No batch yet. Add measurement files on the Run page.")
             return None
@@ -109,20 +109,21 @@ def active() -> tuple[str, Run, ReviewState, pd.DataFrame]:
     return batch, run, review, frame
 
 
-def filters(frame: pd.DataFrame, groups: list[str], default_statuses: tuple[str, ...] = ("valid", "attention")) -> pd.DataFrame:
-    """Sidebar section 2: sweep direction, status, group, rejected rows."""
+def filters(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
+    """Sidebar section 2: sweep direction, status, group, rejected rows. The choice is shared by every page."""
     sweeps = list(dict.fromkeys(frame["sweep"]))
     statuses = [s for s in STATUS_ORDER if s in set(frame["status"])]
     with sidebar_section("2) Filters"):
-        chosen_sweeps = st.multiselect("Sweep direction", sweeps, default=sweeps[:1], key="fet_filter_sweeps")
-        chosen_statuses = st.multiselect(
-            "Status",
-            statuses,
-            default=[s for s in default_statuses if s in statuses] or statuses,
-            key=f"fet_filter_status_{'_'.join(default_statuses)}",
+        chosen_sweeps = st.multiselect(
+            "Sweep direction",
+            sweeps,
+            default=sweeps[:1],
+            key="fet_filter_sweeps",
+            help="Each sweep direction of a measurement is one row with its own values and decision.",
         )
+        chosen_statuses = st.multiselect("Status", statuses, default=statuses, key="fet_filter_status")
         chosen_groups = st.multiselect("Groups", groups, default=groups, key="fet_filter_groups")
-        show_rejected = st.checkbox("Show rejected sweeps", value=False, key="fet_filter_rejected")
+        show_rejected = st.checkbox("Show rejected sweeps", value=True, key="fet_filter_rejected")
     mask = frame["sweep"].isin(chosen_sweeps) & frame["status"].isin(chosen_statuses) & frame["group_display"].isin(chosen_groups)
     if not show_rejected:
         mask &= frame["decision"] != "rejected"

@@ -1,11 +1,11 @@
-"""Run: choose or upload a batch, set device geometry and method options."""
+"""Run (entry page): choose or upload a batch, set device geometry and method options."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-_FET_ROOT = Path(__file__).resolve().parents[2]
+_FET_ROOT = Path(__file__).resolve().parents[1]
 for _path in (_FET_ROOT, _FET_ROOT.parent):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
@@ -13,14 +13,18 @@ for _path in (_FET_ROOT, _FET_ROOT.parent):
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from fet_core import __version__  # noqa: E402
 from fet_core.pipeline import effective_geometry, results_frame, status_counts  # noqa: E402
 from fet_core.report.export import warnings_frame  # noqa: E402
 from fet_core.review import GEOMETRY_FIELDS, run_key  # noqa: E402
 from gui.state import ACTIVE_BATCH_KEY, choose_batch, get_review, load_run, put_review, raw_root, safe_batch_name  # noqa: E402
 
-st.set_page_config(page_title="Run · FET Analysis", layout="wide")
+st.set_page_config(page_title="FET Analysis · Run", layout="wide")
 st.title("Run")
-st.caption("One folder under data/raw is one batch. The analysis runs when a batch is chosen or its settings change.")
+st.caption(
+    f"FET Analysis {__version__} · One folder under data/raw is one batch. The analysis runs when a batch is chosen or its settings change. "
+    "Next: **Devices** to check the sweeps, **Compare** for the groups, **Finalize** to write the result files."
+)
 
 batch = choose_batch()
 

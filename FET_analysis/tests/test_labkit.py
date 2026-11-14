@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from gui.components.figures import metric_figure, overlay_figure  # noqa: E402
+from gui.components.figures import STATUS_COLORS, gallery_figure, metric_figure, overlay_figure  # noqa: E402
 from labkit.plot_theme import CATEGORICAL, FONT_FAMILY, SURFACE, apply_paper_layout, categorical_colors, export_config  # noqa: E402
 
 
@@ -57,3 +57,21 @@ def test_comparison_figures() -> None:
     hollow = [t for t in stats.data if t.type == "scatter" and t.marker.symbol == "circle-open"]
     assert [list(t.y) for t in hollow] == [[50.0]]
     assert list(stats.layout.xaxis.ticktext) == ["P", "T"]
+
+
+def test_gallery_figure_maps_traces_back_to_sweeps() -> None:
+    def curve(key: str, status: str, rejected: bool = False) -> dict:
+        return {"key": key, "label": "forward", "vg": [0, 1, 2], "current": [1e-12, -1e-9, 1e-6], "status": status, "rejected": rejected}
+
+    panels = [
+        {"title": "a", "curves": [curve("a|f", "valid"), curve("a|b", "attention")]},
+        {"title": "b", "curves": [curve("b|f", "invalid")]},
+        {"title": "c", "curves": [curve("c|f", "valid", rejected=True)]},
+    ]
+    fig = gallery_figure(panels, columns=2)
+    assert [t.meta for t in fig.data] == ["a|f", "a|b", "b|f", "c|f"]  # trace order = click order
+    assert all("markers" in t.mode for t in fig.data)  # a click is only reported for traces with markers
+    assert fig.layout.hoverdistance == -1 and fig.layout.yaxis.type == "log"
+    titles = {a.text: a.font.color for a in fig.layout.annotations if a.text in {"a", "b", "c"}}
+    assert titles == {"a": STATUS_COLORS["attention"], "b": STATUS_COLORS["invalid"], "c": STATUS_COLORS["valid"]}  # worst status of the panel
+    assert fig.data[3].line.dash == "dot" and fig.data[0].line.dash == "solid"

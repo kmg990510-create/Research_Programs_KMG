@@ -99,3 +99,21 @@
   - 그래프에서 구간을 직접 고르는 기능과 웨이퍼 위치 맵은 없다 (5단계).
   - Device Viewer에 gm 곡선 그림은 없다. 접선과 gm 창만 표시한다.
   - 업로드는 `.csv`와 `.xls` 개별 파일만 받는다 (zip 미지원).
+
+## 화면 개편: Review + Device Viewer → Devices (2026-11-14)
+
+- 이유: 판단하는 표(Review)와 근거가 되는 그림(Device Viewer)이 다른 페이지에 있었다. 배치 하나가 소자 10~50개라 나눌 이유가 없었다.
+- 페이지: `Run`(진입 페이지, 이전 Main과 Run을 합침) / `Devices` / `Compare` / `Finalize`.
+- 파일: `gui/Run.py`, `gui/pages/1_Devices.py`, `2_Compare.py`, `3_Finalize.py`, `gui/components/values.py`, `figures.py`(`gallery_figure`), `gui/state.py`, `tests/test_gui.py`. 지운 것: `gui/Main.py`, `pages/2_Review.py`, `pages/3_Device_Viewer.py`.
+- 바뀐 점:
+  1. Devices Detail: 왼쪽 목록에서 행을 누르면 오른쪽 그림이 바뀐다. `Approve` / `Reject`는 즉시 저장하고 다음 sweep으로 넘어간다. 메모는 Enter에 저장한다.
+  2. Devices Gallery: 모든 소자를 작은 log 그림 격자로 그린다 (검정 valid, 주황 attention, 빨강 invalid, 회색 점선 rejected). 패널을 누르면 Detail로 간다.
+  3. Sweep 선택 라디오를 없앴다. 사이드바 필터에서 고른 방향마다 목록에 한 행이 생긴다.
+  4. Compare: 지표 여러 개를 2열로 한 번에 그린다. 그룹 이름·순서 표를 사이드바에서 본문 탭으로 옮기고 즉시 저장한다. Overlay는 통계에 드는 sweep만 그린다.
+  5. 사이드바: `1) Run` → `1) Batch`. 페이지별 3번 구획을 없앴다. 필터는 모든 페이지가 같은 상태를 쓰고 기본값은 전부 표시다.
+- Streamlit에서 확인한 것:
+  - `st.dataframe` / `st.plotly_chart`의 `on_select` 콜백은 `args`를 받지 않는다. `functools.partial`을 쓴다.
+  - 선 그림은 marker가 없으면 클릭 선택이 전달되지 않는다. 투명 marker를 넣고 `hoverdistance=-1`로 두면 패널 어디를 눌러도 가장 가까운 점이 선택된다.
+  - 선택 상태를 코드로 바꿀 수 없어서, 선택을 옮길 때 위젯 key의 번호를 올려 이전 선택을 버리고 목록의 `▶` 열로 현재 행을 표시한다.
+- 검증: `pytest` 전체 통과 (아래 숫자는 실제 배치 4개가 있을 때). 브라우저에서 실제 배치 `260916`으로 Devices Detail, 목록 행 클릭, Gallery 패널 클릭, Reject 저장 후 다음 행 이동, Clear를 눌러 확인했다. Compare는 지표 4개가 2x2로 그려지는 것을 페이지 구조로 확인했다 (스크린샷은 실패).
+- 확인하지 못한 것: Compare의 그룹 이름·순서 즉시 저장은 브라우저에서 눌러 보지 않았다. 메모 저장은 자동 테스트로만 확인했다. Run과 Finalize는 내용이 바뀌지 않아 다시 보지 않았다.
