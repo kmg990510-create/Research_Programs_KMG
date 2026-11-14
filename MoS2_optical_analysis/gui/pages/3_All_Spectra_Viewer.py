@@ -529,13 +529,27 @@ else:
     except (TypeError, ValueError):
         auto_min, auto_max = fallback_x_min, fallback_x_max
 
-xcols = st.columns([1, 1, 2])
+has_si_region = modality == "raman" and bool(x_for_plot) and max(x_for_plot) >= 510.0
+xcols = st.columns([1, 1, 1, 1] if has_si_region else [1, 1, 2])
 x_step = 0.01 if modality == "pl" else 1.0
 x_min = xcols[0].number_input("X min", value=float(auto_min), step=x_step)
 x_max = xcols[1].number_input("X max", value=float(auto_max), step=x_step)
 show_full = xcols[2].checkbox("Show full spectrum", value=False)
+show_si_520 = (
+    xcols[3].checkbox("Si 520 cm⁻¹ check", value=False, help="Zoom to 510–530 cm⁻¹ to inspect Si peak calibration")
+    if has_si_region
+    else False
+)
 
-if show_full:
+if show_si_520:
+    x_min = max(float(min(x_for_plot)), 505.0)
+    x_max = min(float(max(x_for_plot)), 535.0)
+    st.caption(
+        f"Si 520.7 cm⁻¹ calibration: offset = {display_row.get('calibration_offset', 'NA')} cm⁻¹ | "
+        f"success = {display_row.get('calibration_success', 'NA')} | "
+        f"si_area = {display_row.get('si_area', 'NA')}"
+    )
+elif show_full:
     x_min = min(x_for_plot)
     x_max = max(x_for_plot)
 
@@ -769,16 +783,35 @@ if isinstance(manual_state, dict):
     after_row = manual_state.get("after_row", {})
     if isinstance(after_row, dict) and after_row:
         st.markdown("#### Manual Refit Preview")
+        refit_payload_saved = manual_state.get("refit_payload", {})
+        refit_warnings = (
+            refit_payload_saved.get("warnings", [])
+            if isinstance(refit_payload_saved, dict)
+            else []
+        )
+        if isinstance(refit_warnings, list) and refit_warnings:
+            st.caption(f"Refit notes: {', '.join(str(w) for w in refit_warnings)}")
+
+        if modality == "pl":
+            has_ratio = (
+                display_row.get("a_minus_a0_area_ratio") is not None
+                or after_row.get("a_minus_a0_area_ratio") is not None
+            )
+            sec_label = "A-/A0 Area" if has_ratio else "PL Peak (eV)"
+            sec_key = "a_minus_a0_area_ratio" if has_ratio else "pl_position"
+        else:
+            sec_label = "Delta"
+            sec_key = "delta_e2g_a1g"
 
         before_metric_cols = st.columns(4)
         before_metric_cols[0].metric("Model (before)", str(display_row.get("selected_model", "NA")))
-        before_metric_cols[1].metric("Delta (before)", str(display_row.get("delta_e2g_a1g", "NA")))
+        before_metric_cols[1].metric(f"{sec_label} (before)", str(display_row.get(sec_key, "NA")))
         before_metric_cols[2].metric("RMSE (before)", str(display_row.get("rmse", "NA")))
         before_metric_cols[3].metric("AIC (before)", str(display_row.get("aic", "NA")))
 
         after_metric_cols = st.columns(4)
         after_metric_cols[0].metric("Model (after)", str(after_row.get("selected_model", "NA")))
-        after_metric_cols[1].metric("Delta (after)", str(after_row.get("delta_e2g_a1g", "NA")))
+        after_metric_cols[1].metric(f"{sec_label} (after)", str(after_row.get(sec_key, "NA")))
         after_metric_cols[2].metric("RMSE (after)", str(after_row.get("rmse", "NA")))
         after_metric_cols[3].metric("AIC (after)", str(after_row.get("aic", "NA")))
 
@@ -838,8 +871,20 @@ with st.expander("Filtered Rows Table (advanced)", expanded=False):
             "map_id",
             "map_x",
             "map_y",
+            "temperature_k",
+            "treatment_label",
             "selected_model",
             "fit_status",
+            "pl_position",
+            "pl_fwhm",
+            "a_minus_position",
+            "a0_position",
+            "a_minus_a0_energy_split",
+            "a_minus_a0_area_ratio",
+            "a0_fraction_of_a_total",
+            "b_position",
+            "i1_position",
+            "i2_position",
             "e2g_position",
             "a1g_position",
             "delta_e2g_a1g",
@@ -849,6 +894,7 @@ with st.expander("Filtered Rows Table (advanced)", expanded=False):
             "bic",
             "attention_score",
             "needs_attention",
+            "review_decision",
         ]
         if c in work_df.columns
     ]

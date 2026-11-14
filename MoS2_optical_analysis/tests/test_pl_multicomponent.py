@@ -137,3 +137,154 @@ def test_pl_summary_alias_is_not_double_counted_in_refit_synthesis() -> None:
         without_alias.pop(key)
 
     assert np.allclose(_synthesize_fitted_y(x, with_alias), _synthesize_fitted_y(x, without_alias))
+
+
+def test_pl_manual_and_auto_refit_recompute_derived_metrics_and_honor_fixed_peaks() -> None:
+    from fitting.mos2_core.review.refit_api import (
+        ManualPeakOverride,
+        ManualRefitRequest,
+        SingleSpectrumRefitAPI,
+    )
+
+    x = np.linspace(1.60, 2.05, 400)
+    y = (
+        5.0
+        + 30.0 * np.exp(-0.5 * ((x - 1.845) / 0.032) ** 2)
+        + 55.0 * np.exp(-0.5 * ((x - 1.885) / 0.024) ** 2)
+    )
+    api = SingleSpectrumRefitAPI()
+
+    manual_req = ManualRefitRequest(
+        spectrum_id="pl_spec_1",
+        modality="pl",
+        source_file="",
+        model_name="pl_a_doublet_pvoigt",
+        x=x.tolist(),
+        y=y.tolist(),
+        peaks=[
+            ManualPeakOverride(peak="a_minus", center=1.842, height=180.0, fwhm=0.068, fraction=0.3),
+            ManualPeakOverride(peak="a0", center=1.886, height=400.0, fwhm=0.052, fraction=0.3),
+        ],
+    )
+    manual_res = api.run_manual_refit(manual_req)
+    assert manual_res.status == "ok"
+    assert abs(manual_res.params["a_minus_a0_energy_split"] - (1.886 - 1.842)) < 1e-6
+    assert manual_res.params["a_minus_a0_area_ratio"] > 0
+    assert 0.0 < manual_res.params["a0_fraction_of_a_total"] < 1.0
+    assert manual_res.params["dominant_component"] == "a0"
+    assert abs(manual_res.params["pl_position"] - 1.886) < 1e-6
+
+    auto_req = ManualRefitRequest(
+        spectrum_id="pl_spec_1",
+        modality="pl",
+        source_file="",
+        model_name="pl_a_doublet_pvoigt",
+        x=x.tolist(),
+        y=y.tolist(),
+        peaks=[
+            ManualPeakOverride(
+                peak="a_minus",
+                center=1.845,
+                height=200.0,
+                fwhm=0.064,
+                fraction=0.25,
+                fixed_center=True,
+            ),
+            ManualPeakOverride(
+                peak="a0",
+                center=1.885,
+                height=350.0,
+                fwhm=0.050,
+                fraction=0.25,
+                fixed_center=False,
+            ),
+        ],
+    )
+    auto_res = api.run_auto_refit(auto_req)
+    assert auto_res.status == "ok"
+    assert "autofit_fallback_to_default_candidate" not in auto_res.warnings
+    assert abs(auto_res.params["a_minus_position"] - 1.845) < 1e-5
+    assert auto_res.params["a_minus_a0_energy_split"] > 0
+
+
+def test_manual_overrides_recompute_payload_counts_and_map_summary(tmp_path) -> None:
+    import json
+    from fitting.mos2_core.review.manual_overrides import (
+        apply_manual_overrides_to_payload,
+        upsert_manual_override,
+    )
+
+    report_dir = tmp_path / "raman" / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_json = report_dir / "run_sync_fit_report.json"
+    base_payload = {
+        "run_id": "run_sync",
+        "modality": "raman",
+        "counts": {"qc_total": 2, "flagged": 1, "decisions": 0, "accepted": 2, "parameters": 1, "maps": 1},
+        "fit_failure_count": 1,
+        "attention_count": 1,
+        "invalid_count": 1,
+        "map_summary": [{"n_spectra": 1, "mean_delta_e2g_a1g": 20.0}],
+        "spectra": [
+            {
+                "spectrum_id": "s1",
+                "map_id": "m1",
+                "fit_status": "valid",
+                "needs_attention": False,
+                "reviewed": False,
+                "review_decision": "auto",
+                "e2g_position": 384.0,
+                "a1g_position": 404.0,
+                "delta_e2g_a1g": 20.0,
+            },
+            {
+                "spectrum_id": "s2",
+                "map_id": "m1",
+                "fit_status": "invalid",
+                "needs_attention": True,
+                "reviewed": False,
+                "review_decision": "auto",
+                "e2g_position": 380.0,
+                "a1g_position": 400.0,
+                "delta_e2g_a1g": 20.0,
+            },
+        ],
+    }
+    report_json.write_text(json.dumps(base_payload), encoding="utf-8")
+
+    # 1) Reject s2 -> accepted becomes 1, flagged becomes 0, invalid_count becomes 0
+    upsert_manual_override(
+        report_json=report_json,
+        spectrum_id="s2",
+        action_type="review_decision",
+        selected_model="peak_2_model",
+        review_decision="rejected",
+    )
+    proj1 = apply_manual_overrides_to_payload(base_payload, report_json)
+    assert proj1["counts"]["accepted"] == 1
+    assert proj1["counts"]["flagged"] == 0
+    assert proj1["invalid_count"] == 0
+    assert proj1["map_summary"][0]["n_spectra"] == 1
+
+    # 2) Manual refit s2 -> becomes valid, included in map_summary with updated delta_e2g_a1g
+    upsert_manual_override(
+        report_json=report_json,
+        spectrum_id="s2",
+        action_type="manual_refit",
+        selected_model="peak_2_model",
+        params={"e2g_position": 383.0, "a1g_position": 405.0},
+        review_decision="refit",
+    )
+    proj2 = apply_manual_overrides_to_payload(base_payload, report_json)
+    assert proj2["counts"]["accepted"] == 2
+    assert proj2["counts"]["parameters"] == 2
+    assert proj2["invalid_count"] == 0
+    assert proj2["map_summary"][0]["n_spectra"] == 2
+    assert abs(proj2["map_summary"][0]["mean_delta_e2g_a1g"] - 21.0) < 1e-6
+
+
+def test_map_figure_units_include_strain_and_doping() -> None:
+    from gui.components.map_figure import default_unit
+
+    assert default_unit("strain_eps_pct", "raman") == "%"
+    assert default_unit("doping_n_1e13_cm2", "raman") == "10¹³ cm⁻²"

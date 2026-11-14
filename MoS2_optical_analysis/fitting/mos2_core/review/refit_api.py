@@ -8,16 +8,20 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
-from lmfit.models import LinearModel, PseudoVoigtModel
+from lmfit.models import GaussianModel, LinearModel, PseudoVoigtModel
 
 from ..core.default_stages import build_default_context
 from ..core.runtime_paths import raman_config_dir
 from ..fitting import LmfitRamanModelEnsembleFitting
 from ..fitting.raman_lmfit import (
+    PLComponentSpec,
     _build_n_peak_spec,
+    _default_baseline_windows_from_roi,
     _estimate_linear_baseline_edges,
     _height_guess_to_lmfit_area,
+    _pl_component_key,
     _sigma_bounds_for_peak,
+    _window_peak_height,
 )
 from ..io import parse_raman_txt
 
@@ -264,6 +268,60 @@ def _synthesize_fitted_y(x: np.ndarray, params: Mapping[str, Any], modality: str
     return y_fit
 
 
+def _recompute_derived_params(params: dict[str, Any], modality: str) -> None:
+    if "e2g_position" in params and "a1g_position" in params:
+        e2g = _to_float(params.get("e2g_position"))
+        a1g = _to_float(params.get("a1g_position"))
+        if e2g is not None and a1g is not None:
+            params["delta_e2g_a1g"] = float(a1g - e2g)
+
+    if modality != "pl":
+        return
+
+    area_a_minus = _to_float(params.get("a_minus_area"))
+    area_a0 = _to_float(params.get("a0_area"))
+    area_b = _to_float(params.get("b_area"))
+    area_i1 = _to_float(params.get("i1_area"))
+    area_i2 = _to_float(params.get("i2_area"))
+    pos_a_minus = _to_float(params.get("a_minus_position"))
+    pos_a0 = _to_float(params.get("a0_position"))
+
+    if area_a_minus is not None and area_a0 is not None:
+        a_total = float(area_a_minus + area_a0)
+        params["a_total_area"] = a_total
+        if abs(a_total) > 1.0e-12:
+            if abs(float(area_a0)) > max(1.0e-12, abs(a_total) * 1.0e-4):
+                params["a_minus_a0_area_ratio"] = float(area_a_minus / area_a0)
+            params["a0_fraction_of_a_total"] = float(area_a0 / a_total)
+            if area_b is not None:
+                params["b_to_a_total_area_ratio"] = float(area_b / a_total)
+            defect_total = float((area_i1 or 0.0) + (area_i2 or 0.0))
+            params["defect_total_area"] = defect_total
+            params["defect_to_a_total_area_ratio"] = float(defect_total / a_total)
+
+    if pos_a_minus is not None and pos_a0 is not None:
+        params["a_minus_a0_energy_split"] = float(pos_a0 - pos_a_minus)
+
+    pl_comp_candidates: list[tuple[str, float, float]] = []
+    for comp in ("i1", "i2", "a_minus", "a0", "b"):
+        c_pos = _to_float(params.get(f"{comp}_position"))
+        c_h = _to_float(params.get(f"{comp}_height"))
+        if c_pos is not None and c_h is not None:
+            pl_comp_candidates.append((comp, float(c_pos), float(c_h)))
+
+    if pl_comp_candidates:
+        dom_key, dom_pos, dom_h = max(pl_comp_candidates, key=lambda t: t[2])
+        params["dominant_component"] = dom_key
+        params["pl_position"] = float(dom_pos)
+        params["pl_height"] = float(dom_h)
+        params["peak_position"] = float(dom_pos)
+        params["peak_amplitude"] = float(dom_h)
+        for suffix in ("fwhm", "area", "sigma", "fraction"):
+            src = params.get(f"{dom_key}_{suffix}")
+            if src is not None:
+                params[f"pl_{suffix}"] = src
+
+
 class SingleSpectrumRefitAPI:
     """Single-spectrum manual refit adapter reused by Streamlit and desktop UI."""
 
@@ -311,13 +369,14 @@ class SingleSpectrumRefitAPI:
             if peak not in {"i1", "i2", "a_minus", "a0", "b", "pl", "lo", "e2g", "a1g", "zo", "la"}:
                 warnings.append(f"ignored_unknown_peak:{peak}")
                 continue
+            peak_profile = str(params.get(f"{peak}_line_profile", line_profile)).strip().lower()
             if peak_row.center is not None:
                 params[f"{peak}_position"] = float(peak_row.center)
             if peak_row.height is not None:
                 params[f"{peak}_height"] = float(max(peak_row.height, 0.0))
             if peak_row.fwhm is not None:
                 params[f"{peak}_fwhm"] = float(max(peak_row.fwhm, 1.0e-6))
-                sigma = _fwhm_to_sigma(line_profile=line_profile, fwhm=float(peak_row.fwhm))
+                sigma = _fwhm_to_sigma(line_profile=peak_profile, fwhm=float(peak_row.fwhm))
                 params[f"{peak}_sigma"] = sigma
             if peak_row.fraction is not None:
                 params[f"{peak}_fraction"] = float(np.clip(peak_row.fraction, 0.0, 1.0))
@@ -333,11 +392,7 @@ class SingleSpectrumRefitAPI:
                     fraction_guess=float(fraction),
                 )
 
-        if "e2g_position" in params and "a1g_position" in params:
-            e2g = _to_float(params.get("e2g_position"))
-            a1g = _to_float(params.get("a1g_position"))
-            if e2g is not None and a1g is not None:
-                params["delta_e2g_a1g"] = float(a1g - e2g)
+        _recompute_derived_params(params, modality)
 
         y_fit = _synthesize_fitted_y(x_arr, params, modality)
         base_candidate.params = params
@@ -397,6 +452,16 @@ class SingleSpectrumRefitAPI:
                 peak_rows=request.peaks,
                 parameter_overrides=request.parameter_overrides,
             )
+        elif modality == "pl" and request.model_name in cfg.pl_model_components:
+            auto_candidate = self._fit_pl_candidate_with_initial(
+                fitter=fitter,
+                model_name=request.model_name,
+                x_full=x_arr,
+                y_corr=y_arr,
+                cfg=cfg,
+                peak_rows=request.peaks,
+                parameter_overrides=request.parameter_overrides,
+            )
         else:
             warnings.append("autofit_fallback_to_default_candidate")
             auto_candidate = fitter._fit_candidate(  # noqa: SLF001
@@ -408,7 +473,15 @@ class SingleSpectrumRefitAPI:
                 modality=modality,
             )
 
+        fitter._recompute_metrics_on_window(  # noqa: SLF001
+            auto_candidate,
+            x_full=x_arr,
+            y_true=y_arr,
+            x_min=cfg.compare_x_min,
+            x_max=cfg.compare_x_max,
+        )
         params = dict(auto_candidate.params)
+        _recompute_derived_params(params, modality)
         y_fit = np.asarray(auto_candidate.fitted_y, dtype=float)
         if y_fit.size != x_arr.size:
             y_fit = _synthesize_fitted_y(x_arr, params, modality)
@@ -568,6 +641,184 @@ class SingleSpectrumRefitAPI:
             y_pred_full=np.asarray(y_pred_full, dtype=float),
             peak_labels=spec.peak_labels,
             prefix_for_label=prefix_for_label,
+        )
+
+    def _fit_pl_candidate_with_initial(
+        self,
+        *,
+        fitter: LmfitRamanModelEnsembleFitting,
+        model_name: str,
+        x_full: np.ndarray,
+        y_corr: np.ndarray,
+        cfg: Any,
+        peak_rows: list[ManualPeakOverride],
+        parameter_overrides: Mapping[str, Any],
+    ) -> Any:
+        component_keys = cfg.pl_model_components.get(model_name)
+        if not component_keys:
+            raise ValueError(f"PL model {model_name} is not defined in pl.fit.model_components")
+
+        mask = fitter._mask_roi(x_full, cfg.x_min, cfg.x_max)  # noqa: SLF001
+        x_fit = x_full[mask]
+        y_fit = y_corr[mask]
+        if x_fit.size < cfg.min_roi_points:
+            raise ValueError(f"Insufficient ROI points for PL model {model_name}")
+
+        selected_components: list[PLComponentSpec] = []
+        for key in component_keys:
+            spec = cfg.pl_components.get(_pl_component_key(key))
+            if spec is not None:
+                selected_components.append(spec)
+        if not selected_components:
+            raise ValueError(f"No configured PL components for model {model_name}")
+
+        peak_overrides = {
+            _pl_component_key(str(item.peak)): item
+            for item in peak_rows
+            if isinstance(item.peak, str) and str(item.peak).strip()
+        }
+
+        model = LinearModel(prefix="bg_")
+        for spec in selected_components:
+            prefix = f"{spec.key}_"
+            if spec.profile == "gaussian":
+                model = model + GaussianModel(prefix=prefix)
+            else:
+                model = model + PseudoVoigtModel(prefix=prefix)
+
+        params = model.make_params()
+        left_base, right_base = _default_baseline_windows_from_roi(
+            cfg.x_min, cfg.x_max, cfg.baseline_edge_fraction, cfg.baseline_edge_min
+        )
+        baseline_slope, baseline_intercept = _estimate_linear_baseline_edges(
+            x_fit, y_fit, left_base, right_base
+        )
+        bg_slope_override = _to_float(parameter_overrides.get("bg_slope"))
+        bg_intercept_override = _to_float(parameter_overrides.get("bg_intercept"))
+        if bg_slope_override is not None:
+            baseline_slope = float(bg_slope_override)
+        if bg_intercept_override is not None:
+            baseline_intercept = float(bg_intercept_override)
+        params["bg_slope"].set(value=baseline_slope)
+        params["bg_intercept"].set(value=baseline_intercept)
+
+        y_low = float(np.percentile(y_fit, cfg.pl_seed_baseline_percentile))
+        dynamic_height = max(float(np.max(y_fit) - y_low), 1.0e-6)
+
+        for spec in selected_components:
+            prefix = f"{spec.key}_"
+            peak_override = peak_overrides.get(spec.key)
+            if peak_override is None and len(selected_components) == 1:
+                peak_override = peak_overrides.get("pl")
+
+            local_half_width = max(
+                float(spec.center_init - spec.center_min),
+                float(spec.center_max - spec.center_init),
+                cfg.pl_seed_local_half_width_min,
+            )
+            local_height, local_center = _window_peak_height(
+                x_fit,
+                y_fit,
+                center=spec.center_init,
+                half_width=local_half_width,
+                baseline_percentile=cfg.pl_seed_local_baseline_percentile,
+            )
+            height_guess = max(local_height, dynamic_height * spec.height_scale, 1.0e-6)
+            center_guess = float(np.clip(local_center, spec.center_min, spec.center_max))
+            sigma_guess = float(np.clip(spec.sigma_init, spec.sigma_min, spec.sigma_max))
+            fraction_guess = float(np.clip(spec.fraction_init, 0.0, 1.0))
+
+            if peak_override is not None:
+                if peak_override.center is not None:
+                    center_guess = float(np.clip(peak_override.center, spec.center_min, spec.center_max))
+                if peak_override.height is not None:
+                    height_guess = float(max(peak_override.height, 1.0e-6))
+                if peak_override.fwhm is not None:
+                    sigma_raw = _fwhm_to_sigma(line_profile=spec.profile, fwhm=float(peak_override.fwhm))
+                    sigma_guess = float(np.clip(sigma_raw, spec.sigma_min, spec.sigma_max))
+                if peak_override.fraction is not None:
+                    fraction_guess = float(np.clip(peak_override.fraction, 0.0, 1.0))
+
+            area_guess_lmfit = _height_guess_to_lmfit_area(
+                height_guess=height_guess,
+                sigma_guess=sigma_guess,
+                fraction_guess=fraction_guess if spec.profile != "gaussian" else 0.0,
+            )
+            amplitude_floor = max(spec.amplitude_min, area_guess_lmfit * cfg.pl_amplitude_floor_fraction, 1.0e-3)
+
+            center_vary = (not bool(peak_override.fixed_center)) if peak_override is not None else spec.vary_center
+            sigma_vary = (not bool(peak_override.fixed_fwhm)) if peak_override is not None else spec.vary_sigma
+            amp_vary = (not bool(peak_override.fixed_height)) if peak_override is not None else spec.vary_amplitude
+            frac_vary = (not bool(peak_override.fixed_fraction)) if peak_override is not None else spec.vary_fraction
+
+            params[f"{prefix}center"].set(
+                value=center_guess,
+                min=spec.center_min,
+                max=spec.center_max,
+                vary=center_vary,
+            )
+            params[f"{prefix}sigma"].set(
+                value=sigma_guess,
+                min=spec.sigma_min,
+                max=spec.sigma_max,
+                vary=sigma_vary,
+            )
+            params[f"{prefix}amplitude"].set(
+                value=max(area_guess_lmfit, amplitude_floor),
+                min=amplitude_floor,
+                vary=amp_vary,
+            )
+            if f"{prefix}fraction" in params:
+                params[f"{prefix}fraction"].set(
+                    value=fraction_guess,
+                    min=0.0,
+                    max=1.0,
+                    vary=frac_vary,
+                )
+
+        has_a_minus = any(s.key == "a_minus" for s in selected_components)
+        has_a0 = any(s.key == "a0" for s in selected_components)
+        if has_a_minus and has_a0:
+            a0_ov = peak_overrides.get("a0")
+            a_minus_ov = peak_overrides.get("a_minus")
+            a0_center_fixed = bool(a0_ov.fixed_center) if a0_ov is not None else False
+            a_minus_sigma_fixed = bool(a_minus_ov.fixed_fwhm) if a_minus_ov is not None else False
+            a0_frac_fixed = bool(a0_ov.fixed_fraction) if a0_ov is not None else False
+
+            split_enabled, split_min, split_max, split_init = cfg.pl_a_minus_a0_split
+            if split_enabled and not a0_center_fixed and "a0_center" in params and "a_minus_center" in params:
+                cur_split = float(params["a0_center"].value - params["a_minus_center"].value)
+                split_seed = float(np.clip(cur_split if cur_split > 0 else split_init, split_min, split_max))
+                params.add("d_a0_from_a_minus", value=split_seed, min=split_min, max=split_max, vary=True)
+                params["a0_center"].set(expr="a_minus_center + d_a0_from_a_minus")
+
+            ratio_enabled, ratio_min, ratio_max, ratio_init = cfg.pl_trion_exciton_fwhm_ratio
+            if ratio_enabled and not a_minus_sigma_fixed and "a_minus_sigma" in params and "a0_sigma" in params:
+                cur_ratio = float(params["a_minus_sigma"].value / max(params["a0_sigma"].value, 1.0e-9))
+                ratio_seed = float(np.clip(cur_ratio if cur_ratio > 0 else ratio_init, ratio_min, ratio_max))
+                params.add("ratio_trion_sigma", value=ratio_seed, min=ratio_min, max=ratio_max, vary=True)
+                params["a_minus_sigma"].set(expr="a0_sigma * ratio_trion_sigma")
+
+            if cfg.pl_share_exciton_fraction and not a0_frac_fixed:
+                if "a0_fraction" in params and "a_minus_fraction" in params:
+                    params["a0_fraction"].set(expr="a_minus_fraction")
+
+        fit_result = model.fit(y_fit, params, x=x_fit, nan_policy="omit")
+        y_pred_full = model.eval(fit_result.params, x=x_full)
+        peak_labels = [spec.key for spec in selected_components]
+        return fitter._candidate_from_result(  # noqa: SLF001
+            model_name=model_name,
+            fit_result=fit_result,
+            x_fit=x_fit,
+            y_fit=y_fit,
+            x_full=x_full,
+            y_pred_full=np.asarray(y_pred_full, dtype=float),
+            peak_labels=peak_labels,
+            prefix_for_label={spec.key: f"{spec.key}_" for spec in selected_components},
+            profile_for_label={spec.key: spec.profile for spec in selected_components},
+            spike_residual_sigma_k=cfg.pl_spike_residual_sigma_k,
+            spike_span_ratio=cfg.pl_spike_span_ratio,
+            spike_span_percentiles=cfg.pl_spike_span_percentiles,
         )
 
 
