@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 
 import numpy as np
@@ -20,5 +21,15 @@ def test_set_data_autoscale_uses_raman_anchor_window() -> None:
     # Regression: autoscale referenced a local from set_data and raised NameError.
     widget.set_data(x, np.ones_like(x), peaks=[], row_snapshot=row)
 
-    padding = float(widget._x_window_cfg["peak_padding"])
-    assert widget._resolve_main_x_range() == (384.0 - padding, 403.0 + padding)
+    try:
+        padding = float(widget._x_window_cfg["peak_padding"])
+        assert widget._resolve_main_x_range() == (384.0 - padding, 403.0 + padding)
+    finally:
+        # Destroy the Qt objects here, in the thread that made them. Left to the garbage
+        # collector they are destroyed later in whatever thread it runs in (for example
+        # the script thread of a Streamlit AppTest), and Qt then aborts the process.
+        widget.close()
+        widget.deleteLater()
+        _app.processEvents()
+        del widget
+        gc.collect()
