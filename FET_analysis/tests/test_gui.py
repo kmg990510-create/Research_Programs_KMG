@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,8 +17,8 @@ GUI = Path(__file__).resolve().parents[1] / "gui"
 PAGES = ["Run.py", "pages/1_Devices.py", "pages/2_Compare.py", "pages/3_Finalize.py"]
 SECTIONS = {
     "Run.py": ["1) Batch"],
-    "pages/1_Devices.py": ["1) Batch", "2) Filters"],
-    "pages/2_Compare.py": ["1) Batch", "2) Filters"],
+    "pages/1_Devices.py": ["1) Batch", "2) Filters", "3) Figure size"],
+    "pages/2_Compare.py": ["1) Batch", "2) Filters", "3) Figure size"],
     "pages/3_Finalize.py": ["1) Batch"],
 }
 
@@ -131,3 +132,33 @@ def test_finalize_writes_the_result_files(data_root: Path) -> None:
     out = data_root / "results" / "demo"
     assert (out / "results_summary.csv").exists() and (out / "run_metadata.json").exists()
     assert any(p.name.endswith("_forward.csv") for p in (out / "transfer_curves").iterdir())
+
+
+@pytest.mark.parametrize("page", ["pages/1_Devices.py", "pages/2_Compare.py"])
+def test_every_figure_takes_the_size_from_the_sidebar(data_root: Path, page: str) -> None:
+    at = run_page(page)
+    figures = at.get("plotly_chart")
+    assert figures and all(json.loads(f.proto.spec)["layout"].get("width") is None for f in figures)  # default: fit the page
+    for box in at.sidebar.checkbox:
+        if box.label == "Fit width to the page":
+            box.set_value(False)
+    at.run()
+    for field in at.sidebar.number_input:
+        if field.label == "Width (px)":
+            assert not field.disabled
+            field.set_value(610)
+        elif field.label == "Height (px)":
+            field.set_value(330)
+    at.run()
+    assert [str(e.value) for e in at.exception] == []
+    layouts = [json.loads(f.proto.spec)["layout"] for f in at.get("plotly_chart")]
+    assert layouts and all((layout["width"], layout["height"]) == (610, 330) for layout in layouts)
+
+
+def test_gallery_size_follows_the_panel_size(data_root: Path) -> None:
+    at = run_page("pages/1_Devices.py")
+    at.radio[0].set_value("Gallery")
+    next(f for f in at.sidebar.number_input if f.label == "Gallery: panels per row").set_value(2)
+    at.run()
+    layout = json.loads(at.get("plotly_chart")[0].proto.spec)["layout"]
+    assert layout.get("width") is None and layout["height"] == 190 * 2 + 94  # 4 devices, 2 per row

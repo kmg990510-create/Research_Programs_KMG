@@ -18,7 +18,9 @@ from fet_core.pipeline import ordered_groups  # noqa: E402
 from fet_core.report.summary import METRICS, group_summary, metric_label  # noqa: E402
 from gui.components.figures import metric_figure, overlay_figure  # noqa: E402
 from gui.state import active, filters, put_review, stop_if_empty  # noqa: E402
+from labkit.figure_size import figure_size_inputs, show_figure  # noqa: E402
 from labkit.plot_theme import categorical_colors, export_config  # noqa: E402
+from labkit.sidebar import sidebar_section  # noqa: E402
 
 GROUPS_NONCE_KEY = "fet_compare_groups_nonce"  # a new editor after every save, so old edits are not applied twice
 DEFAULT_METRICS = ("mobility_cm2_per_Vs", "vth_linear_V", "ss_mV_per_dec", "on_off_decades")
@@ -30,6 +32,9 @@ st.caption("Statistics use the sweeps that are not invalid and not rejected.")
 batch, run, review, frame = active()
 groups = ordered_groups(frame, review)
 shown = filters(frame, groups)
+with sidebar_section("3) Figure size", expanded=False):
+    stats_size = figure_size_inputs("fet_statistics", "Statistics: one quantity", 520, 380)
+    overlay_size = figure_size_inputs("fet_overlay", "Overlay", 900, 560)
 stop_if_empty(shown)
 shown_groups = [g for g in groups if g in set(shown["group_display"])]
 colors = categorical_colors(groups)
@@ -40,15 +45,13 @@ with tab_stats:
     metrics = st.multiselect("Quantities", list(METRICS), default=list(DEFAULT_METRICS), format_func=metric_label, key="fet_compare_metrics")
     if not metrics:
         st.info("Choose at least one quantity.")
-    for start in range(0, len(metrics), 2):
-        for column, metric in zip(st.columns(2), metrics[start : start + 2]):
-            column.plotly_chart(
-                metric_figure(shown, metric, shown_groups, colors, height=380),
-                width="stretch",
-                theme=None,
-                config=export_config(f"{batch}_{metric}"),
-                key=f"fet_compare_metric_{metric}",
-            )
+    if stats_size.width_px is None:
+        places = [column for start in range(0, len(metrics), 2) for column in st.columns(2)]
+    else:
+        places = [st.container(horizontal=True)] * len(metrics)  # fixed width: side by side, wrapping when they do not fit
+    for place, metric in zip(places, metrics):
+        with place:
+            show_figure(metric_figure(shown, metric, shown_groups, colors), stats_size, config=export_config(f"{batch}_{metric}"), key=f"fet_compare_metric_{metric}")
     st.caption("Filled points are in the statistics. Hollow points are invalid or rejected sweeps shown by the filters.")
 
 with tab_overlay:
@@ -69,7 +72,7 @@ with tab_overlay:
             )
     curves.sort(key=lambda curve: shown_groups.index(curve["group"]))
     if curves:
-        st.plotly_chart(overlay_figure(curves, colors, per_width), width="stretch", theme=None, config=export_config(f"{batch}_overlay"))
+        show_figure(overlay_figure(curves, colors, per_width), overlay_size, config=export_config(f"{batch}_overlay"))
     left_out = len(shown) - len(curves)
     st.caption(f"{len(curves)} curve(s) from {len({c['group'] for c in curves})} group(s)." + (f" {left_out} invalid or rejected sweep(s) are not drawn." if left_out else ""))
 

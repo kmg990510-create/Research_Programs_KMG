@@ -117,3 +117,12 @@
   - 선택 상태를 코드로 바꿀 수 없어서, 선택을 옮길 때 위젯 key의 번호를 올려 이전 선택을 버리고 목록의 `▶` 열로 현재 행을 표시한다.
 - 검증: `pytest` 전체 통과 (아래 숫자는 실제 배치 4개가 있을 때). 브라우저에서 실제 배치 `260916`으로 Devices Detail, 목록 행 클릭, Gallery 패널 클릭, Reject 저장 후 다음 행 이동, Clear를 눌러 확인했다. Compare는 지표 4개가 2x2로 그려지는 것을 페이지 구조로 확인했다 (스크린샷은 실패).
 - 확인하지 못한 것: Compare의 그룹 이름·순서 즉시 저장은 브라우저에서 눌러 보지 않았다. 메모 저장은 자동 테스트로만 확인했다. Run과 Finalize는 내용이 바뀌지 않아 다시 보지 않았다.
+
+## 그래프 크기 입력 (2026-11-14)
+
+- 요구: 모든 그래프의 가로·세로를 사용자가 정할 수 있어야 한다.
+- 파일: `labkit/figure_size.py`(`figure_size_inputs`, `show_figure`), `gui/pages/1_Devices.py`, `2_Compare.py`, `gui/components/figures.py`(`gallery_size`), `tests/test_gui.py`.
+- 사이드바 `3) Figure size`: Devices는 Detail 곡선 크기, Gallery 패널 크기, 한 줄의 패널 수. Compare는 Statistics 한 칸의 크기, Overlay 크기.
+- 가로 기본값은 "Fit width to the page"다. 끄면 Width 입력이 켜진다 (숨기지 않고 비활성화). 선택은 세션 동안 페이지를 옮겨도 유지된다.
+- 크기는 그림의 layout에도 써서 카메라 버튼으로 저장한 그림이 화면과 같은 크기다 (해상도는 3배).
+- 검증: `tests/test_gui.py`가 두 페이지의 모든 그림이 사이드바 값(610 x 330)을 따르는지 확인한다. 브라우저에서 Devices Detail의 가로 고정(520 x 420)을 확인했다. Compare와 Gallery의 고정 크기는 브라우저에서 보지 않았다.

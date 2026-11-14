@@ -247,6 +247,18 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
 STATUS_COLORS = {"valid": INK, "attention": "#E69F00", "invalid": MARK}  # in order of severity
 
 
+GALLERY_MARGIN_WIDTH_PX = 74
+GALLERY_MARGIN_HEIGHT_PX = 94
+
+
+def gallery_size(panel_count: int, columns: int, panel_width_px: int | None, panel_height_px: int) -> tuple[int | None, int]:
+    """Width and height of the whole gallery from the size of one panel (width None: fit the page)."""
+    columns = max(1, min(columns, panel_count))
+    rows = -(-panel_count // columns)
+    width = None if panel_width_px is None else panel_width_px * columns + GALLERY_MARGIN_WIDTH_PX
+    return width, panel_height_px * rows + GALLERY_MARGIN_HEIGHT_PX
+
+
 def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) -> go.Figure:
     """Every device as a small log-scale panel, coloured by status.
 
@@ -287,7 +299,7 @@ def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) 
                 col=index % columns + 1,
             )
         fig.layout.annotations[index].update(font={"size": 12, "color": STATUS_COLORS[worst]})
-    apply_paper_layout(fig, font_size=11, height=row_height * rows + 90)
+    apply_paper_layout(fig, font_size=11, height=row_height * rows + GALLERY_MARGIN_HEIGHT_PX)
     fig.update_yaxes(type="log", exponentformat="power")
     fig.update_xaxes(showticklabels=True)
     # hoverdistance -1: a click anywhere in a panel picks the nearest point of that panel
