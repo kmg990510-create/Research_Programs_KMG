@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
+from statistics import mean
 from typing import Any, Mapping
 
 
@@ -136,6 +139,129 @@ def _latest_items_by_spectrum(items: list[dict[str, Any]]) -> dict[str, dict[str
     return latest
 
 
+def _finite_float(value: Any) -> float | None:
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if math.isfinite(num) else None
+
+
+def _recompute_derived_row_fields(row: dict[str, Any], action_type: str, params: dict[str, Any]) -> None:
+    fit_params = row.get("fit_params") if isinstance(row.get("fit_params"), dict) else {}
+
+    e2g_pos = _finite_float(row.get("e2g_position"))
+    a1g_pos = _finite_float(row.get("a1g_position"))
+    if e2g_pos is not None and a1g_pos is not None and ("e2g_position" in params or "a1g_position" in params):
+        delta = float(a1g_pos - e2g_pos)
+        row["delta_e2g_a1g"] = delta
+        fit_params["delta_e2g_a1g"] = delta
+
+    a_minus_pos = _finite_float(row.get("a_minus_position"))
+    a0_pos = _finite_float(row.get("a0_position"))
+    if a_minus_pos is not None and a0_pos is not None and ("a_minus_position" in params or "a0_position" in params):
+        split = float(a0_pos - a_minus_pos)
+        row["a_minus_a0_energy_split"] = split
+        fit_params["a_minus_a0_energy_split"] = split
+
+    if action_type == "manual_refit" and "fit_status" not in params:
+        row["fit_status"] = "valid"
+        row["invalid_reasons"] = []
+        row["attention_reasons"] = []
+        row["quality_flags"] = []
+        row["needs_attention"] = False
+        row["attention_score"] = 0
+        fit_params["fit_status"] = "valid"
+        fit_params["invalid_reasons"] = []
+        fit_params["attention_reasons"] = []
+    elif action_type in {"model_override", "manual_refit"} and "fit_status" in params:
+        status = str(row.get("fit_status", "valid")).strip().lower() or "valid"
+        inv = row.get("invalid_reasons") if isinstance(row.get("invalid_reasons"), list) else []
+        att = row.get("attention_reasons") if isinstance(row.get("attention_reasons"), list) else []
+        qflags = list(dict.fromkeys([str(x) for x in inv + att if str(x).strip()]))
+        row["quality_flags"] = qflags
+        row["needs_attention"] = status in {"attention", "invalid"} or bool(qflags)
+        row["attention_score"] = len(qflags)
+
+    if fit_params:
+        row["fit_params"] = fit_params
+
+
+def _recompute_payload_summaries(projected: dict[str, Any], spectra: list[Any]) -> None:
+    rows = [r for r in spectra if isinstance(r, dict)]
+    if not rows:
+        return
+
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    accepted_count = 0
+    flagged_count = 0
+    decisions_count = 0
+    parameters_count = 0
+    attention_count = 0
+    invalid_count = 0
+
+    for row in rows:
+        status = str(row.get("fit_status", "valid")).strip().lower() or "valid"
+        decision = str(row.get("review_decision", "auto")).strip().lower() or "auto"
+        reviewed = bool(row.get("reviewed", False)) or decision != "auto"
+        needs_att = bool(row.get("needs_attention", False))
+
+        if reviewed:
+            decisions_count += 1
+
+        if decision == "rejected":
+            continue
+
+        accepted_count += 1
+        if status == "invalid":
+            invalid_count += 1
+        if needs_att:
+            attention_count += 1
+
+        if (needs_att or status != "valid") and decision not in {"approved", "accepted", "refit"}:
+            flagged_count += 1
+
+        if status != "invalid":
+            parameters_count += 1
+            map_id = str(row.get("map_id") or "default_map")
+            grouped[map_id].append(row)
+
+    map_summaries: list[dict[str, Any]] = []
+    for _map_id, items in grouped.items():
+        def _mean_col(col: str) -> float | None:
+            vals = [v for v in (_finite_float(item.get(col)) for item in items) if v is not None]
+            return float(mean(vals)) if vals else None
+
+        summary: dict[str, Any] = {
+            "n_spectra": len(items),
+            "mean_peak_position": _mean_col("peak_position"),
+            "mean_peak_amplitude": _mean_col("peak_amplitude"),
+            "mean_e2g_position": _mean_col("e2g_position"),
+            "mean_a1g_position": _mean_col("a1g_position"),
+            "mean_delta_e2g_a1g": _mean_col("delta_e2g_a1g"),
+        }
+        for pl_col in ("pl_position", "a0_position", "a_minus_position", "a_minus_a0_area_ratio"):
+            val = _mean_col(pl_col)
+            if val is not None:
+                summary[f"mean_{pl_col}"] = val
+        map_summaries.append(summary)
+
+    base_counts = projected.get("counts") if isinstance(projected.get("counts"), dict) else {}
+    projected["counts"] = {
+        "qc_total": max(int(_finite_float(base_counts.get("qc_total")) or len(rows)), len(rows)),
+        "flagged": flagged_count,
+        "decisions": decisions_count,
+        "accepted": accepted_count,
+        "parameters": parameters_count,
+        "maps": len(map_summaries),
+    }
+    projected["attention_count"] = attention_count
+    projected["invalid_count"] = invalid_count
+    base_failures = int(_finite_float(projected.get("fit_failure_count")) or 0)
+    projected["fit_failure_count"] = min(base_failures, invalid_count) if base_failures > 0 else invalid_count
+    projected["map_summary"] = map_summaries
+
+
 def apply_manual_overrides_to_payload(payload: Mapping[str, Any], report_json: Path) -> dict[str, Any]:
     """Return payload with latest manual overrides projected onto spectra rows."""
     projected = deepcopy(dict(payload))
@@ -164,26 +290,28 @@ def apply_manual_overrides_to_payload(payload: Mapping[str, Any], report_json: P
         if item is None:
             continue
 
+        action_type = str(item.get("action_type", "manual_refit"))
         selected_model = str(item.get("selected_model", "")).strip()
         if selected_model:
             row["selected_model"] = selected_model
 
         params = item.get("params")
-        if isinstance(params, dict) and params:
-            row.update(params)
-            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
-                row["fit_params"] = dict(params)
+        params_dict = dict(params) if isinstance(params, dict) else {}
+        if params_dict:
+            row.update(params_dict)
+            if action_type in {"manual_refit", "model_override"}:
+                row["fit_params"] = dict(params_dict)
             elif isinstance(row.get("fit_params"), dict):
                 merged_fp = dict(row["fit_params"])
-                merged_fp.update(params)
+                merged_fp.update(params_dict)
                 row["fit_params"] = merged_fp
             else:
-                row["fit_params"] = dict(params)
+                row["fit_params"] = dict(params_dict)
 
         metrics = item.get("metrics")
         if isinstance(metrics, dict) and metrics:
             row.update(metrics)
-            if str(item.get("action_type", "")) in {"manual_refit", "model_override"}:
+            if action_type in {"manual_refit", "model_override"}:
                 row["fit_metrics"] = dict(metrics)
             elif isinstance(row.get("fit_metrics"), dict):
                 merged_fm = dict(row["fit_metrics"])
@@ -201,10 +329,13 @@ def apply_manual_overrides_to_payload(payload: Mapping[str, Any], report_json: P
             row["review_decision"] = review_decision
             row["reviewed"] = review_decision != "auto"
 
+        _recompute_derived_row_fields(row, action_type=action_type, params=params_dict)
+
         row["manual_override"] = True
-        row["manual_override_action"] = str(item.get("action_type", "manual_refit"))
+        row["manual_override_action"] = action_type
         row["manual_override_updated_at"] = str(item.get("updated_at_utc", ""))
 
+    _recompute_payload_summaries(projected, spectra)
     return projected
 
 

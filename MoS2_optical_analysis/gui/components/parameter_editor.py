@@ -15,6 +15,15 @@ _EDITABLE_PARAM_COLS = (
     "pl_position",
     "pl_height",
     "pl_fwhm",
+    "a_minus_position",
+    "a0_position",
+    "a_minus_fwhm",
+    "a0_fwhm",
+    "a_minus_a0_area_ratio",
+    "a0_fraction_of_a_total",
+    "b_position",
+    "i1_position",
+    "i2_position",
     "e2g_position",
     "a1g_position",
     "delta_e2g_a1g",
@@ -31,14 +40,7 @@ def render_parameter_editor(df: pd.DataFrame, key: str = "param_editor") -> pd.D
     editable_cols = [
         col
         for col in [
-            "pl_position",
-            "pl_height",
-            "pl_fwhm",
-            "e2g_position",
-            "a1g_position",
-            "delta_e2g_a1g",
-            "e2g_fwhm",
-            "a1g_fwhm",
+            *_EDITABLE_PARAM_COLS,
             "review_decision",
         ]
         if col in df.columns
