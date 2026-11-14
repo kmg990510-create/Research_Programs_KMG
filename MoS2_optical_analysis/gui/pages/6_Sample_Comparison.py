@@ -25,7 +25,19 @@ if str(ROOT) not in sys.path:
 
 from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from labkit.plot_theme import AUX, CATEGORICAL, INK, LINE_AUX, MARKER_CENTER, MARKER_RAW, SEQUENTIAL  # noqa: E402
+from gui.components.map_figure import default_colorbar_title  # noqa: E402
+from labkit.plot_theme import (  # noqa: E402
+    AUX,
+    CATEGORICAL,
+    INK,
+    LINE_AUX,
+    LINE_DATA,
+    MARKER_CENTER,
+    MARKER_ON_LINE,
+    MARKER_RAW,
+    SEQUENTIAL,
+    categorical_colors,
+)
 from gui.components.scatter_style import (  # noqa: E402
     LEGEND_POSITIONS,
     TICK_DIRECTIONS,
@@ -39,6 +51,7 @@ load_spectra_dataframe = _report_loader.load_spectra_dataframe
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
 sidebar_section = _report_loader.sidebar_section
 sidebar_filters_section = _report_loader.sidebar_filters_section
+filter_store = _report_loader.filter_store
 
 DOPING_N_AXIS_LABEL = "Doping n (10^13 cm^-2)"
 
@@ -145,7 +158,24 @@ def _treatment_from_row(row: pd.Series, sample_name: str) -> str:
     return sample_name
 
 
-def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
+def _infer_report_modality(path: Path) -> str:
+    parent_mod = path.parent.parent.name.strip().lower()
+    if parent_mod in {"raman", "pl"}:
+        return parent_mod
+    lower_name = path.name.lower()
+    if lower_name.startswith("pl_") or "_pl_" in lower_name:
+        return "pl"
+    return "raman"
+
+
+def _render_pl_comparison(
+    sample_frames: dict[str, pd.DataFrame],
+    color_map: dict[str, str] | None = None,
+    center_metric: str = "mean",
+    error_metric: str = "std",
+    overlay_scatter: bool = True,
+    scatter_style: ScatterStyle | None = None,
+) -> None:
     metric_candidates = [
         "a_minus_position",
         "a0_position",
@@ -157,11 +187,16 @@ def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
         "a_minus_fwhm",
         "a0_fwhm",
         "b_position",
+        "i1_position",
+        "i2_position",
         "pl_position",
         "pl_fwhm",
+        "pl_area",
+        "pl_height",
         "rmse",
         "r2",
     ]
+    colors = color_map or {name: CATEGORICAL[i % len(CATEGORICAL)] for i, name in enumerate(sample_frames)}
 
     rows: list[pd.DataFrame] = []
     for sample_name, frame in sample_frames.items():
@@ -171,8 +206,6 @@ def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
         work["treatment_label"] = work.apply(lambda row: _treatment_from_row(row, sample_name), axis=1)
         rows.append(work)
     combined = pd.concat(rows, ignore_index=True)
-    combined = combined[pd.to_numeric(combined["temperature_k"], errors="coerce").notna()].copy()
-    combined["temperature_k"] = pd.to_numeric(combined["temperature_k"], errors="coerce")
 
     available_metrics = [
         col
@@ -183,26 +216,131 @@ def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
         st.warning("No PL comparison metrics found in the selected reports.")
         return
 
-    st.subheader("PL Temperature / Treatment Comparison")
-    selected_metric = st.selectbox("PL metric", options=available_metrics, index=0)
-    plot_df = combined[["sample", "treatment_label", "temperature_k", selected_metric]].copy()
-    plot_df[selected_metric] = pd.to_numeric(plot_df[selected_metric], errors="coerce")
-    plot_df = plot_df.dropna(subset=["temperature_k", selected_metric]).sort_values(["treatment_label", "temperature_k"])
+    st.subheader("Cross-Sample PL Summary")
+    summary_rows: list[dict[str, object]] = []
+    for sample_name, frame in sample_frames.items():
+        s_row: dict[str, object] = {"sample": sample_name, "n_spectra": len(frame)}
+        for metric in available_metrics:
+            vals = _to_numeric(frame, metric)
+            vals = vals[np.isfinite(vals)]
+            if vals.size:
+                s_row[f"{metric}_{center_metric}"] = _center(vals, center_metric)
+                s_row[f"{metric}_{error_metric}"] = _error(vals, error_metric)
+        summary_rows.append(s_row)
+    if summary_rows:
+        st.dataframe(pd.DataFrame(summary_rows), width="stretch", hide_index=True)
 
+    if len(available_metrics) >= 2:
+        st.subheader("Cross-Sample PL Scatter & Error Bar Comparison")
+        default_x = "a_minus_position" if "a_minus_position" in available_metrics else (
+            "pl_position" if "pl_position" in available_metrics else available_metrics[0]
+        )
+        default_y = "a0_position" if "a0_position" in available_metrics and default_x != "a0_position" else (
+            "a_minus_a0_area_ratio" if "a_minus_a0_area_ratio" in available_metrics and default_x != "a_minus_a0_area_ratio" else (
+                "pl_fwhm" if "pl_fwhm" in available_metrics and default_x != "pl_fwhm" else available_metrics[min(1, len(available_metrics) - 1)]
+            )
+        )
+        xy_cols = st.columns(2)
+        pl_x_metric = xy_cols[0].selectbox(
+            "X metric",
+            options=available_metrics,
+            index=available_metrics.index(default_x),
+            key="pl_cmp_x_metric",
+        )
+        pl_y_metric = xy_cols[1].selectbox(
+            "Y metric",
+            options=available_metrics,
+            index=available_metrics.index(default_y),
+            key="pl_cmp_y_metric",
+        )
+        pair_data: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        for sample_name, frame in sample_frames.items():
+            xv, yv = _extract_vectors(frame, [pl_x_metric, pl_y_metric])
+            if xv.size and yv.size:
+                pair_data[sample_name] = (xv, yv)
+        if pair_data:
+            x_axis_title = default_colorbar_title(pl_x_metric, "pl")
+            y_axis_title = default_colorbar_title(pl_y_metric, "pl")
+            c_left, c_right = st.columns(2)
+            with c_left:
+                fig_sc = _build_scatter_figure(
+                    pair_data,
+                    colors,
+                    f"{pl_x_metric} vs {pl_y_metric} (Scatter)",
+                    x_axis_title,
+                    y_axis_title,
+                )
+                if scatter_style is not None:
+                    apply_scatter_style(fig_sc, scatter_style)
+                show(fig_sc, "sample_pl", filename=f"pl_{pl_x_metric}_vs_{pl_y_metric}_scatter")
+            with c_right:
+                fig_eb = _build_errorbar_figure(
+                    pair_data,
+                    colors,
+                    f"{pl_x_metric} vs {pl_y_metric} ({center_metric} +/- {error_metric})",
+                    x_axis_title,
+                    y_axis_title,
+                    center_metric,
+                    error_metric,
+                    overlay_scatter,
+                )
+                if scatter_style is not None:
+                    apply_scatter_style(fig_eb, scatter_style)
+                show(fig_eb, "sample_pl", filename=f"pl_{pl_x_metric}_vs_{pl_y_metric}_errorbar")
+
+    temp_df = combined[pd.to_numeric(combined["temperature_k"], errors="coerce").notna()].copy()
+    if temp_df.empty:
+        return
+
+    temp_df["temperature_k"] = pd.to_numeric(temp_df["temperature_k"], errors="coerce")
+    st.subheader("PL Temperature / Treatment Comparison")
+    selected_metric = st.selectbox("PL metric vs Temperature", options=available_metrics, index=0)
+    plot_df = temp_df[["sample", "treatment_label", "temperature_k", selected_metric]].copy()
+    plot_df[selected_metric] = pd.to_numeric(plot_df[selected_metric], errors="coerce")
+    plot_df = plot_df.dropna(subset=["temperature_k", selected_metric])
+
+    agg_rows: list[dict[str, object]] = []
+    for (treat_lbl, temp_val), grp in plot_df.groupby(["treatment_label", "temperature_k"], dropna=False):
+        vals = grp[selected_metric].to_numpy(dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            continue
+        c_val = _center(vals, center_metric)
+        e_val = _error(vals, error_metric)
+        agg_rows.append(
+            {
+                "treatment_label": str(treat_lbl),
+                "temperature_k": float(temp_val),
+                selected_metric: float(c_val),
+                "error_val": float(e_val) if np.isfinite(e_val) and vals.size > 1 else 0.0,
+                "sample": ", ".join(sorted(set(grp["sample"].astype(str)))),
+                "n_points": int(vals.size),
+            }
+        )
+    agg_df = pd.DataFrame(agg_rows).sort_values(["treatment_label", "temperature_k"]) if agg_rows else plot_df
+    treat_colors = categorical_colors(agg_df["treatment_label"]) if "treatment_label" in agg_df.columns else {}
     fig = px.line(
-        plot_df,
+        agg_df,
         x="temperature_k",
         y=selected_metric,
+        error_y="error_val" if "error_val" in agg_df.columns and (agg_df["error_val"] > 0).any() else None,
         color="treatment_label",
+        color_discrete_map=treat_colors,
         markers=True,
-        hover_data=["sample"],
+        hover_data=[c for c in ["sample", "n_points"] if c in agg_df.columns],
     )
-    fig.update_layout(xaxis_title="Temperature (K)", yaxis_title=selected_metric)
-    show(fig, "sample_pl")
+    fig.update_traces(line={"width": LINE_DATA}, marker={"size": MARKER_ON_LINE})
+    fig.update_layout(
+        xaxis_title="Temperature (K)",
+        yaxis_title=default_colorbar_title(selected_metric, "pl"),
+    )
+    if scatter_style is not None:
+        apply_scatter_style(fig, scatter_style)
+    show(fig, "sample_pl", filename=f"pl_{selected_metric}_vs_temperature")
 
     table_cols = ["sample", "treatment_label", "temperature_k", *available_metrics]
     st.dataframe(
-        combined[table_cols].sort_values(["temperature_k", "treatment_label"]),
+        temp_df[table_cols].sort_values(["temperature_k", "treatment_label"]),
         width="stretch",
         hide_index=True,
     )
@@ -221,22 +359,25 @@ def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
         ]
         if metric in available_metrics
     ]
-    labels = set(combined["treatment_label"].astype(str))
+    labels = set(temp_df["treatment_label"].astype(str))
     if {"Pristine", "Treatment"}.issubset(labels) and pair_metrics:
         paired_rows: list[dict[str, float | str]] = []
-        for temp, group in combined.groupby("temperature_k"):
+        for temp, group in temp_df.groupby("temperature_k"):
             pristine = group[group["treatment_label"].astype(str) == "Pristine"]
             treatment = group[group["treatment_label"].astype(str) == "Treatment"]
             if pristine.empty or treatment.empty:
                 continue
             out: dict[str, float | str] = {"temperature_k": float(temp)}
-            p_row = pristine.iloc[0]
-            t_row = treatment.iloc[0]
             for metric in pair_metrics:
-                p_val = pd.to_numeric(pd.Series([p_row.get(metric)]), errors="coerce").iloc[0]
-                t_val = pd.to_numeric(pd.Series([t_row.get(metric)]), errors="coerce").iloc[0]
-                if pd.notna(p_val) and pd.notna(t_val):
-                    out[f"{metric}_treatment_minus_pristine"] = float(t_val - p_val)
+                p_vals = _to_numeric(pristine, metric)
+                t_vals = _to_numeric(treatment, metric)
+                p_vals = p_vals[np.isfinite(p_vals)]
+                t_vals = t_vals[np.isfinite(t_vals)]
+                if p_vals.size and t_vals.size:
+                    p_val = _center(p_vals, center_metric)
+                    t_val = _center(t_vals, center_metric)
+                    if np.isfinite(p_val) and np.isfinite(t_val):
+                        out[f"{metric}_treatment_minus_pristine"] = float(t_val - p_val)
             paired_rows.append(out)
         if paired_rows:
             st.subheader("Matched Treatment - Pristine")
@@ -695,9 +836,10 @@ def _add_absolute_isolines(
                 x=omega_e0 + d_e2g,
                 y=omega_a0 + d_a1g,
                 mode="lines",
+                opacity=0.45,
                 showlegend=False,
                 hoverinfo="skip",
-                line={"dash": "dash", "width": LINE_AUX, "color": "rgba(120,120,120,0.35)"},
+                line={"dash": "dash", "width": LINE_AUX, "color": AUX},
             )
         )
 
@@ -709,9 +851,10 @@ def _add_absolute_isolines(
                 x=omega_e0 + d_e2g,
                 y=omega_a0 + d_a1g,
                 mode="lines",
+                opacity=0.45,
                 showlegend=False,
                 hoverinfo="skip",
-                line={"dash": "dot", "width": LINE_AUX, "color": "rgba(120,120,120,0.35)"},
+                line={"dash": "dot", "width": LINE_AUX, "color": AUX},
             )
         )
 
@@ -753,12 +896,15 @@ if not report_files:
     st.stop()
 
 file_labels: dict[str, Path] = {}
+modality_by_label: dict[str, str] = {}
 for report in report_files:
     stamp = report.stat().st_mtime
     label = f"{report.name}  ({pd.to_datetime(stamp, unit='s').strftime('%Y-%m-%d %H:%M:%S')})"
     file_labels[label] = report
+    modality_by_label[label] = _infer_report_modality(report)
 
-default_count = min(max(int(sample_cfg.get("default_report_count", 4)), 1), len(file_labels))
+available_modalities = sorted(set(modality_by_label.values()))
+default_modality = _infer_report_modality(report_files[0]) if report_files else "raman"
 status_options = ["valid", "attention", "invalid"]
 status_default_raw = status_cfg.get("allowed_default", ["valid", "attention"])
 if isinstance(status_default_raw, list):
@@ -768,22 +914,54 @@ else:
 if not status_default:
     status_default = ["valid", "attention"]
 with sidebar_section("1) Reports"):
+    if len(available_modalities) > 1:
+        mod_options = ["raman", "pl", "all"]
+        mod_idx = mod_options.index(default_modality) if default_modality in mod_options else 0
+        modality_choice = st.radio(
+            "Report modality",
+            options=mod_options,
+            index=mod_idx,
+            horizontal=True,
+            format_func=lambda m: m.upper() if m in {"pl"} else m.capitalize(),
+            key="sample_cmp_modality_filter",
+        )
+    else:
+        modality_choice = available_modalities[0] if available_modalities else "all"
+
+    candidate_labels = [
+        lbl
+        for lbl in file_labels
+        if modality_choice == "all" or modality_by_label.get(lbl) == modality_choice
+    ]
+    if not candidate_labels:
+        candidate_labels = list(file_labels.keys())
+    default_Mod = modality_by_label.get(candidate_labels[0], default_modality)
+    default_labels = [lbl for lbl in candidate_labels if modality_by_label.get(lbl) == default_Mod]
+    default_count = min(max(int(sample_cfg.get("default_report_count", 4)), 1), len(default_labels))
     selected_file_labels = st.multiselect(
         "Reports to compare",
-        options=list(file_labels.keys()),
-        default=list(file_labels.keys())[:default_count],
+        options=candidate_labels,
+        default=default_labels[:default_count],
     )
+f_store = filter_store()
 with sidebar_filters_section(expanded=False):
     status_filter_on = st.checkbox(
         "Filter by fit_status",
         value=bool(status_cfg.get("enabled_default", True)),
     )
+    stored_statuses = [s for s in status_options if s in f_store.get("statuses", status_default)] or status_default
     status_selected = st.multiselect(
         "Allowed fit_status values",
         options=status_options,
-        default=status_default,
+        default=stored_statuses,
         disabled=not status_filter_on,
     )
+    hide_rejected = st.checkbox(
+        "Exclude rejected spectra",
+        value=bool(f_store.get("hide_rejected", False)),
+        key="sample_cmp_hide_rejected",
+    )
+    f_store.update(statuses=list(status_selected), hide_rejected=bool(hide_rejected))
 if not selected_file_labels:
     st.info("Select at least one report in the sidebar.")
     st.stop()
@@ -793,6 +971,8 @@ raw_sample_default_names: dict[str, str] = {}
 raw_sample_paths: dict[str, Path] = {}
 used_default_names: set[str] = set()
 invalid_excluded_for_analysis = 0
+rejected_excluded_for_analysis = 0
+allowed_statuses = {str(s).strip().lower() for s in status_selected}
 for lbl in selected_file_labels:
     path = file_labels[lbl]
     report_mtime_ns = int(path.stat().st_mtime_ns)
@@ -800,12 +980,19 @@ for lbl in selected_file_labels:
     df = load_spectra_dataframe(str(path), report_mtime_ns, overrides_mtime_ns)
     if df.empty:
         continue
-    if status_filter_on and status_selected and "fit_status" in df.columns:
-        df = df[df["fit_status"].astype(str).isin(status_selected)]
-    if "fit_status" in df.columns:
-        before_count = len(df)
-        df = df[df["fit_status"].astype(str).str.strip().str.lower() != "invalid"]
-        invalid_excluded_for_analysis += max(before_count - len(df), 0)
+    if hide_rejected and "review_decision" in df.columns:
+        before_rej = len(df)
+        df = df[df["review_decision"].astype(str).str.strip().str.lower() != "rejected"]
+        rejected_excluded_for_analysis += max(before_rej - len(df), 0)
+    if status_filter_on and "fit_status" in df.columns:
+        if not allowed_statuses:
+            continue
+        status_col = df["fit_status"].astype(str).str.strip().str.lower()
+        if "invalid" not in allowed_statuses:
+            invalid_excluded_for_analysis += int((status_col == "invalid").sum())
+        df = df[status_col.isin(allowed_statuses)]
+    if df.empty:
+        continue
     sample_id = str(path.resolve())
     sample_name = _unique_label(_clean_sample_name(path), used_default_names)
     raw_sample_frames[sample_id] = df.reset_index(drop=True)
@@ -815,14 +1002,12 @@ for lbl in selected_file_labels:
 if not raw_sample_frames:
     st.warning("No rows left after filtering. Try changing selected reports or fit_status filter.")
     st.stop()
-if invalid_excluded_for_analysis > 0:
-    st.caption(f"Excluded invalid rows from analysis: {invalid_excluded_for_analysis}")
+if invalid_excluded_for_analysis > 0 or rejected_excluded_for_analysis > 0:
+    st.caption(
+        f"Excluded from analysis: invalid={invalid_excluded_for_analysis}, rejected={rejected_excluded_for_analysis}"
+    )
 
-palette = list(CATEGORICAL) + px.colors.qualitative.Dark24 + px.colors.qualitative.Plotly
-default_colors_by_id = {
-    sample_id: palette[i % len(palette)]
-    for i, sample_id in enumerate(raw_sample_frames.keys())
-}
+default_colors_by_id = categorical_colors(raw_sample_frames.keys())
 
 display_name_by_id: dict[str, str] = {}
 display_color_by_id: dict[str, str] = {}
@@ -863,18 +1048,17 @@ if duplicate_name_resolved:
     samples_box.caption("Duplicate display names were auto-suffixed (e.g., '(2)').")
 
 pl_flags = [_is_pl_frame(frame) for frame in sample_frames.values()]
-if any(pl_flags):
-    if not all(pl_flags):
-        st.warning("Select either PL reports or Raman reports, not both, for Sample Comparison.")
-        st.stop()
-    _render_pl_comparison(sample_frames)
+if any(pl_flags) and not all(pl_flags):
+    st.warning("Select either PL reports or Raman reports, not both, for Sample Comparison.")
     st.stop()
+is_pl_mode = all(pl_flags)
 
 with sidebar_section("4) Analysis", expanded=False):
     ref_sample = st.selectbox(
         "Reference sample",
         options=list(sample_frames.keys()),
         index=0,
+        disabled=is_pl_mode,
         help="Its mean E2g / A1g positions are the zero point for strain and doping.",
     )
     m1, m2 = st.columns(2)
@@ -895,24 +1079,28 @@ with sidebar_section("4) Analysis", expanded=False):
         "S_E",
         value=coefficients["s_e"],
         format="%.4f",
+        disabled=is_pl_mode,
         help="E2g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     s_a = k2.number_input(
         "S_A",
         value=coefficients["s_a"],
         format="%.4f",
+        disabled=is_pl_mode,
         help="A1g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     d_e = k1.number_input(
         "D_E",
         value=coefficients["d_e"],
         format="%.4f",
+        disabled=is_pl_mode,
         help="E2g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
     d_a = k2.number_input(
         "D_A",
         value=coefficients["d_a"],
         format="%.4f",
+        disabled=is_pl_mode,
         help="A1g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
 
@@ -924,6 +1112,7 @@ with sidebar_section("5) Figure", expanded=False):
     show_absolute_isolines = st.checkbox(
         "Show absolute isolines",
         value=bool(isoline_cfg.get("show_default", True)),
+        disabled=is_pl_mode,
     )
     isoline_density_options = ["light", "normal"]
     isoline_density_default = str(isoline_cfg.get("density_default", "light")).strip().lower()
@@ -933,7 +1122,7 @@ with sidebar_section("5) Figure", expanded=False):
         "Isoline density",
         options=isoline_density_options,
         index=isoline_density_options.index(isoline_density_default),
-        disabled=not show_absolute_isolines,
+        disabled=is_pl_mode or (not show_absolute_isolines),
     )
 
     st.markdown("**Style**")
@@ -967,6 +1156,17 @@ with sidebar_section("5) Figure", expanded=False):
     st.caption("Grid and image format: sidebar section 6) Figure size.")
 
 figure_size_section("6) Figure size", ["sample_scatter", "sample_square", "sample_heatmap", "sample_pl"])
+
+if is_pl_mode:
+    _render_pl_comparison(
+        sample_frames,
+        color_map=color_map,
+        center_metric=center_metric,
+        error_metric=error_metric,
+        overlay_scatter=overlay_scatter,
+        scatter_style=scatter_style if use_paper_style else None,
+    )
+    st.stop()
 
 selected_step_cfg = (
     isoline_steps_cfg.get(isoline_density, {})
@@ -1215,14 +1415,10 @@ with tab_absolute:
         fig.update_xaxes(
             fixedrange=False,
             zeroline=False,
-            showline=False,
-            showgrid=False,
         )
         fig.update_yaxes(
             fixedrange=False,
             zeroline=False,
-            showline=False,
-            showgrid=False,
         )
 
         if show_absolute_isolines:
@@ -1365,5 +1561,5 @@ with tab_lo:
             if heatmap_fig is None:
                 st.info("No valid LO ratio map values for selected sample.")
             else:
-                show(heatmap_fig, "sample_heatmap")
+                show(heatmap_fig, "sample_heatmap", filename=f"{selected_heatmap_sample}_lo_ratio_heatmap")
 

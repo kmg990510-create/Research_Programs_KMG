@@ -459,7 +459,7 @@ def render_spectrum_overlay(
     fig.update_layout(
         title=title,
         xaxis_title=xaxis_title,
-        yaxis_title="Intensity",
+        yaxis_title="Intensity (a.u.)",
         hovermode="x unified",
         legend=LEGEND_RIGHT,  # many entries: outside, so that no peak is covered
         margin={"l": 60, "r": 220, "t": 60, "b": 60},
