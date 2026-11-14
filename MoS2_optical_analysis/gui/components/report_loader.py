@@ -238,10 +238,24 @@ def save_uploaded_report_files(
 
 REPORT_SECTION = "1) Report"
 FILTERS_SECTION = "2) Filters"
+ACTIVE_REPORT_KEY = "mos2_active_report"
+FILTER_STORE_KEY = "mos2_filter_store"
+STATUS_OPTIONS = ("valid", "attention", "invalid")
 
 
 def sidebar_filters_section(expanded: bool = True):
     return sidebar_section(FILTERS_SECTION, expanded=expanded)
+
+
+def filter_store() -> dict[str, Any]:
+    """Shared filter choices across pages. Default hides nothing."""
+    return st.session_state.setdefault(
+        FILTER_STORE_KEY,
+        {
+            "statuses": list(STATUS_OPTIONS),
+            "hide_rejected": False,
+        },
+    )
 
 
 def _render_report_upload(key_prefix: str, expanded: bool) -> None:
@@ -287,7 +301,14 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
             f"{path.name}  ({datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')})"
             for path in files
         ]
-        selected_label = st.selectbox("Select report", labels, key=f"{key_prefix}_report")
+        report_key = f"{key_prefix}_report"
+        sync_key = f"{key_prefix}_last_synced_report"
+        active_label = st.session_state.get(ACTIVE_REPORT_KEY)
+        if active_label in labels and st.session_state.get(sync_key) != active_label:
+            st.session_state[report_key] = active_label
+        selected_label = st.selectbox("Select report", labels, key=report_key)
+        st.session_state[ACTIVE_REPORT_KEY] = selected_label
+        st.session_state[sync_key] = selected_label
         selected_path = files[labels.index(selected_label)]
 
         selected_mtime_ns = int(selected_path.stat().st_mtime_ns)

@@ -11,7 +11,12 @@ from labkit.plot_theme import INK, SEQUENTIAL
 from .figure_sizes import show
 
 
-def render_metric_histogram(df: pd.DataFrame, metric: str, title: str | None = None) -> None:
+def render_metric_histogram(
+    df: pd.DataFrame,
+    metric: str,
+    title: str | None = None,
+    x_label: str | None = None,
+) -> None:
     if df.empty or metric not in df.columns:
         st.info(f"No data for metric: {metric}")
         return
@@ -23,8 +28,10 @@ def render_metric_histogram(df: pd.DataFrame, metric: str, title: str | None = N
         color="selected_model" if "selected_model" in df.columns else None,
         barmode="overlay",
         opacity=0.7,
+        labels={metric: x_label or metric, "selected_model": "Model"},
         title=title or f"{metric} distribution",
     )
+    fig.update_layout(yaxis_title="Spectra (count)")
     show(fig, "model_charts", filename=f"{metric}_histogram")
 
 
@@ -44,6 +51,7 @@ def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
         x="map_x",
         y="map_y",
         color=value_col,
+        labels={"map_x": "X (point index)", "map_y": "Y (point index)"},
         hover_data=["spectrum_id", "selected_model"] if "selected_model" in plot_df.columns else ["spectrum_id"],
         color_continuous_scale=SEQUENTIAL,
         title=title,

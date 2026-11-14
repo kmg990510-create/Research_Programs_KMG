@@ -19,8 +19,10 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from gui.components.map_figure import default_colorbar_title  # noqa: E402
 from gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
+    filter_store,
     load_graph_config,
     sidebar_filters_section,
     sidebar_section,
@@ -74,34 +76,39 @@ if df.empty:
     st.warning("This report has no spectra rows.")
     st.stop()
 
+modality = str(payload.get("modality", "")).strip().lower()
+if modality not in {"raman", "pl"}:
+    modality = "pl" if "pl" in {part.lower() for part in report_path.parts} else "raman"
+
 work_df = _add_derived_map_parameters(df)
 status_options = ["valid", "attention", "invalid"]
+f_store = filter_store()
 filters_box = sidebar_filters_section()
+hide_rejected = bool(f_store.get("hide_rejected", False))
 if "review_decision" in work_df.columns:
     hide_rejected = filters_box.checkbox(
         "Exclude rejected spectra",
-        value=True,
+        value=hide_rejected,
         key="map_viewer_hide_rejected",
     )
     if hide_rejected:
         work_df = work_df[work_df["review_decision"].astype(str).str.strip().str.lower() != "rejected"]
 if "fit_status" in work_df.columns:
     work_df["fit_status"] = work_df["fit_status"].astype(str).str.strip().str.lower()
-    available_statuses = set(work_df["fit_status"].dropna().tolist())
-    default_statuses = [s for s in ["valid", "attention"] if s in available_statuses]
-    if not default_statuses:
-        default_statuses = [s for s in status_options if s in available_statuses] or ["valid", "attention"]
+    stored_statuses = [s for s in status_options if s in f_store.get("statuses", status_options)] or status_options
     selected_statuses = filters_box.multiselect(
         "Allowed fit_status values",
         options=status_options,
-        default=default_statuses,
+        default=stored_statuses,
         key="map_viewer_status_filter",
     )
+    f_store.update(statuses=list(selected_statuses), hide_rejected=bool(hide_rejected))
     if not selected_statuses:
         st.info("Select at least one fit_status value.")
         st.stop()
     work_df = work_df[work_df["fit_status"].isin(selected_statuses)]
 else:
+    f_store["hide_rejected"] = bool(hide_rejected)
     filters_box.caption("fit_status column not found: status filter disabled.")
 
 if work_df.empty:
@@ -117,41 +124,44 @@ ratio_numeric_candidates = [
 ratio_box = sidebar_section("3) Ratio Builder", expanded=False)
 figure_size_section("4) Figure size", ["map_parameter", "map_status"])
 with ratio_box:
+    has_two_numeric = len(ratio_numeric_candidates) >= 2
     enable_custom_ratio = st.checkbox(
         "Enable custom ratio (numerator / denominator)",
         value=False,
         key="map_custom_ratio_enable",
+        disabled=not has_two_numeric,
     )
-    if enable_custom_ratio:
-        if len(ratio_numeric_candidates) < 2:
-            st.warning("Need at least two numeric columns for ratio.")
-        else:
-            ratio_num = st.selectbox(
-                "Numerator",
-                options=ratio_numeric_candidates,
-                key="map_custom_ratio_num",
-            )
-            ratio_den_options = [col for col in ratio_numeric_candidates if col != ratio_num]
-            ratio_den = st.selectbox(
-                "Denominator",
-                options=ratio_den_options,
-                key="map_custom_ratio_den",
-            )
-            default_name = f"{ratio_num}_over_{ratio_den}"
-            ratio_name_input = st.text_input(
-                "Ratio name",
-                value=default_name,
-                key="map_custom_ratio_name",
-            ).strip()
-            custom_ratio_col = ratio_name_input or default_name
-
-            num_series = pd.to_numeric(work_df[ratio_num], errors="coerce")
-            den_series = pd.to_numeric(work_df[ratio_den], errors="coerce")
-            valid = num_series.notna() & den_series.notna() & (den_series.abs() > 1.0e-12)
-            ratio_series = pd.Series(float("nan"), index=work_df.index, dtype=float)
-            ratio_series.loc[valid] = num_series.loc[valid] / den_series.loc[valid]
-            work_df[custom_ratio_col] = ratio_series
-            st.caption(f"Added ratio column: {custom_ratio_col} = {ratio_num} / {ratio_den}")
+    ratio_disabled = (not enable_custom_ratio) or (not has_two_numeric)
+    num_options = ratio_numeric_candidates if has_two_numeric else ["-"]
+    ratio_num = st.selectbox(
+        "Numerator",
+        options=num_options,
+        key="map_custom_ratio_num",
+        disabled=ratio_disabled,
+    )
+    ratio_den_options = [col for col in ratio_numeric_candidates if col != ratio_num] if has_two_numeric else ["-"]
+    ratio_den = st.selectbox(
+        "Denominator",
+        options=ratio_den_options,
+        key="map_custom_ratio_den",
+        disabled=ratio_disabled,
+    )
+    default_name = f"{ratio_num}_over_{ratio_den}" if has_two_numeric else "custom_ratio"
+    ratio_name_input = st.text_input(
+        "Ratio name",
+        value=default_name,
+        key="map_custom_ratio_name",
+        disabled=ratio_disabled,
+    ).strip()
+    if enable_custom_ratio and has_two_numeric:
+        custom_ratio_col = ratio_name_input or default_name
+        num_series = pd.to_numeric(work_df[ratio_num], errors="coerce")
+        den_series = pd.to_numeric(work_df[ratio_den], errors="coerce")
+        valid = num_series.notna() & den_series.notna() & (den_series.abs() > 1.0e-12)
+        ratio_series = pd.Series(float("nan"), index=work_df.index, dtype=float)
+        ratio_series.loc[valid] = num_series.loc[valid] / den_series.loc[valid]
+        work_df[custom_ratio_col] = ratio_series
+        st.caption(f"Added ratio column: {custom_ratio_col} = {ratio_num} / {ratio_den}")
 
 preferred_candidates = [
     "pl_position",
@@ -271,23 +281,28 @@ if required_top_heatmap.issubset(plot_df.columns):
 
             zmin: float | None = None
             zmax: float | None = None
+            manual_scale = scale_mode == "Manual"
+            c1, c2 = st.columns(2)
+            manual_zmin = c1.number_input(
+                "Color min",
+                value=float(z_min_robust),
+                format="%.6f",
+                key=f"map_heat_zmin::{selected_map}::{selected_param}",
+                disabled=not manual_scale,
+            )
+            manual_zmax = c2.number_input(
+                "Color max",
+                value=float(z_max_robust),
+                format="%.6f",
+                key=f"map_heat_zmax::{selected_map}::{selected_param}",
+                disabled=not manual_scale,
+            )
             if scale_mode == "Auto (robust 2-98%)":
                 zmin, zmax = z_min_robust, z_max_robust
-            elif scale_mode == "Manual":
-                c1, c2 = st.columns(2)
-                zmin = c1.number_input(
-                    "Color min",
-                    value=float(z_min_robust),
-                    format="%.6f",
-                    key=f"map_heat_zmin::{selected_map}::{selected_param}",
-                )
-                zmax = c2.number_input(
-                    "Color max",
-                    value=float(z_max_robust),
-                    format="%.6f",
-                    key=f"map_heat_zmax::{selected_map}::{selected_param}",
-                )
-                if zmin >= zmax:
+            elif manual_scale:
+                if manual_zmin < manual_zmax:
+                    zmin, zmax = manual_zmin, manual_zmax
+                else:
                     st.warning("Color min must be smaller than color max. Reverting to auto full range.")
                     zmin, zmax = z_min_full, z_max_full
 
@@ -301,7 +316,11 @@ if required_top_heatmap.issubset(plot_df.columns):
                 color_continuous_scale=SEQUENTIAL,
                 zmin=zmin,
                 zmax=zmax,
-                labels={"x": "map_x", "y": "map_y", "color": selected_param},
+                labels={
+                    "x": "X (point index)",
+                    "y": "Y (point index)",
+                    "color": default_colorbar_title(selected_param, modality),
+                },
                 title=f"{selected_map}: {selected_param}",
             )
             fig_top.update_xaxes(constrain="domain")
@@ -329,6 +348,7 @@ with st.expander("Fit Status Map", expanded=True):
                 color="fit_status",
                 category_orders={"fit_status": status_options},
                 color_discrete_map=STATUS_COLORS,
+                labels={"map_x": "X (point index)", "map_y": "Y (point index)"},
                 hover_data=["spectrum_id", "selected_model"] if "selected_model" in status_df.columns else ["spectrum_id"],
                 title="Spatial distribution of fit_status",
             )

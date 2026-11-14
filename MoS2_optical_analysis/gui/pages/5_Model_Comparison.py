@@ -21,7 +21,8 @@ if str(ROOT) not in sys.path:
 
 from gui.components.fit_plot_component import render_metric_histogram  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from gui.components.report_loader import choose_report_sidebar, sidebar_filters_section  # noqa: E402
+from gui.components.map_figure import default_colorbar_title  # noqa: E402
+from gui.components.report_loader import choose_report_sidebar, filter_store, sidebar_filters_section  # noqa: E402
 
 
 st.title("Model Comparison")
@@ -37,21 +38,37 @@ if "selected_model" not in df.columns:
     st.warning("`selected_model` column not present in this report.")
     st.stop()
 
+modality = str(payload.get("modality", "")).strip().lower()
+if modality not in {"raman", "pl"}:
+    modality = "pl" if "pl" in {part.lower() for part in report_path.parts} else "raman"
+
 work_df = df.copy()
+f_store = filter_store()
+filters_box = sidebar_filters_section()
+hide_rejected = bool(f_store.get("hide_rejected", False))
+if "review_decision" in work_df.columns:
+    hide_rejected = filters_box.checkbox(
+        "Exclude rejected spectra",
+        value=hide_rejected,
+        key="model_cmp_hide_rejected",
+    )
+    if hide_rejected:
+        work_df = work_df[work_df["review_decision"].astype(str).str.strip().str.lower() != "rejected"]
 if "fit_status" in work_df.columns:
-    filters_box = sidebar_filters_section()
     status_options = ["valid", "attention", "invalid"]
     work_df["fit_status"] = work_df["fit_status"].astype(str).str.strip().str.lower()
-    available = [item for item in status_options if item in set(work_df["fit_status"].dropna().tolist())]
-    default_statuses = [item for item in ["valid", "attention"] if item in available] or available
+    stored_statuses = [item for item in status_options if item in f_store.get("statuses", status_options)] or status_options
     selected_statuses = filters_box.multiselect(
         "Allowed fit_status values",
         options=status_options,
-        default=default_statuses,
+        default=stored_statuses,
         key="model_cmp_status_filter",
     )
+    f_store.update(statuses=list(selected_statuses), hide_rejected=bool(hide_rejected))
     if selected_statuses:
         work_df = work_df[work_df["fit_status"].isin(selected_statuses)]
+else:
+    f_store["hide_rejected"] = bool(hide_rejected)
 figure_size_section("3) Figure size", ["model_charts"])
 if work_df.empty:
     st.warning("No rows left after filters.")
@@ -59,16 +76,53 @@ if work_df.empty:
 
 st.subheader("Selected Model Distribution")
 model_counts = work_df["selected_model"].value_counts().rename_axis("model").reset_index(name="count")
-fig_counts = px.bar(model_counts, x="model", y="count", title="Model usage")
+fig_counts = px.bar(
+    model_counts,
+    x="model",
+    y="count",
+    labels={"model": "Model", "count": "Spectra (count)"},
+    title="Model usage",
+)
 show(fig_counts, "model_charts", filename="model_usage", key="model_cmp_counts")
 
-metric_cols = [c for c in ["rmse", "r2", "aic", "bic"] if c in work_df.columns]
+metric_cols = [
+    c
+    for c in [
+        "rmse",
+        "r2",
+        "aic",
+        "bic",
+        "pl_position",
+        "pl_fwhm",
+        "a_minus_position",
+        "a0_position",
+        "a_minus_a0_energy_split",
+        "a_minus_a0_area_ratio",
+        "a0_fraction_of_a_total",
+        "b_to_a_total_area_ratio",
+        "defect_to_a_total_area_ratio",
+        "delta_e2g_a1g",
+        "e2g_position",
+        "a1g_position",
+        "e2g_fwhm",
+        "a1g_fwhm",
+    ]
+    if c in work_df.columns and pd.to_numeric(work_df[c], errors="coerce").notna().any()
+]
 if metric_cols:
     selected_metric = st.selectbox("Metric for boxplot", metric_cols, index=0)
-    fig_box = px.box(work_df, x="selected_model", y=selected_metric, points="outliers", title=f"{selected_metric} by model")
+    metric_label = default_colorbar_title(selected_metric, modality)
+    fig_box = px.box(
+        work_df,
+        x="selected_model",
+        y=selected_metric,
+        points="outliers",
+        labels={"selected_model": "Model", selected_metric: metric_label},
+        title=f"{selected_metric} by model",
+    )
     show(fig_box, "model_charts", filename=f"{selected_metric}_by_model", key="model_cmp_box")
 
-    render_metric_histogram(work_df, selected_metric, title=f"{selected_metric} histogram")
+    render_metric_histogram(work_df, selected_metric, title=f"{selected_metric} histogram", x_label=metric_label)
 
 if metric_cols:
     grouped = work_df.groupby("selected_model")[metric_cols].agg(["mean", "median", "std"]).round(4)

@@ -117,6 +117,7 @@ def test_no_page_sets_its_own_theme() -> None:
         assert "plotly_white" not in text and "apply_plotly_theme" not in text, name
         assert not re.search(r"\btheme=", text), name  # show() always draws with the common look
         assert "export_config(" not in text, name  # the image format and scale are set in one place
+        assert "px.colors.qualitative" not in text, name  # categorical colours come from labkit.plot_theme
 
 
 def test_a_plotly_express_figure_gets_the_common_look() -> None:

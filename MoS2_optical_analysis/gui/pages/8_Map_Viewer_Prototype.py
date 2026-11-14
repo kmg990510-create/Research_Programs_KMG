@@ -42,6 +42,7 @@ from gui.components.map_figure import (  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
 from gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
+    filter_store,
     load_graph_config,
     load_report_payload,
     load_spectra_dataframe,
@@ -163,7 +164,9 @@ top = st.columns([2, 1, 1])
 param = top[0].selectbox("Color by parameter", params, key=f"{K}_param")
 map_ids = sorted(df["map_id"].dropna().astype(str).unique()) if "map_id" in df.columns else ["default_map"]
 map_id = top[1].selectbox("Map ID", map_ids, key=f"{K}_map_id")
-hide_rejected = top[2].toggle("Hide rejected points", value=True, key=f"{K}_hide_rejected")
+f_store = filter_store()
+hide_rejected = top[2].toggle("Hide rejected points", value=bool(f_store.get("hide_rejected", False)), key=f"{K}_hide_rejected")
+f_store["hide_rejected"] = bool(hide_rejected)
 
 plot_df = df[df["map_id"].astype(str) == map_id].copy() if "map_id" in df.columns else df.copy()
 plot_df["spectrum_id"] = plot_df["spectrum_id"].astype(str)

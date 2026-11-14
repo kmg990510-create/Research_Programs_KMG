@@ -4,7 +4,7 @@ sample_comparison:
   default_report_count: 4
   status_filter:
     enabled_default: true
-    allowed_default: ["valid", "attention"]
+    allowed_default: ["valid", "attention", "invalid"]
   # coefficients (strain/doping model) live in the root config.yaml.
   center_metric_default: "mean"
   error_metric_default: "std"
@@ -14,8 +14,8 @@ sample_comparison:
     density_default: "light"
     steps:
       light:
-        eps_step: 0.1
-        n_step: 0.1
+        eps_step: 0.2
+        n_step: 0.2
       normal:
         eps_step: 0.1
         n_step: 0.1
