@@ -1,4 +1,4 @@
-﻿"""Page for cross-sample comparison plots (LO features excluded)."""
+"""Page for cross-sample comparison plots (LO features excluded)."""
 
 from __future__ import annotations
 
@@ -29,12 +29,15 @@ from gui.components.map_figure import default_colorbar_title  # noqa: E402
 from labkit.plot_theme import (  # noqa: E402
     AUX,
     CATEGORICAL,
+    ERRORBAR_CAP,
+    ERRORBAR_WIDTH,
     INK,
     LINE_AUX,
     LINE_DATA,
     MARKER_CENTER,
     MARKER_ON_LINE,
     MARKER_RAW,
+    OUTLINE,
     SEQUENTIAL,
     categorical_colors,
 )
@@ -44,6 +47,7 @@ from gui.components.scatter_style import (  # noqa: E402
     ScatterStyle,
     apply_scatter_style,
 )
+from gui.components.derived_parameters import strain_doping  # noqa: E402
 from gui.components.science_settings import strain_doping_settings  # noqa: E402
 
 list_report_json_files = _report_loader.list_report_json_files
@@ -394,13 +398,7 @@ def _compute_eps_n(
     d_e: float,
     d_a: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    det_k = s_e * d_a - s_a * d_e
-    if abs(det_k) < 1e-12:
-        raise ValueError("Invalid coefficient set: determinant is near zero.")
-    d_e2g = e2g - omega_e0
-    d_a1g = a1g - omega_a0
-    eps = (d_a * d_e2g - d_e * d_a1g) / det_k
-    n = (-s_a * d_e2g + s_e * d_a1g) / det_k
+    eps, n = strain_doping(e2g, a1g, omega_e0, omega_a0, {"s_e": s_e, "s_a": s_a, "d_e": d_e, "d_a": d_a})
     return eps, n
 
 
@@ -705,7 +703,7 @@ def _build_lo_ratio_heatmap(sample_name: str, frame: pd.DataFrame, use_log10: bo
         origin="lower",
         aspect="auto",
         color_continuous_scale=SEQUENTIAL,
-        labels={"x": "map_x", "y": "map_y", "color": color_label},
+        labels={"x": "X (point index)", "y": "Y (point index)", "color": color_label},
         title=f"LO ratio heatmap: {sample_name}",
     )
     return fig
@@ -775,21 +773,21 @@ def _build_errorbar_figure(
                 y=[cy],
                 mode="markers",
                 name=sample,
-                marker={"size": MARKER_CENTER, "color": colors[sample], "line": {"width": 1.5, "color": INK}},
+                marker={"size": MARKER_CENTER, "color": colors[sample], "line": {"width": OUTLINE, "color": INK}},
                 error_x={
                     "type": "data",
                     "array": [ex if np.isfinite(ex) else 0.0],
                     "visible": bool(np.isfinite(ex)),
-                    "thickness": 1.2,
-                    "width": 3,
+                    "thickness": ERRORBAR_WIDTH,
+                    "width": ERRORBAR_CAP,
                     "color": INK,
                 },
                 error_y={
                     "type": "data",
                     "array": [ey if np.isfinite(ey) else 0.0],
                     "visible": bool(np.isfinite(ey)),
-                    "thickness": 1.2,
-                    "width": 3,
+                    "thickness": ERRORBAR_WIDTH,
+                    "width": ERRORBAR_CAP,
                     "color": INK,
                 },
                 hovertemplate=(

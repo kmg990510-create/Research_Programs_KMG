@@ -295,6 +295,9 @@ def _apply_runtime_overrides(
 
 
 def main() -> None:
+    from fitting.mos2_core.core.progress_log import configure_cli_logging
+
+    configure_cli_logging()
     args = _build_arg_parser().parse_args()
     project_root = runtime_project_root(__file__, 2)
     config_dir = Path(__file__).resolve().parent / "config"

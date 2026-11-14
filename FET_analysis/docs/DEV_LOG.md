@@ -134,3 +134,9 @@
   - 페이지는 `show_figure(fig, size, filename=...)`만 부른다. 이미지 형식과 3배 해상도는 `show_figure`가 정한다.
   - `3) Figure size` 구획에 `Grid`(기본 꺼짐)와 `Image format`(png/svg)이 생겼고 모든 그래프에 적용된다.
   - 검증: `pytest` 90 passed. 브라우저에서 Devices Detail과 Compare의 그림이 Arial 14, 격자 없음, 지정한 파일 이름으로 뜨는 것을 확인했다. FET 화면에서 `Grid`를 켜 보지는 않았다 (MoS2 화면과 자동 테스트로 확인).
+
+- 추가 (같은 날): 원칙 점검에서 나온 것을 고쳤다.
+  - gm 잡음을 재는 범위(`0.5 * top`)를 `config.yaml`의 `analysis.gm.noise_top_fraction`으로 옮겼다. 값은 그대로 0.5라 결과는 같다.
+  - Devices 제목의 상태 글자: valid는 색 없이, attention은 orange, invalid는 red (그래프의 상태 색과 맞춤. 이전에는 valid가 초록).
+  - `figures.py`의 점 테두리 굵기와 Gallery 글씨 크기를 `labkit.plot_theme`의 `OUTLINE`, `OUTLINE_THIN`과 `GALLERY_FONT_SIZE`로 바꿨다. Statistics 점 테두리 1 → 0.8.
+  - 검증: `pytest` 90 passed. 화면은 Devices와 Compare가 오류 없이 뜨는 것만 확인했다.

@@ -22,9 +22,19 @@ sample_comparison:
 
 all_spectra_viewer:
   x_window:
-    fallback_min: 340.0
-    fallback_max: 430.0
-    peak_padding: 18.0
+    fallback_min: 340.0            # cm-1, 피크 위치를 모를 때 보여 주는 범위
+    fallback_max: 430.0            # cm-1
+    peak_padding: 18.0             # cm-1, E2g/A1g 바깥으로 더 보여 주는 폭
+    pl_view_min_ev: 1.4            # eV, PL 그림은 최소한 여기까지 내려가서 보여 준다
+    pl_padding_fraction: 0.25      # PL 피크 양쪽 여백 = 측정 범위의 이 비율
+    pl_padding_min_ev: 0.08        # eV, 위 여백의 최솟값
+    pl_padding_max_ev: 0.25        # eV, 위 여백의 최댓값
+    pl_wavelength_padding_nm: 60.0 # nm, PL 축이 아직 파장일 때의 여백
+    energy_axis_max_span: 10.0     # 축 범위가 이보다 좁으면 eV 축으로 본다
+    wavelength_axis_min: 100.0     # 단위가 eV 인데 값이 이보다 크면 실제로는 nm 로 본다
+    si_check_min: 505.0            # cm-1, Si 피크 확인 범위
+    si_check_max: 535.0            # cm-1
+    si_visible_from: 510.0         # cm-1, 스펙트럼이 여기까지 측정됐을 때만 Si 확인을 보여 준다
   fit_curve:
     smooth_factor: 5
     max_points: 4000
@@ -46,6 +56,12 @@ all_spectra_viewer:
       a1g: "#00A651"
       zo: "#00B7C7"
       la: "#F3C300"
+      pl: "#E60000"
+      i1: "#7A5195"
+      i2: "#BC5090"
+      a_minus: "#EF5675"
+      a0: "#FFA600"
+      b: "#2F4B7C"
     editor_handles:
       top: "#0B5ED7"
       fwhm: "#C2185B"

@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from labkit.plot_theme import INK, SEQUENTIAL
+from labkit.plot_theme import INK, MARKER_MAP, OUTLINE_THIN, SEQUENTIAL
 
 from .figure_sizes import show
 
@@ -56,7 +56,7 @@ def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
         color_continuous_scale=SEQUENTIAL,
         title=title,
     )
-    fig.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": INK}})
+    fig.update_traces(marker={"size": MARKER_MAP, "line": {"width": OUTLINE_THIN, "color": INK}})
     fig.update_layout(yaxis={"autorange": "reversed"})
     show(fig, "map_status", filename=f"map_{value_col}")
 

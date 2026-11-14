@@ -27,7 +27,7 @@ Research_Programs_KMG/
 
 1. **계산과 화면을 분리한다.** 분석 코드는 `streamlit`을 import하지 않는다. CLI와 GUI는 같은 분석 함수를 부르기만 한다.
 2. **장비 파일은 표준 내부 모델로 바꾼 뒤 분석한다.** 장비별 형식(시트 이름, 열 이름, 헤더)은 reader와 파싱 프로필 YAML 안에만 둔다. 새 reader는 실제 예시 파일이 생겼을 때만 만든다.
-3. **분석과 저장을 분리한다.** 분석은 메모리에서 끝내고, 디스크 쓰기는 사용자가 검토한 뒤 별도 단계에서 한다 (FET의 `analyze_in_memory` / `export_results` 방식).
+3. **분석과 저장을 분리한다.** 분석은 메모리에서 끝내고, 디스크 쓰기는 사용자가 검토한 뒤 별도 단계에서 한다 (FET의 `pipeline.run_folder` / `report.export.export_run` 방식).
 4. **자동 분석 후 사람이 검토한다.** 자동 추출 → 의심 항목 표시 → 수동 수정·제외 → 확정 순서를 따른다. 수동 수정과 제외는 원본을 덮어쓰지 않고 별도 기록으로 남긴다.
 5. **데이터를 조용히 버리거나 꾸미지 않는다.**
    - 추출에 실패한 값은 `0`이 아니라 빈 값(`None`/NaN)으로 둔다.
@@ -35,7 +35,7 @@ Research_Programs_KMG/
    - 점을 제거하는 처리(예: 누설 마스킹)는 기본값이 아니라 명시적으로 고른 모드에서만 한다.
    - 지원하지 않는 경우(예: p-type FET)는 추정하지 않고 표시한 뒤 요약에서 뺀다.
 6. **방법 선택을 드러낸다.** 방법에 따라 값이 달라지는 항목(Vth 방법, 이동도 영역, sweep 방향, 피팅 모델)은 설정에 이름으로 있고 결과에도 기록된다.
-7. **과학적 수치는 YAML에만 둔다.** 피크 위치, 윈도우, 임계값, 소자 치수 같은 값을 Python 리터럴로 쓰지 않는다. 프로그램마다 기준 설정 파일은 하나다 (MoS2 `config.yaml`, FET `config/defaults.yaml`). 설정 키에는 한국어 주석을 단다.
+7. **과학적 수치는 YAML에만 둔다.** 피크 위치, 윈도우, 임계값, 소자 치수 같은 값을 Python 리터럴로 쓰지 않는다. 프로그램마다 기준 설정 파일은 하나다 (MoS2 `config.yaml`, FET `config.yaml`). 화면 표시용 값(보여 주는 범위, 선 색)은 MoS2에서 `raman_graph.yaml`에 두며, 이것도 Python 리터럴로 쓰지 않는다. 설정 키에는 한국어 주석을 단다.
 8. **결과는 재현 가능해야 한다.** 결과마다 프로그램 버전과 git commit, 사용한 설정 전체, 입력 파일 목록(가능하면 SHA-256), GUI에서 한 수정 내역을 함께 저장한다.
 9. **단위를 명시한다.** 변수·열 이름에 단위를 붙이고(`W_um`, `t_ox_nm`), 단위 변환은 코드에 드러나게 쓴다.
 10. **라이브러리 코드는 `print` 대신 `logging`을 쓴다.** 로그 설정은 CLI와 GUI 진입점에서만 한다.
@@ -78,7 +78,8 @@ Research_Programs_KMG/
 - 그래프 코드는 색·선 굵기·점 크기 숫자를 직접 쓰지 않고 `labkit.plot_theme`의 이름을 쓴다.
   - 색 역할: `DATA`(측정 곡선), `AUX`(보조·기준선·제외된 것), `FIT`(fit·접선), `MARK`(추출한 값), `STATUS_COLORS`(valid/attention/invalid), `CATEGORICAL`(그룹·샘플)
   - 색상표: `SEQUENTIAL`(순서 있는 값), `DIVERGING`(0 같은 중심이 있는 값)
-  - 선 굵기: `LINE_DATA`, `LINE_AUX`, `LINE_FIT`. 점 크기: `MARKER_ON_LINE`, `MARKER_RAW`, `MARKER_CENTER`
+  - 선 굵기: `LINE_DATA`, `LINE_AUX`, `LINE_FIT`. 점 크기: `MARKER_ON_LINE`, `MARKER_RAW`, `MARKER_CENTER`, `MARKER_MAP`
+  - 점 테두리: `OUTLINE`, `OUTLINE_THIN`. 오차막대: `ERRORBAR_WIDTH`, `ERRORBAR_CAP`
 - 그리기 직전에 `finish_figure`가 모든 그래프에 같은 마무리를 한다: 위첨자 표기(`cm^-1` → `cm⁻¹`), 10의 거듭제곱 표기, 격자, 범례 위치, colorbar 모양. 축 제목은 `이름 (단위)` 형식으로 쓴다 (`axis_label`).
 - 격자는 기본으로 없다. 사용자가 사이드바 `Figure size` 구획의 `Grid`로 켜며, 모든 그래프에 같이 적용된다. 같은 구획의 `Image format`(png/svg)도 모든 그래프에 적용된다.
 - 그래프마다 달라도 되는 것은 근거가 있는 것뿐이다.
@@ -93,6 +94,7 @@ Research_Programs_KMG/
 ### 페이지 코드
 
 - 페이지 파일은 화면 배치만 한다. 로직은 `gui/components/` 또는 분석 패키지에 둔다.
+- 두 페이지 이상이 쓰는 계산은 component 한 곳에만 둔다 (MoS2: strain·doping은 `derived_parameters.py`, 스펙트럼 축 변환과 처음 보여 주는 범위는 `spectrum_view.py`).
 - 페이지 파일이 400줄을 넘으면 component로 나눈다.
 - `st.session_state` 키는 `페이지이름_용도` 형태로 붙인다.
 
@@ -100,8 +102,8 @@ Research_Programs_KMG/
 
 - 표준 형식은 요약 CSV와 메타데이터 JSON이다. CSV는 Origin에 바로 불러올 수 있는 형태(첫 행이 열 이름, 열마다 단위 표기)로 쓴다.
 - 출력 파일 이름, 열 이름, 상태 값은 각 프로그램 `AGENTS.md`의 "Output Contracts"에 적고, 바꿀 때는 코드와 문서를 같은 커밋에서 바꾼다.
-- 항목 상태는 3단계로 표시한다: `valid` / `attention` / `invalid`. 세부 원인은 별도 열이나 경고 코드로 남긴다 (FET의 `parameter_quality`, `warnings.csv`).
-- 요약 통계에 넣을지 여부는 한 함수에서만 판단한다 (FET `is_valid_for_summary`). GUI, 저장, 통계 그림이 같은 판단을 쓴다.
+- 항목 상태는 3단계로 표시한다: `valid` / `attention` / `invalid`. 세부 원인은 별도 열이나 경고 코드로 남긴다 (FET의 `reasons`, `warnings.csv`).
+- 요약 통계에 넣을지 여부는 한 함수에서만 판단한다 (FET `counts_in_summary`, 사람의 결정까지 반영한 값은 `pipeline.results_frame`의 `included`). GUI, 저장, 통계 그림이 같은 판단을 쓴다.
 
 ## 5. 실행 환경
 
@@ -141,13 +143,16 @@ Research_Programs_KMG/
 
 고칠 때는 별도 작업으로 한다.
 
-- MoS2 페이지 파일이 크다: `6_Sample_Comparison.py` 1312줄, `1_Run_Analysis.py` 939줄, `3_All_Spectra_Viewer.py` 857줄.
+- MoS2 페이지 파일이 크다: `6_Sample_Comparison.py` 1560줄, `1_Run_Analysis.py` 939줄, `3_All_Spectra_Viewer.py` 867줄.
 - MoS2 페이지마다 `sys.path` 부트스트랩 코드가 복사되어 있다.
 - 루트 `requirements.txt`, `Dockerfile`, GitHub Actions 워크플로가 MoS2 하나만을 전제로 한다.
-- 상태 용어가 다르다: MoS2는 `fit_status`, FET는 `parameter_quality` + `valid_for_summary`.
-- FET는 화면과 내보내기 모두 matplotlib를 쓴다.
+- 상태 열 이름이 다르다: MoS2는 `fit_status`, FET는 `status`. 값은 둘 다 `valid` / `attention` / `invalid`다.
+- 그림 파일을 내보내는 기능은 두 프로그램 모두 없다. 화면의 그림을 카메라 버튼으로 저장한다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
 - 글씨 크기·눈금 방향 같은 세부 스타일 입력은 아직 공용이 아니다: Sample Comparison(`5) Figure`)과 Map Viewer prototype(Figure style 탭)에만 있다.
 - MoS2 Spectrum의 선 색·굵기는 `raman_graph.yaml` 값을 그대로 쓰며 `labkit`의 역할 이름을 쓰지 않는다.
+- MoS2는 결정·메모를 즉시 저장하지 않고 버튼으로 저장한다: Flagged Spectra의 `Apply Edits to Active Report`, Map Viewer prototype의 `Apply to N point(s)`.
+- MoS2 데스크톱 편집기(`gui/desktop_editor/plot_widget.py`)는 처음 보여 주는 범위를 자체 코드와 기본값으로 정한다 (`spectrum_view.py`를 쓰지 않는다).
+- MoS2의 명령줄 진입 모듈(`run_raw_pipeline.py` 등)은 요약을 `print`로 낸다. 단계 진행 상황만 `mos2.progress` 로거를 쓴다.
 - "허용된 색만 쓴다"를 확인하는 테스트는 없다.
 - `labkit`을 넣은 뒤 Docker 이미지와 exe를 다시 빌드해 확인하지 않았다.

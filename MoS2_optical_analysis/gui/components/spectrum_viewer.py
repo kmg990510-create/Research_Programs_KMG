@@ -11,45 +11,39 @@ import plotly.graph_objects as go
 import streamlit as st
 from lmfit.models import GaussianModel, LorentzianModel, PseudoVoigtModel
 
+from fitting.mos2_pl.run_raw_pipeline import NM_TO_EV
 from labkit.plot_theme import LEGEND_RIGHT
 
+from . import graph_style
 from .figure_sizes import show
+from .spectrum_view import default_view_range, view_window
 
-_DEFAULT_PEAK_STYLE: dict[str, dict[str, Any]] = {
-    "pl": {"label": "PL", "color": "#E60000", "fill": True},
-    "i1": {"label": "I1", "color": "#7A5195", "fill": True},
-    "i2": {"label": "I2", "color": "#BC5090", "fill": True},
-    "a_minus": {"label": "A-", "color": "#EF5675", "fill": True},
-    "a0": {"label": "A0", "color": "#FFA600", "fill": True},
-    "b": {"label": "B", "color": "#2F4B7C", "fill": True},
-    "lo": {"label": "LO", "color": "#CC00CC", "fill": True},
-    "e2g": {"label": "E2g", "color": "#0066FF", "fill": False},
-    "a1g": {"label": "A1g", "color": "#00A651", "fill": False},
-    "zo": {"label": "ZO", "color": "#00B7C7", "fill": True},
-    "la": {"label": "LA", "color": "#F3C300", "fill": True},
+# Which peaks exist and how they are drawn. Colours and line styles are in raman_graph.yaml
+# (all_spectra_viewer.style); nothing here repeats them.
+_PEAKS: dict[str, dict[str, Any]] = {
+    "pl": {"label": "PL", "fill": True},
+    "i1": {"label": "I1", "fill": True},
+    "i2": {"label": "I2", "fill": True},
+    "a_minus": {"label": "A-", "fill": True},
+    "a0": {"label": "A0", "fill": True},
+    "b": {"label": "B", "fill": True},
+    "lo": {"label": "LO", "fill": True},
+    "e2g": {"label": "E2g", "fill": False},
+    "a1g": {"label": "A1g", "fill": False},
+    "zo": {"label": "ZO", "fill": True},
+    "la": {"label": "LA", "fill": True},
 }
 
-_DEFAULT_OVERLAY_STYLE: dict[str, Any] = {
-    "raw_marker_color": "#666666",
-    "raw_marker_size": 6,
-    "raw_marker_opacity": 0.60,
-    "fit_line_color": "#FF1E1E",
-    "fit_line_width": 4.0,
-    "baseline_color": "#111111",
-    "baseline_width": 2.0,
-    "baseline_dash": "dash",
-    "component_line_width": 2.8,
-    "component_line_dash": "dot",
-    "component_fill_alpha": 0.18,
-    "component_colors": {k: v["color"] for k, v in _DEFAULT_PEAK_STYLE.items()},
-}
-
-_DEFAULT_FIT_CURVE_CFG: dict[str, Any] = {
-    "smooth_factor": 5,
-    "max_points": 4000,
-}
-NM_TO_EV = 1239.8419843320026
-PL_DEFAULT_VIEW_MIN_EV = 1.4
+_STYLE_PATH = "raman_graph.all_spectra_viewer.style"
+_STYLE_TEXT_KEYS = ("raw_marker_color", "fit_line_color", "baseline_color", "baseline_dash", "component_line_dash")
+_STYLE_NUMBER_KEYS = (
+    "raw_marker_size",
+    "raw_marker_opacity",
+    "fit_line_width",
+    "baseline_width",
+    "component_line_width",
+    "component_fill_alpha",
+)
 
 
 def resolve_source_file(source_value: Any, project_root: Path) -> Path | None:
@@ -161,66 +155,36 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def _style_float(value: Any, fallback: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return float(fallback)
-
-
-def _style_int(value: Any, fallback: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return int(fallback)
+def _required(mapping: Any, key: str, path: str) -> Any:
+    if not isinstance(mapping, dict) or key not in mapping:
+        raise KeyError(f"{path}.{key} is missing in the graph config")
+    return mapping[key]
 
 
 def _resolve_overlay_style(style_cfg: dict[str, Any] | None) -> dict[str, Any]:
-    style: dict[str, Any] = dict(_DEFAULT_OVERLAY_STYLE)
-    style["component_colors"] = dict(_DEFAULT_OVERLAY_STYLE["component_colors"])
-
-    if isinstance(style_cfg, dict):
-        for key in [
-            "raw_marker_color",
-            "fit_line_color",
-            "baseline_color",
-            "baseline_dash",
-            "component_line_dash",
-        ]:
-            value = style_cfg.get(key)
-            if isinstance(value, str) and value.strip():
-                style[key] = value.strip()
-
-        style["raw_marker_size"] = _style_int(style_cfg.get("raw_marker_size"), style["raw_marker_size"])
-        style["raw_marker_opacity"] = _style_float(style_cfg.get("raw_marker_opacity"), style["raw_marker_opacity"])
-        style["fit_line_width"] = _style_float(style_cfg.get("fit_line_width"), style["fit_line_width"])
-        style["baseline_width"] = _style_float(style_cfg.get("baseline_width"), style["baseline_width"])
-        style["component_line_width"] = _style_float(style_cfg.get("component_line_width"), style["component_line_width"])
-        style["component_fill_alpha"] = _style_float(style_cfg.get("component_fill_alpha"), style["component_fill_alpha"])
-
-        component_colors = style_cfg.get("component_colors")
-        if isinstance(component_colors, dict):
-            for key, value in component_colors.items():
-                if isinstance(key, str) and isinstance(value, str) and key.strip() and value.strip():
-                    style["component_colors"][key.strip().lower()] = value.strip()
-
+    """Line and marker style of the spectrum figure, read from the graph config without code-side defaults."""
+    source = style_cfg if isinstance(style_cfg, dict) and style_cfg else graph_style.overlay_style_cfg()
+    style: dict[str, Any] = {key: str(_required(source, key, _STYLE_PATH)).strip() for key in _STYLE_TEXT_KEYS}
+    for key in _STYLE_NUMBER_KEYS:
+        style[key] = float(_required(source, key, _STYLE_PATH))
+    colors = _required(source, "component_colors", _STYLE_PATH)
+    style["component_colors"] = {
+        key: str(_required(colors, key, f"{_STYLE_PATH}.component_colors")).strip() for key in _PEAKS
+    }
     style["raw_marker_opacity"] = float(np.clip(style["raw_marker_opacity"], 0.0, 1.0))
     style["component_fill_alpha"] = float(np.clip(style["component_fill_alpha"], 0.0, 1.0))
     style["raw_marker_size"] = max(1, int(style["raw_marker_size"]))
-    style["fit_line_width"] = max(1.0e-3, float(style["fit_line_width"]))
-    style["baseline_width"] = max(1.0e-3, float(style["baseline_width"]))
-    style["component_line_width"] = max(1.0e-3, float(style["component_line_width"]))
     return style
 
 
 def _resolve_fit_curve_cfg(fit_curve_cfg: dict[str, Any] | None) -> dict[str, Any]:
-    cfg = dict(_DEFAULT_FIT_CURVE_CFG)
-    if isinstance(fit_curve_cfg, dict):
-        cfg["smooth_factor"] = _style_int(fit_curve_cfg.get("smooth_factor"), cfg["smooth_factor"])
-        cfg["max_points"] = _style_int(fit_curve_cfg.get("max_points"), cfg["max_points"])
-    cfg["smooth_factor"] = max(1, int(cfg["smooth_factor"]))
-    cfg["max_points"] = max(32, int(cfg["max_points"]))
-    return cfg
+    """How densely the fitted curve is drawn, read from the graph config."""
+    source = fit_curve_cfg if isinstance(fit_curve_cfg, dict) and fit_curve_cfg else graph_style.fit_curve_cfg()
+    path = "raman_graph.all_spectra_viewer.fit_curve"
+    return {
+        "smooth_factor": max(1, int(_required(source, "smooth_factor", path))),
+        "max_points": max(32, int(_required(source, "max_points", path))),
+    }
 
 
 def _build_dense_x_axis(x_axis: np.ndarray, fit_curve_cfg: dict[str, Any]) -> np.ndarray:
@@ -252,29 +216,6 @@ def _interp_to_dense(x_src: np.ndarray, y_src: np.ndarray, x_dst: np.ndarray) ->
     if x_unique.size == 1:
         return np.full_like(x_dst, float(y_unique[0]), dtype=float)
     return np.interp(x_dst, x_unique, y_unique, left=float(y_unique[0]), right=float(y_unique[-1]))
-
-
-def _auto_view_window(
-    x: np.ndarray,
-    e2g_pos: float,
-    a1g_pos: float,
-    padding: float = 18.0,
-    pl_pos: float = np.nan,
-) -> tuple[float, float]:
-    if np.isfinite(pl_pos):
-        x_span = float(np.max(x) - np.min(x))
-        if x_span <= 10.0:
-            pl_padding = max(0.08, min(0.25, x_span * 0.25))
-        else:
-            pl_padding = max(padding, 60.0)
-        lo = min(PL_DEFAULT_VIEW_MIN_EV, pl_pos - pl_padding)
-        hi = pl_pos + pl_padding
-        return max(lo, float(np.min(x))), min(hi, float(np.max(x)))
-    if np.isfinite(e2g_pos) and np.isfinite(a1g_pos):
-        lo = min(e2g_pos, a1g_pos) - padding
-        hi = max(e2g_pos, a1g_pos) + padding
-        return max(lo, float(np.min(x))), min(hi, float(np.max(x)))
-    return float(np.min(x)), float(np.max(x))
 
 
 def render_spectrum_overlay(
@@ -315,7 +256,9 @@ def render_spectrum_overlay(
     pl_c = _to_float(row.get("pl_position")) if modality != "raman" else float("nan")
 
     if x_view_min is None or x_view_max is None:
-        x_view_min, x_view_max = _auto_view_window(x, e2g_c, a1g_c, pl_pos=pl_c)
+        x_view_min, x_view_max = default_view_range(
+            x, row, "pl" if np.isfinite(pl_c) else "raman", view_window(graph_style.load_raman_graph_config_file())
+        )
 
     x_min = max(float(np.min(x)), float(min(x_view_min, x_view_max)))
     x_max = min(float(np.max(x)), float(max(x_view_min, x_view_max)))
@@ -371,12 +314,7 @@ def render_spectrum_overlay(
         )
     )
 
-    peak_style = {key: dict(values) for key, values in _DEFAULT_PEAK_STYLE.items()}
-    component_colors = style.get("component_colors", {})
-    if isinstance(component_colors, dict):
-        for key, color in component_colors.items():
-            if key in peak_style and isinstance(color, str) and color.strip():
-                peak_style[key]["color"] = color.strip()
+    peak_style = {key: {**values, "color": style["component_colors"][key]} for key, values in _PEAKS.items()}
 
     pl_component_keys = ("i1", "i2", "a_minus", "a0", "b")
     has_explicit_pl_components = any(np.isfinite(_to_float(row.get(f"{key}_position"))) for key in pl_component_keys)

@@ -144,7 +144,7 @@ def _gm_curve(u: np.ndarray, current: np.ndarray, window_V: float, s: AnalysisSe
         return None
     top = float(np.nanmax(smooth))
     with np.errstate(invalid="ignore"):
-        near_top = errors[smooth >= 0.5 * top]
+        near_top = errors[smooth >= s.gm_noise_top_fraction * top]
     near_top = near_top[np.isfinite(near_top)]
     noise = float(np.median(near_top)) / top if near_top.size else 0.0
     return smooth, ends, neighbours, noise

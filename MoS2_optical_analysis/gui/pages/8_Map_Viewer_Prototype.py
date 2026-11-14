@@ -48,7 +48,9 @@ from gui.components.report_loader import (  # noqa: E402
     load_spectra_dataframe,
     project_root,
 )
+from gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
 from gui.components.science_settings import strain_doping_settings  # noqa: E402
+from gui.components.spectrum_view import default_view_range, to_plot_axis, view_window  # noqa: E402
 from gui.components.spectrum_viewer import load_raw_xy, render_spectrum_overlay, resolve_source_file  # noqa: E402
 
 K = "mapproto"  # session_state key prefix
@@ -85,39 +87,6 @@ PREFERRED_PARAMS = (
 )
 
 
-def _add_derived_map_parameters(frame: pd.DataFrame) -> pd.DataFrame:
-    out = frame.copy()
-    if {"e2g_area", "a1g_area"}.issubset(out.columns):
-        e2g_area = pd.to_numeric(out["e2g_area"], errors="coerce")
-        a1g_area = pd.to_numeric(out["a1g_area"], errors="coerce")
-        valid = e2g_area.notna() & a1g_area.notna() & (a1g_area != 0.0)
-        ratio = pd.Series(float("nan"), index=out.index, dtype=float)
-        ratio.loc[valid] = e2g_area.loc[valid] / a1g_area.loc[valid]
-        out["e2g_a1g_area_ratio"] = ratio
-
-    if {"e2g_position", "a1g_position"}.issubset(out.columns):
-        e2g = pd.to_numeric(out["e2g_position"], errors="coerce")
-        a1g = pd.to_numeric(out["a1g_position"], errors="coerce")
-        ref_mask = e2g.notna() & a1g.notna()
-        if "fit_status" in out.columns:
-            ref_mask &= out["fit_status"].astype(str).str.strip().str.lower() != "invalid"
-        if "review_decision" in out.columns:
-            ref_mask &= out["review_decision"].astype(str).str.strip().str.lower() != "rejected"
-        if bool(ref_mask.any()):
-            coeffs = strain_doping_settings(load_graph_config())["coefficients"]
-            s_e, s_a = float(coeffs["s_e"]), float(coeffs["s_a"])
-            d_e, d_a = float(coeffs["d_e"]), float(coeffs["d_a"])
-            det_k = s_e * d_a - s_a * d_e
-            if abs(det_k) > 1.0e-12:
-                omega_e0 = float(e2g.loc[ref_mask].mean())
-                omega_a0 = float(a1g.loc[ref_mask].mean())
-                d_e2g = e2g - omega_e0
-                d_a1g = a1g - omega_a0
-                out["strain_eps_pct"] = (d_a * d_e2g - d_e * d_a1g) / det_k
-                out["doping_n_1e13_cm2"] = (-s_a * d_e2g + s_e * d_a1g) / det_k
-    return out
-
-
 def _style_key(name: str) -> str:
     return f"{K}_style_{name}"
 
@@ -147,7 +116,8 @@ st.caption("Select points on the map with the mouse. Style changes apply immedia
 report_path, payload, df = choose_report_sidebar("map_proto")
 if report_path is None or payload is None:
     st.stop()
-df = _add_derived_map_parameters(df)
+graph_cfg = load_graph_config()
+df = add_derived_map_parameters(df, strain_doping_settings(graph_cfg)["coefficients"])
 figure_size_section("2) Figure size", ["map_editor", "spectrum"])
 if df.empty or not {"map_x", "map_y", "spectrum_id"}.issubset(df.columns):
     st.warning("This report has no map_x / map_y rows.")
@@ -169,6 +139,9 @@ hide_rejected = top[2].toggle("Hide rejected points", value=bool(f_store.get("hi
 f_store["hide_rejected"] = bool(hide_rejected)
 
 plot_df = df[df["map_id"].astype(str) == map_id].copy() if "map_id" in df.columns else df.copy()
+if plot_df.dropna(subset=["map_x", "map_y"]).empty:
+    st.info("This report has no map coordinates (map_x / map_y), so there is no map to draw.")
+    st.stop()
 plot_df["spectrum_id"] = plot_df["spectrum_id"].astype(str)
 
 # Reset selection and per-parameter titles when the view context changes.
@@ -333,35 +306,10 @@ with tab_select:
                     x_raw, y_raw = [], []
 
             if x_raw and y_raw:
-                try:
-                    cal_offset = float(row.get("calibration_offset", 0.0) or 0.0)
-                except (TypeError, ValueError):
-                    cal_offset = 0.0
-                x_for_plot = [xv + cal_offset for xv in x_raw]
                 row_mod = str(row.get("modality", modality)).strip().lower() or modality
-                if row_mod == "pl" and str(row.get("x_unit", "")).strip().lower() == "ev" and max(x_for_plot) > 100.0:
-                    pairs = sorted(
-                        ((1239.8419843320026 / float(xv), float(yv)) for xv, yv in zip(x_for_plot, y_raw) if float(xv) > 0.0),
-                        key=lambda item: item[0],
-                    )
-                    x_for_plot = [xv for xv, _ in pairs]
-                    y_raw = [yv for _, yv in pairs]
-
-                if row_mod == "pl":
-                    try:
-                        pl_val = float(row.get("pl_position") or row.get("a0_position"))
-                        span = max(x_for_plot) - min(x_for_plot)
-                        pad = max(0.08, min(0.25, span * 0.25)) if span <= 10.0 else 60.0
-                        lo = max(float(min(x_for_plot)), pl_val - pad)
-                        hi = min(float(max(x_for_plot)), pl_val + pad)
-                    except (TypeError, ValueError):
-                        lo, hi = float(min(x_for_plot)), float(max(x_for_plot))
-                else:
-                    try:
-                        lo = min(float(row["e2g_position"]), float(row["a1g_position"])) - 30.0
-                        hi = max(float(row["e2g_position"]), float(row["a1g_position"])) + 30.0
-                    except (KeyError, TypeError, ValueError):
-                        lo, hi = float(min(x_for_plot)), float(max(x_for_plot))
+                window = view_window(graph_cfg)
+                x_for_plot, y_raw = to_plot_axis(x_raw, y_raw, row, row_mod, window)
+                lo, hi = default_view_range(x_for_plot, row, row_mod, window)
                 render_spectrum_overlay(
                     spectrum_id=str(row["spectrum_id"]),
                     row=row,

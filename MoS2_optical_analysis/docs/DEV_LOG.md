@@ -1604,3 +1604,29 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Not verified:
   - Map Viewer and Map Viewer (prototype) do not load: `ImportError: cannot import name 'strain_doping_settings' from 'gui.components.report_loader'`. The import is in uncommitted changes of these two pages that are not part of this work (the function is in `gui/components/science_settings.py`). Their figures are covered by tests of `finish_figure` only.
   - `svg` image format in the browser (test only).
+
+## Principle audit fixes (2026-11-14)
+
+- Scope: differences between the code and the repository principles found in an audit, except the decision-save buttons (kept as they are).
+- Files:
+  - new `gui/components/derived_parameters.py` (`strain_doping`, `add_derived_map_parameters`); pages 4, 6, 8 call it instead of three copies
+  - new `gui/components/spectrum_view.py` (`view_window`, `to_plot_axis`, `default_view_range`, `si_check_range`); pages 3, 8 and `spectrum_viewer.py` call it
+  - `fitting/mos2_raman/config/raman_graph.yaml`: view-range keys under `all_spectra_viewer.x_window`, PL component colours under `style.component_colors`
+  - `gui/components/spectrum_viewer.py`: no colour / width / fit-curve defaults in code; `NM_TO_EV` imported from `fitting.mos2_pl.run_raw_pipeline`
+  - new `fitting/mos2_core/core/progress_log.py`; `model_selection.py`, `raman_lmfit.py`, `review/queue.py` log progress instead of printing; the seven `main()` entry points call `configure_cli_logging()`
+  - marker and outline sizes from `labkit.plot_theme` (`MARKER_MAP`, `OUTLINE`, `OUTLINE_THIN`, `ERRORBAR_WIDTH`, `ERRORBAR_CAP`)
+  - `tests/test_desktop_editor_plot.py`: the Qt widget is destroyed in its own test (the suite aborted in about one run out of four)
+  - `tests/test_gui_shared_logic.py`
+- Behavior:
+  - Map Viewer (prototype), spectrum of a selected point: Raman range is peak +/- 18 cm^-1 (was 30), PL range reaches down to 1.4 eV, same as All Spectra Viewer; line colours follow `raman_graph.yaml` (were code defaults).
+  - LO ratio map axes: `X (point index)` / `Y (point index)` (were `map_x` / `map_y`).
+  - Marker outlines: 0.5 -> 0.8 on status maps, 1.4 -> 1.5 on centre markers; error bars 1.2 -> 1.4 thick, cap 3 -> 4.
+  - A missing display key in `raman_graph.yaml` now stops the figure with the key name instead of using a hidden default.
+  - Progress lines on standard output are unchanged for command-line runs.
+  - Map Viewer (prototype) on a report without map coordinates shows a message (was an IndexError).
+- Verification:
+  - `pytest`: 69 passed; the full suite ran 6 more times without an abort.
+  - Raman and PL dummy pipelines run.
+  - Pages 3, 4, 6 and 8 executed with `AppTest` on the existing `proto_map_SampleA` report: no exceptions; prototype with one point selected draws its spectrum; a report without map coordinates shows a message instead of an error.
+- Not verified: the pages in a real browser after this change (the browser pane did not accept input); Run Analysis reading the progress lines from a real run.
+- Not done: splitting the large pages (`6_Sample_Comparison.py`, `1_Run_Analysis.py`, `3_All_Spectra_Viewer.py`); the desktop editor keeps its own view-range code.

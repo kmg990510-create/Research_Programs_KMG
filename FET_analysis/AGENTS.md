@@ -113,7 +113,7 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | 히스테리시스 | backward의 Vth − forward의 Vth (선형 외삽, 정전류 각각) | |
 | 누설 | off / 전이 / on 구간과 SS 구간의 `|Ig|/|Id|` 중앙값·최댓값 (평가만) | |
 
-- gm 창은 기본 2 V이고, peak 부근 기울기의 상대 표준오차가 5%를 넘으면 2배씩 넓힌다 (sweep 범위의 25%까지). 최종 오차는 `gm_relative_error`로 남긴다.
+- gm 창은 기본 2 V이고, peak 부근 기울기의 상대 표준오차가 5%를 넘으면 2배씩 넓힌다 (sweep 범위의 25%까지). 최종 오차는 `gm_relative_error`로 남긴다. 오차는 gm이 최댓값의 절반(`gm.noise_top_fraction`) 이상인 창들에서 잰 중앙값이다.
 - gm peak이 평평하면(최댓값의 1% 이내) 가장 먼저 나오는 창을 고른다.
 - 이동도는 선형 영역 식이다. `|Vds|`가 gate overdrive보다 크면 `mobility_outside_linear_regime`을 남긴다.
 - 치수는 배치 기본값(`config.yaml`의 `device`)을 쓰고, `analyze_transfer_batch`의 `geometry_overrides`로 측정별 값을 덮어쓴다.
@@ -175,7 +175,7 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 - 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `gui/components/figures.py`에 둔다.
 - 모든 페이지는 `gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
-- 사이드바는 번호 붙은 구획 두 개만 쓴다: `1) Batch`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시). 필터 선택은 모든 페이지가 공유하고, 기본값은 아무것도 숨기지 않는다.
+- 사이드바의 공통 구획은 두 개다: `1) Batch`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시). 필터 선택은 모든 페이지가 공유하고, 기본값은 아무것도 숨기지 않는다.
 - 그래프가 있는 페이지(Devices, Compare)는 `3) Figure size` 구획을 가진다. 그래프 종류마다 가로·세로(px)를 정하고, 그림은 `labkit.figure_size.show_figure`로만 그린다. Gallery는 패널 하나의 크기와 한 줄의 패널 수를 정한다. 가로를 고정하면 그림들이 옆으로 놓이다가 자리가 모자라면 다음 줄로 넘어간다.
 - 저장 규칙: 결정, 메모, 그룹 이름·순서는 바꾸는 즉시 `review.json`에 쓴다 (저장 버튼 없음). 다시 분석해야 하는 치수와 방법 옵션만 `Apply` / `Save per-device geometry` 버튼을 쓴다.
 - sweep 방향 하나가 목록의 한 행이다. 값과 결정은 그 행의 것이고, 그림에는 같은 측정의 다른 방향이 흐리게 같이 그려진다.
@@ -219,6 +219,6 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | 1 | 측정 모델, reader 2종, 합성 곡선 생성기 | 완료 |
 | 2 | transfer 추출 (전처리, off/on, gm, Vth, SS, 이동도, 히스테리시스, 누설, 품질) | 완료 |
 | 3 | 배치 실행, 출력 파일, CLI | 완료 |
-| 4 | Streamlit 페이지 (Run, Review, Device Viewer, Compare, Finalize) | 완료 |
+| 4 | Streamlit 페이지 (Run, Devices, Compare, Finalize) | 완료 |
 | 5 | 그래프에서 구간 수동 지정, 위치 맵 | 예정 |
 | 6 | exe와 클라우드 배포 | 예정 |

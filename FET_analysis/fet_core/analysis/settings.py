@@ -38,6 +38,7 @@ class AnalysisSettings:
     gm_window_min_points: int
     gm_peak_plateau_tolerance: float
     gm_max_relative_noise: float
+    gm_noise_top_fraction: float
     gm_max_window_fraction: float
     vth_subtract_half_vds: bool
     vth_const_current_nA_per_um: float
@@ -80,6 +81,7 @@ class AnalysisSettings:
             gm_window_min_points=config.integer(f"{a}.gm.window_min_points"),
             gm_peak_plateau_tolerance=config.number(f"{a}.gm.peak_plateau_tolerance"),
             gm_max_relative_noise=config.number(f"{a}.gm.max_relative_noise"),
+            gm_noise_top_fraction=config.number(f"{a}.gm.noise_top_fraction"),
             gm_max_window_fraction=config.number(f"{a}.gm.max_window_fraction"),
             vth_subtract_half_vds=config.boolean(f"{a}.vth.subtract_half_vds"),
             vth_const_current_nA_per_um=config.number(f"{a}.vth.const_current_nA_per_um"),

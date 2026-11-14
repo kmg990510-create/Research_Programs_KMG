@@ -42,5 +42,10 @@ def fit_curve_cfg() -> dict[str, Any]:
     return _dict_or_empty(all_spectra_viewer_cfg().get("fit_curve"))
 
 
+def graph_cfg() -> dict[str, Any]:
+    """The whole graph config file (for code that has no merged pipeline config at hand)."""
+    return load_raman_graph_config_file()
+
+
 def x_window_cfg() -> dict[str, Any]:
     return _dict_or_empty(all_spectra_viewer_cfg().get("x_window"))

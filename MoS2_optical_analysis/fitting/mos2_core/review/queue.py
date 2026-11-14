@@ -6,6 +6,7 @@ import time
 from typing import Mapping
 
 from ..core.interfaces import ReviewQueueStage
+from ..core.progress_log import progress
 from ..core.types import ConfidenceResult, PipelineContext, ReviewItem, SelectionResult
 
 
@@ -33,19 +34,17 @@ class ThresholdReviewQueue(ReviewQueueStage):
         total = len(selections)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[review] start: {total} spectra", flush=True)
+            progress.info(f"[review] start: {total} spectra")
 
         for index, spectrum_id in enumerate(selections, start=1):
             conf = confidence.get(spectrum_id)
             if not conf or not conf.requires_review:
                 if progress_enabled and (index % progress_every == 0 or index == total):
                     elapsed = time.perf_counter() - t0
-                    print(
+                    progress.info(
                         "[review] "
                         f"{index}/{total} | flagged_valid={flagged_valid_count}/{selected_valid_total} "
-                        f"| queue={len(queue)} | elapsed={elapsed:.1f}s",
-                        flush=True,
-                    )
+                        f"| queue={len(queue)} | elapsed={elapsed:.1f}s")
                 continue
             reason = ", ".join(conf.reasons) if conf.reasons else "requires_manual_review"
             fit_status = str(
@@ -63,12 +62,10 @@ class ThresholdReviewQueue(ReviewQueueStage):
             )
             if progress_enabled and (index % progress_every == 0 or index == total):
                 elapsed = time.perf_counter() - t0
-                print(
+                progress.info(
                     "[review] "
                     f"{index}/{total} | flagged_valid={flagged_valid_count}/{selected_valid_total} "
-                    f"| queue={len(queue)} | elapsed={elapsed:.1f}s",
-                    flush=True,
-                )
+                    f"| queue={len(queue)} | elapsed={elapsed:.1f}s")
 
         context.state["flagged_count"] = len(queue)
         context.state["flagged_valid_count"] = flagged_valid_count
