@@ -26,6 +26,7 @@ def _sources() -> dict[str, str]:
 def test_sidebar_section_is_the_shared_one() -> None:
     assert sidebar_section is labkit_sidebar.sidebar_section
     assert not (GUI_DIR / "components" / "paper_theme.py").exists()  # replaced by labkit.plot_theme
+    assert not (GUI_DIR / "components" / "plot_theme.py").exists()  # the large-font theme is gone
 
 
 def test_no_figure_is_drawn_without_the_size_inputs() -> None:
@@ -101,10 +102,78 @@ def _check_size_follows_sidebar(at, layout) -> None:
     assert [str(e.value) for e in at.exception] == []
     assert layout(at).get("width") is None and layout(at)["height"] == figure_sizes.KINDS["spectrum"][2]
     assert at.sidebar.number_input[0].disabled  # width follows the page until "fit" is switched off
+    assert [box.label for box in at.sidebar.checkbox] == ["Grid", "Fit width to the page"]
 
-    at.sidebar.checkbox[0].set_value(False)
+    at.sidebar.checkbox[1].set_value(False)
     at.run()
     at.sidebar.number_input[0].set_value(610)
     at.sidebar.number_input[1].set_value(330)
     at.run()
     assert (layout(at)["width"], layout(at)["height"]) == (610, 330)
+
+
+def test_no_page_sets_its_own_theme() -> None:
+    for name, text in _sources().items():
+        assert "plotly_white" not in text and "apply_plotly_theme" not in text, name
+        assert not re.search(r"\btheme=", text), name  # show() always draws with the common look
+        assert "export_config(" not in text, name  # the image format and scale are set in one place
+
+
+def test_a_plotly_express_figure_gets_the_common_look() -> None:
+    import plotly.express as px
+
+    from labkit.plot_theme import CATEGORICAL, FONT_FAMILY, LEGEND_INSIDE, LEGEND_RIGHT, finish_figure, has_paper_look
+
+    bars = px.bar(x=["a", "b"], y=[1, 2], color=["a", "b"], title="Doping n (10^13 cm^-2)")
+    assert has_paper_look(bars) and bars.data[0].marker.color == CATEGORICAL[0]
+    finish_figure(bars)
+    assert bars.layout.title.text == "Doping n (10¹³ cm⁻²)"
+    assert bars.layout.legend.x == LEGEND_RIGHT["x"]  # bars fill the plot area: legend outside
+    assert bars.layout.xaxis.showgrid is False and bars.layout.yaxis.exponentformat == "power"
+
+    points = px.scatter(x=[1, 2], y=[1, 2], color=["a", "b"])
+    points.update_layout(template="plotly_white")  # a figure that brings another look
+    finish_figure(points, grid=True)
+    assert has_paper_look(points) and points.layout.font.family == FONT_FAMILY
+    assert points.layout.legend.x == LEGEND_INSIDE["x"] and points.layout.xaxis.showgrid is True
+
+    heat = px.imshow([[1, 2], [3, 4]], labels={"color": "A1g FWHM (cm^-1)"})
+    finish_figure(heat)
+    bar = heat.layout.coloraxis.colorbar
+    assert bar.title.text == "A1g FWHM (cm⁻¹)" and bar.outlinewidth == 1.2 and bar.title.side == "right"
+
+
+def test_grid_and_image_format_follow_the_sidebar() -> None:
+    import json
+
+    from streamlit.testing.v1 import AppTest
+
+    def app() -> None:
+        import plotly.graph_objects as go
+
+        from gui.components.figure_sizes import figure_size_section, show
+
+        show(go.Figure(go.Scatter(x=[1, 2], y=[1, 2])), "spectrum", filename="S1", key="figure")
+        figure_size_section("1) Figure size", ["spectrum"])
+
+    def spec(at: AppTest) -> tuple[dict, dict]:
+        proto = at.get("plotly_chart")[0].proto
+        return json.loads(proto.spec)["layout"], json.loads(proto.config)
+
+    main_module = sys.modules["__main__"]
+    try:
+        at = AppTest.from_function(app, default_timeout=60)
+        at.run()
+        assert [str(e.value) for e in at.exception] == []
+        layout, config = spec(at)
+        assert layout["xaxis"]["showgrid"] is False and at.get("plotly_chart")[0].proto.theme == ""
+        assert config["toImageButtonOptions"] == {"format": "png", "filename": "S1", "scale": 3}
+
+        at.sidebar.checkbox[0].set_value(True)
+        at.sidebar.radio[0].set_value("svg")
+        at.run()
+        layout, config = spec(at)
+        assert layout["xaxis"]["showgrid"] is True and layout["yaxis"]["showgrid"] is True
+        assert config["toImageButtonOptions"]["format"] == "svg"
+    finally:
+        sys.modules["__main__"] = main_module

@@ -25,8 +25,7 @@ if str(ROOT) not in sys.path:
 
 from gui.components import report_loader as _report_loader  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from labkit.plot_theme import CATEGORICAL, export_config  # noqa: E402
-from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
+from labkit.plot_theme import AUX, CATEGORICAL, INK, LINE_AUX, MARKER_CENTER, MARKER_RAW, SEQUENTIAL  # noqa: E402
 from gui.components.scatter_style import (  # noqa: E402
     LEGEND_POSITIONS,
     TICK_DIRECTIONS,
@@ -42,8 +41,6 @@ sidebar_section = _report_loader.sidebar_section
 sidebar_filters_section = _report_loader.sidebar_filters_section
 
 DOPING_N_AXIS_LABEL = "Doping n (10^13 cm^-2)"
-
-apply_plotly_theme()
 
 
 def _clean_sample_name(path: Path) -> str:
@@ -566,11 +563,10 @@ def _build_lo_ratio_heatmap(sample_name: str, frame: pd.DataFrame, use_log10: bo
         y=pivot.index.to_numpy(dtype=float),
         origin="lower",
         aspect="auto",
-        color_continuous_scale="Viridis",
+        color_continuous_scale=SEQUENTIAL,
         labels={"x": "map_x", "y": "map_y", "color": color_label},
         title=f"LO ratio heatmap: {sample_name}",
     )
-    fig.update_layout(template="plotly_white")
     return fig
 
 
@@ -590,14 +586,13 @@ def _build_scatter_figure(
                 y=y_vals,
                 mode="markers",
                 name=sample,
-                marker={"size": 6, "opacity": 0.65, "color": colors[sample]},
+                marker={"size": MARKER_RAW, "opacity": 0.65, "color": colors[sample]},
             )
         )
     if add_zero_lines:
-        fig.add_hline(y=0.0, line_width=1, line_dash="dot", line_color="gray")
-        fig.add_vline(x=0.0, line_width=1, line_dash="dot", line_color="gray")
+        fig.add_hline(y=0.0, line_width=LINE_AUX, line_dash="dot", line_color=AUX)
+        fig.add_vline(x=0.0, line_width=LINE_AUX, line_dash="dot", line_color=AUX)
     fig.update_layout(
-        template="plotly_white",
         title=title,
         xaxis_title=x_label,
         yaxis_title=y_label,
@@ -626,7 +621,7 @@ def _build_errorbar_figure(
                     y=y_vals,
                     mode="markers",
                     showlegend=False,
-                    marker={"size": 5, "opacity": 0.35, "color": colors[sample]},
+                    marker={"size": MARKER_RAW, "opacity": 0.35, "color": colors[sample]},
                     hovertemplate=f"{sample}<br>x=%{{x:.4f}}<br>y=%{{y:.4f}}<extra></extra>",
                 )
             )
@@ -639,14 +634,14 @@ def _build_errorbar_figure(
                 y=[cy],
                 mode="markers",
                 name=sample,
-                marker={"size": 11, "color": colors[sample], "line": {"width": 1.5, "color": "black"}},
+                marker={"size": MARKER_CENTER, "color": colors[sample], "line": {"width": 1.5, "color": INK}},
                 error_x={
                     "type": "data",
                     "array": [ex if np.isfinite(ex) else 0.0],
                     "visible": bool(np.isfinite(ex)),
                     "thickness": 1.2,
                     "width": 3,
-                    "color": "black",
+                    "color": INK,
                 },
                 error_y={
                     "type": "data",
@@ -654,7 +649,7 @@ def _build_errorbar_figure(
                     "visible": bool(np.isfinite(ey)),
                     "thickness": 1.2,
                     "width": 3,
-                    "color": "black",
+                    "color": INK,
                 },
                 hovertemplate=(
                     f"{sample}<br>center_x=%{{x:.4f}}<br>center_y=%{{y:.4f}}"
@@ -663,10 +658,9 @@ def _build_errorbar_figure(
             )
         )
     if add_zero_lines:
-        fig.add_hline(y=0.0, line_width=1, line_dash="dot", line_color="gray")
-        fig.add_vline(x=0.0, line_width=1, line_dash="dot", line_color="gray")
+        fig.add_hline(y=0.0, line_width=LINE_AUX, line_dash="dot", line_color=AUX)
+        fig.add_vline(x=0.0, line_width=LINE_AUX, line_dash="dot", line_color=AUX)
     fig.update_layout(
-        template="plotly_white",
         title=title,
         xaxis_title=x_label,
         yaxis_title=y_label,
@@ -703,7 +697,7 @@ def _add_absolute_isolines(
                 mode="lines",
                 showlegend=False,
                 hoverinfo="skip",
-                line={"dash": "dash", "width": 1, "color": "rgba(120,120,120,0.35)"},
+                line={"dash": "dash", "width": LINE_AUX, "color": "rgba(120,120,120,0.35)"},
             )
         )
 
@@ -717,7 +711,7 @@ def _add_absolute_isolines(
                 mode="lines",
                 showlegend=False,
                 hoverinfo="skip",
-                line={"dash": "dot", "width": 1, "color": "rgba(120,120,120,0.35)"},
+                line={"dash": "dot", "width": LINE_AUX, "color": "rgba(120,120,120,0.35)"},
             )
         )
 
@@ -943,7 +937,7 @@ with sidebar_section("5) Figure", expanded=False):
     )
 
     st.markdown("**Style**")
-    use_paper_style = st.checkbox("Paper style", value=True, key="sample_cmp_style_enabled")
+    use_paper_style = st.checkbox("Adjust style", value=True, key="sample_cmp_style_enabled", help="Off: the common look without the adjustments below.")
     style_off = not use_paper_style
     fs1, fs2 = st.columns(2)
     scatter_style = ScatterStyle(
@@ -969,14 +963,8 @@ with sidebar_section("5) Figure", expanded=False):
         point_outline=st.checkbox(
             "White outline on points", value=ScatterStyle.point_outline, key="sample_cmp_style_outline", disabled=style_off
         ),
-        show_grid=st.checkbox("Show grid", value=ScatterStyle.show_grid, key="sample_cmp_style_grid", disabled=style_off),
-        pretty_labels=st.checkbox(
-            "Superscripts in labels (cm⁻¹)", value=ScatterStyle.pretty_labels, key="sample_cmp_style_pretty", disabled=style_off
-        ),
     )
-    style_image_format = st.radio(
-        "Image download format", ["png", "svg"], horizontal=True, key="sample_cmp_style_image", disabled=style_off
-    )
+    st.caption("Grid and image format: sidebar section 6) Figure size.")
 
 figure_size_section("6) Figure size", ["sample_scatter", "sample_square", "sample_heatmap", "sample_pl"])
 
@@ -1110,11 +1098,9 @@ if not any(
 
 def _show_styled(fig: go.Figure, kind: str = "sample_scatter") -> None:
     """Render a comparison figure with the sidebar figure style and size."""
-    if not use_paper_style:
-        show(fig, kind)
-        return
-    apply_scatter_style(fig, scatter_style)
-    show(fig, kind, theme=None, config=export_config("sample_comparison", style_image_format))
+    if use_paper_style:
+        apply_scatter_style(fig, scatter_style)
+    show(fig, kind, filename="sample_comparison")
 
 
 tab_epsn, tab_absolute, tab_nfwhm, tab_fwhm, tab_lo = st.tabs(

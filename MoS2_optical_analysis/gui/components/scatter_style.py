@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import plotly.graph_objects as go
 
-from labkit.plot_theme import FONT_FAMILY, INK, SURFACE, paper_template
+from labkit.plot_theme import (
+    FONT_FAMILY,
+    INK,
+    LEGEND_INSIDE,
+    LEGEND_RIGHT,
+    MARKER_CENTER,
+    MARKER_RAW,
+    SURFACE,
+    paper_template,
+)
 
-LEGEND_POSITIONS = ("Inside top-right", "Inside top-left", "Right", "Below", "Hidden")
+# the first one is the default and is the place every other figure uses
+LEGEND_POSITIONS = ("Inside top-left", "Inside top-right", "Right", "Below", "Hidden")
 TICK_DIRECTIONS = ("inside", "outside")
-GRID_COLOR = "#e3e3e3"
 
-_SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 _LEGENDS = {
-    "Right": {"orientation": "v", "x": 1.02, "xanchor": "left", "y": 1.0, "yanchor": "top"},
-    "Inside top-left": {"orientation": "v", "x": 0.02, "xanchor": "left", "y": 0.98, "yanchor": "top"},
+    "Right": LEGEND_RIGHT,
+    "Inside top-left": LEGEND_INSIDE,
     "Inside top-right": {"orientation": "v", "x": 0.98, "xanchor": "right", "y": 0.98, "yanchor": "top"},
     "Below": {"orientation": "h", "x": 0.5, "xanchor": "center", "y": -0.18, "yanchor": "top"},
 }
@@ -24,25 +31,15 @@ _LEGENDS = {
 
 @dataclass
 class ScatterStyle:
-    font_size: int = 15
+    font_size: int = 14
     height_px: int = 520
-    point_size: int = 7
+    point_size: int = MARKER_RAW
     point_opacity: float = 0.6
     point_outline: bool = False
-    center_size: int = 12
+    center_size: int = MARKER_CENTER
     errorbar_width: float = 1.4
-    show_grid: bool = False
     tick_direction: str = "inside"
-    legend_position: str = "Inside top-right"
-    pretty_labels: bool = True
-
-
-def pretty_label(text: str | None) -> str:
-    """``cm^-1`` -> ``cm⁻¹``, ``10^13`` -> ``10¹³``, ``eps`` -> ``ε``."""
-    if not text:
-        return ""
-    out = re.sub(r"\^(-?\d+)", lambda m: m.group(1).translate(_SUPERSCRIPT), str(text))
-    return re.sub(r"\beps\b", "ε", out)
+    legend_position: str = "Inside top-left"
 
 
 def _is_center_trace(trace: go.Scatter) -> bool:
@@ -50,7 +47,11 @@ def _is_center_trace(trace: go.Scatter) -> bool:
 
 
 def apply_scatter_style(fig: go.Figure, style: ScatterStyle) -> go.Figure:
-    """Restyle a figure in place: raw points, center markers with error bars, axes, legend."""
+    """Restyle a figure in place: raw points, center markers with error bars, ticks, legend.
+
+    Grid, superscripts in labels and the image format are the same for every figure
+    and are set where the figure is drawn (``labkit.figure_size.show_figure``).
+    """
     for trace in fig.data:
         if trace.type != "scatter" or "markers" not in (trace.mode or ""):
             continue
@@ -72,8 +73,6 @@ def apply_scatter_style(fig: go.Figure, style: ScatterStyle) -> go.Figure:
         "linecolor": INK,
         "linewidth": 1.2,
         "ticks": style.tick_direction,
-        "showgrid": style.show_grid,
-        "gridcolor": GRID_COLOR,
         "zeroline": False,
     }
     fig.update_xaxes(**axis)
@@ -91,9 +90,4 @@ def apply_scatter_style(fig: go.Figure, style: ScatterStyle) -> go.Figure:
     if fig.layout.height is None:
         layout["height"] = style.height_px
     fig.update_layout(**layout)
-
-    if style.pretty_labels:
-        fig.update_layout(title_text=pretty_label(fig.layout.title.text))
-        fig.update_xaxes(title_text=pretty_label(fig.layout.xaxis.title.text))
-        fig.update_yaxes(title_text=pretty_label(fig.layout.yaxis.title.text))
     return fig

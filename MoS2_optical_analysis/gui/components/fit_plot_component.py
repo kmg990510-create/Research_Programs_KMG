@@ -6,10 +6,9 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from .figure_sizes import show
-from .plot_theme import apply_plotly_theme
+from labkit.plot_theme import INK, SEQUENTIAL
 
-apply_plotly_theme()
+from .figure_sizes import show
 
 
 def render_metric_histogram(df: pd.DataFrame, metric: str, title: str | None = None) -> None:
@@ -26,7 +25,7 @@ def render_metric_histogram(df: pd.DataFrame, metric: str, title: str | None = N
         opacity=0.7,
         title=title or f"{metric} distribution",
     )
-    show(fig, "model_charts")
+    show(fig, "model_charts", filename=f"{metric}_histogram")
 
 
 def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
@@ -46,11 +45,11 @@ def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
         y="map_y",
         color=value_col,
         hover_data=["spectrum_id", "selected_model"] if "selected_model" in plot_df.columns else ["spectrum_id"],
-        color_continuous_scale="Viridis",
+        color_continuous_scale=SEQUENTIAL,
         title=title,
     )
-    fig.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": "black"}})
+    fig.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": INK}})
     fig.update_layout(yaxis={"autorange": "reversed"})
-    show(fig, "map_status")
+    show(fig, "map_status", filename=f"map_{value_col}")
 
 

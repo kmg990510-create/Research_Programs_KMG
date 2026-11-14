@@ -25,8 +25,7 @@ from fet_core.review import sweep_key  # noqa: E402
 from gui.components.figures import gallery_figure, gallery_size, transfer_linear_figure, transfer_log_figure  # noqa: E402
 from gui.components.values import extracted_values  # noqa: E402
 from gui.state import active, filters, get_review, put_review, stop_if_empty  # noqa: E402
-from labkit.figure_size import FigureSize, figure_size_inputs, show_figure  # noqa: E402
-from labkit.plot_theme import export_config  # noqa: E402
+from labkit.figure_size import FigureSize, figure_options_inputs, figure_size_inputs, show_figure  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402
 
 SELECTED_KEY = "fet_devices_selected"
@@ -46,6 +45,7 @@ batch, run, review, frame = active()
 groups = ordered_groups(frame, review)
 shown = filters(frame, groups)
 with sidebar_section("3) Figure size", expanded=False):
+    figure_options_inputs()
     curve_size = figure_size_inputs("fet_curves", "Detail: log and linear curves", 520, 420)
     panel_size = figure_size_inputs("fet_gallery_panel", "Gallery: one panel", 240, 190)
     st.session_state.setdefault(GALLERY_COLUMNS_KEY, GALLERY_COLUMNS)
@@ -142,7 +142,7 @@ if st.session_state[VIEW_KEY] == "Gallery":
     show_figure(
         gallery_figure(panels, gallery_columns),
         FigureSize(*gallery_size(len(panels), gallery_columns, panel_size.width_px, panel_size.height_px)),
-        config=export_config(f"{batch}_gallery"),
+        filename=f"{batch}_gallery",
         key=gallery_key,
         on_select=partial(_gallery_clicked, gallery_key, trace_keys),
         selection_mode="points",
@@ -220,9 +220,9 @@ with detail_box:
     # a fixed width: the two figures sit side by side and wrap when they do not fit
     left, right = st.columns(2) if curve_size.width_px is None else (st.container(horizontal=True),) * 2
     with left:
-        show_figure(transfer_log_figure(branches, results, result.sweep), curve_size, config=export_config(f"{file_stem}_log"))
+        show_figure(transfer_log_figure(branches, results, result.sweep), curve_size, filename=f"{file_stem}_log")
     with right:
-        show_figure(transfer_linear_figure(branches, results, result.sweep), curve_size, config=export_config(f"{file_stem}_linear"))
+        show_figure(transfer_linear_figure(branches, results, result.sweep), curve_size, filename=f"{file_stem}_linear")
 
     decision = row["decision"]
     approve, reject, clear, note_box = st.columns([1, 1, 1, 4], vertical_alignment="bottom")

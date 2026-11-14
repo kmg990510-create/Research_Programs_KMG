@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from gui.components.scatter_style import ScatterStyle, apply_scatter_style, pretty_label
+from gui.components.scatter_style import ScatterStyle, apply_scatter_style
+from labkit.plot_theme import finish_figure, pretty_label
 
 
 def test_pretty_label() -> None:
@@ -28,8 +29,9 @@ def test_apply_scatter_style_separates_points_centers_and_lines() -> None:
     assert fig.data[2].marker.size is None
     assert fig.layout.showlegend is False
     assert fig.layout.height == 480
-    assert fig.layout.xaxis.title.text == "E2g FWHM (cm⁻¹)"
     assert fig.layout.xaxis.mirror is True
+    # superscripts are written when the figure is drawn, the same for every figure
+    assert finish_figure(fig).layout.xaxis.title.text == "E2g FWHM (cm⁻¹)"
 
 
 def test_apply_scatter_style_keeps_explicit_height() -> None:

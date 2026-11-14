@@ -1,14 +1,15 @@
-"""Width and height of every figure of this program, set by the user in the sidebar.
+"""Size, grid and image format of every figure of this program, set by the user in the sidebar.
 
 Pages call ``figure_size_section`` once; code that draws a figure calls
-``show(fig, kind)``. No page or component calls ``st.plotly_chart`` directly.
+``show(fig, kind)``. No page or component calls ``st.plotly_chart`` directly,
+so every figure gets the same look (``labkit.plot_theme.finish_figure``).
 """
 
 from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from labkit.figure_size import FigureSize, figure_size_inputs, show_figure, stored_figure_size
+from labkit.figure_size import FigureSize, figure_options_inputs, figure_size_inputs, show_figure, stored_figure_size
 from labkit.sidebar import sidebar_section
 
 # kind -> (label in the sidebar, width in px when "fit to the page" is off, height in px)
@@ -26,8 +27,9 @@ KINDS: dict[str, tuple[str, int, int]] = {
 
 
 def figure_size_section(title: str, kinds: list[str]) -> None:
-    """Numbered sidebar section with the size inputs of the figures on this page."""
+    """Numbered sidebar section: grid and image format of all figures, then the size of each kind on this page."""
     with sidebar_section(title, expanded=False):
+        figure_options_inputs()
         for kind in kinds:
             figure_size_inputs(kind, *KINDS[kind])
 
@@ -37,6 +39,6 @@ def size_of(kind: str) -> FigureSize:
     return stored_figure_size(kind, width_px, height_px)
 
 
-def show(fig: go.Figure, kind: str, theme: str | None = "streamlit", **chart_arguments):
-    """Draw ``fig`` at the size chosen for ``kind``. ``theme=None`` keeps the figure's own look."""
-    return show_figure(fig, size_of(kind), theme=theme, **chart_arguments)
+def show(fig: go.Figure, kind: str, filename: str | None = None, **chart_arguments):
+    """Draw ``fig`` at the size chosen for ``kind``; the camera button saves it as ``filename``."""
+    return show_figure(fig, size_of(kind), filename=filename or kind, **chart_arguments)
