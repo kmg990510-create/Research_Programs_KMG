@@ -12,6 +12,7 @@ from typing import Any
 import plotly.graph_objects as go
 
 INK = "#111111"
+MUTED_INK = "#555555"
 SURFACE = "#ffffff"
 GRID = "#e3e3e3"
 MISSING_CELL = "#e4e4e4"
@@ -42,6 +43,22 @@ def _axis(font_size: int, ticks: str) -> dict[str, Any]:
         "gridcolor": GRID,
         "zeroline": False,
         "automargin": True,
+    }
+
+
+def colorbar_style(font_size: int, title: str = "") -> dict[str, Any]:
+    """Colour bar that matches the boxed axes."""
+    return {
+        "title": {"text": title, "side": "right", "font": {"size": font_size + 1, "color": INK}},
+        "thickness": 16,
+        "len": 1.0,
+        "outlinecolor": INK,
+        "outlinewidth": 1.2,
+        "ticks": "outside",
+        "ticklen": 4,
+        "tickwidth": 1.2,
+        "tickcolor": INK,
+        "tickfont": {"size": font_size - 1, "color": INK},
     }
 
 

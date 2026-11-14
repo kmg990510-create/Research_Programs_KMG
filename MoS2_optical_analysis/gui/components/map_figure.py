@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import yaml
 
-from gui.components.paper_theme import FONT_FAMILY, INK, MISSING_CELL, SURFACE, colorbar_style, paper_template
+from labkit.plot_theme import FONT_FAMILY, INK, MISSING_CELL, SURFACE, colorbar_style, paper_template
 
 COLORMAPS = ("Viridis", "Cividis", "Magma", "Inferno", "Blues", "Greys", "RdBu")
 RANGE_MODES = ("Full range", "Robust 2-98%", "Manual")

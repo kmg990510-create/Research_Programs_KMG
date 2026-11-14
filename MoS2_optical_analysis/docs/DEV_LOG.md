@@ -1558,3 +1558,26 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 - Widget keys and behaviour are unchanged.
 - Tests & Validation: `pytest` 49 passed; `AppTest` run of `Main.py` and pages 2-8 without exceptions; browser check of All Spectra Viewer and Map Viewer sidebars.
   - Not checked in the browser: Main, Flagged Spectra, Model Comparison, Finalize, the no-report state, cloud mode. `1_Run_Analysis.py` has no sidebar controls and was not changed.
+
+## labkit adoption: shared theme, sidebar sections, figure size (2026-11-14)
+
+- Scope: use the repository-level `labkit` package instead of local copies, and let the user set width and height of every figure.
+- Files:
+  - removed `gui/components/paper_theme.py`; `map_figure.py`, `scatter_style.py`, pages 6 and 8 import `labkit.plot_theme`
+  - `gui/components/report_loader.py` re-exports `labkit.sidebar.sidebar_section`
+  - new `gui/components/figure_sizes.py` (`KINDS`, `figure_size_section`, `size_of`, `show`)
+  - `gui/__init__.py` puts the repository root on `sys.path` when `labkit` is not inside the program folder
+  - `gui/components/spectrum_viewer.py`, `fit_plot_component.py`, pages 3, 4, 5, 6, 8: every figure is drawn with `figure_sizes.show`
+  - `Dockerfile` copies `labkit/` into the app folder; `packaging/mos2_optical_analysis.spec` adds the repository root to `pathex` and collects `labkit`
+  - `tests/test_labkit_usage.py`
+- Behavior:
+  - Each page with figures has a numbered `Figure size` sidebar section. Width defaults to the page width; height defaults to the previous fixed values (720 for the parameter map and the absolute-position / FWHM plots, 620 for the prototype map, 520 for comparison plots, 450 otherwise).
+  - Sample Comparison: the `Height (px)` input moved from `5) Figure` to `6) Figure size`. Without paper style the default height is now 520 (was 450).
+  - Map Viewer (prototype): the `Height (px)` input moved from the Figure style tab to the sidebar; a loaded preset no longer changes the height.
+- Verification:
+  - `pytest`: 55 passed.
+  - Browser, existing reports: Map Viewer, All Spectra Viewer, Model Comparison, Sample Comparison and Map Viewer (prototype) render without exceptions, with the `Figure size` section and the default heights.
+- Not verified:
+  - Changing a size in the browser on a MoS2 page (the browser pane stopped drawing); covered by `test_a_figure_follows_the_sidebar_size_even_when_it_is_drawn_first` only.
+  - Docker image and PyInstaller exe were not rebuilt.
+- Note: an `AppTest` run replaces `sys.modules["__main__"]`; without restoring it, `test_real_process_pool_fits_without_falling_back` hangs when it runs afterwards.

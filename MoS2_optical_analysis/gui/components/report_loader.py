@@ -17,6 +17,8 @@ import sys
 import pandas as pd
 import streamlit as st
 
+from labkit.sidebar import sidebar_section  # shared sidebar rule; pages import it from here
+
 _BOOTSTRAP_ROOT = Path(__file__).resolve().parents[2]
 if str(_BOOTSTRAP_ROOT) not in sys.path:
     sys.path.append(str(_BOOTSTRAP_ROOT))
@@ -236,11 +238,6 @@ def save_uploaded_report_files(
 
 REPORT_SECTION = "1) Report"
 FILTERS_SECTION = "2) Filters"
-
-
-def sidebar_section(title: str, expanded: bool = True):
-    """Numbered, collapsible sidebar section. Every page builds its sidebar from these."""
-    return st.sidebar.expander(title, expanded=expanded)
 
 
 def sidebar_filters_section(expanded: bool = True):

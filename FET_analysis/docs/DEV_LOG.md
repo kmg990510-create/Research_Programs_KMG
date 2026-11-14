@@ -126,3 +126,5 @@
 - 가로 기본값은 "Fit width to the page"다. 끄면 Width 입력이 켜진다 (숨기지 않고 비활성화). 선택은 세션 동안 페이지를 옮겨도 유지된다.
 - 크기는 그림의 layout에도 써서 카메라 버튼으로 저장한 그림이 화면과 같은 크기다 (해상도는 3배).
 - 검증: `tests/test_gui.py`가 두 페이지의 모든 그림이 사이드바 값(610 x 330)을 따르는지 확인한다. 브라우저에서 Devices Detail의 가로 고정(520 x 420)을 확인했다. Compare와 Gallery의 고정 크기는 브라우저에서 보지 않았다.
+
+- 추가 (같은 날): MoS2도 `labkit`을 쓰게 하면서 `labkit.plot_theme`에 `colorbar_style`, `MUTED_INK`를, `labkit.figure_size`에 `stored_figure_size`와 `show_figure(theme=...)`를 넣었다. FET 동작은 그대로다 (`pytest` 89 passed).

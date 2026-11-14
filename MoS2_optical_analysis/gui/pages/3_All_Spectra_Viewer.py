@@ -46,6 +46,7 @@ from gui.components.manual_refit_contract import (  # noqa: E402
 )
 from gui.desktop_editor.controller import ManualEditorController  # noqa: E402
 from gui.desktop_editor.models import EditorRequest  # noqa: E402
+from gui.components.figure_sizes import figure_size_section  # noqa: E402
 from gui.components.spectrum_viewer import (  # noqa: E402
     load_raw_xy,
     render_fit_summary,
@@ -304,6 +305,7 @@ else:
 grid_mask = work_df["_nav_y"].notna() & work_df["_nav_x"].notna()
 has_grid_navigation = bool(grid_mask.any())
 nav_box = sidebar_section("3) Navigation")
+figure_size_section("4) Figure size", ["spectrum"])
 
 if max_index == 0:
     _set_linear_index(0)

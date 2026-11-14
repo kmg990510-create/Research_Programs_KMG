@@ -13,6 +13,8 @@ RUN grep -v -E "^(PySide6|pyqtgraph)" /tmp/requirements.txt > /tmp/requirements-
     pip install --no-cache-dir -r /tmp/requirements-web.txt
 
 COPY --chown=user:user MoS2_optical_analysis/ $HOME/app/
+# shared lab code (plot theme, sidebar sections, figure size); gui/__init__.py finds it here
+COPY --chown=user:user labkit/ $HOME/app/labkit/
 RUN mkdir -p $HOME/app/data/raw/raman $HOME/app/data/raw/pl $HOME/app/data/results/raman/reports $HOME/app/data/results/pl/reports && \
     chown -R user:user $HOME/app
 

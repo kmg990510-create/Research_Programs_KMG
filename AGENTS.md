@@ -59,7 +59,7 @@ Research_Programs_KMG/
 ### 화면 규칙
 
 - 사이드바에서는 데이터·결과를 고르고, 본문에서는 결과를 본다.
-- 사이드바는 번호 붙은 접이식 구획으로만 구성한다: `1) Report`, `2) Filters`, 그다음 페이지별 구획. 구획 밖에 입력란을 두지 않는다 (MoS2 `report_loader.sidebar_section`).
+- 사이드바는 번호 붙은 접이식 구획으로만 구성한다: `1) Report`, `2) Filters`, 그다음 페이지별 구획. 구획 밖에 입력란을 두지 않는다 (`labkit.sidebar.sidebar_section`).
 - 필터 선택은 페이지를 옮겨도 유지되고, 기본값은 아무것도 숨기지 않는다.
 - 판단(승인·제외)은 근거가 되는 그래프와 같은 화면에서 한다.
 - 다시 계산할 필요가 없는 수정(결정, 메모, 이름)은 즉시 저장한다. 다시 계산해야 하는 입력만 `Apply` 버튼을 쓴다.
@@ -74,7 +74,7 @@ Research_Programs_KMG/
 ### 그래프
 
 - 화면의 대화형 그래프는 Plotly, 내보내는 그림 파일은 matplotlib로 그린다.
-- 프로그램 전체가 하나의 테마를 쓴다 (MoS2 `gui/components/plot_theme.py`).
+- 프로그램 전체가 하나의 테마를 쓴다. 논문 스타일은 `labkit/plot_theme.py`에 있다.
 - 그리는 코드는 추출·피팅 함수 안에 넣지 않는다.
 - 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 사이드바 `Figure size` 구획에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기다 (`labkit/figure_size.py`).
 
@@ -102,8 +102,10 @@ Research_Programs_KMG/
 
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
 - 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
-- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기 입력과 그 크기로 그리기). FET_analysis가 쓴다.
-- 프로그램은 진입 스크립트에서 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다.
+- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기 입력과 그 크기로 그리기). 두 프로그램이 모두 쓴다.
+- 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `gui/__init__.py`).
+- 배포물에는 `labkit`을 프로그램 안에 넣는다: Docker는 `COPY labkit/ $HOME/app/labkit/`, PyInstaller spec은 `pathex`와 `hiddenimports`에 추가한다.
+- 그림을 그리는 코드는 `st.plotly_chart`를 직접 부르지 않고 `labkit.figure_size.show_figure`(또는 프로그램의 얇은 래퍼)를 쓴다.
 - `labkit`에는 특정 측정 방법(Raman, FET)에 대한 지식을 넣지 않는다.
 
 ## 7. 테스트와 Git
@@ -133,5 +135,5 @@ Research_Programs_KMG/
 - 상태 용어가 다르다: MoS2는 `fit_status`, FET는 `parameter_quality` + `valid_for_summary`.
 - FET는 화면과 내보내기 모두 matplotlib를 쓴다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
-- MoS2의 그래프는 아직 크기 입력이 없다 (Map Viewer Prototype과 Sample Comparison의 스타일 입력만 있다).
-- MoS2는 아직 `labkit`을 쓰지 않고 같은 내용의 `gui/components/paper_theme.py`와 `report_loader.sidebar_section`을 따로 갖고 있다. 옮기려면 Dockerfile과 PyInstaller 설정이 MoS2 폴더 밖의 `labkit`을 포함하도록 바꿔야 한다.
+- MoS2의 이전 페이지(All Spectra, Map Viewer, Model Comparison, Sample Comparison의 PL·heatmap)는 논문 스타일이 아니라 `gui/components/plot_theme.py`의 큰 글씨 테마를 쓴다. 크기 입력은 모든 그래프에 있다.
+- `labkit`을 넣은 뒤 Docker 이미지와 exe를 다시 빌드해 확인하지 않았다.
