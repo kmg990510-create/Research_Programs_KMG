@@ -67,3 +67,35 @@
   - SS는 "가장 가파른 구간"이라 잡음이 크면 실제보다 작게 나온다 (잡음 5%에서 −11%).
   - 선형 외삽 Vth는 gm peak 위치에 민감하다. sweep 끝에서 gm이 아직 오르는 소자는 sweep 범위에 따라 값이 달라진다.
   - output 곡선 분석은 없다 (`curve_not_analysed`로 기록만 한다).
+
+## 3단계: 배치 실행, 검토 상태, 결과 파일, CLI (2026-11-14)
+
+- 파일: `fet_core/review.py`, `pipeline.py`, `report/summary.py`, `report/export.py`, `cli.py`, `__main__.py`, `tests/test_pipeline.py`
+- `SweepResult`에 계산에 쓴 치수(`W_um`, `L_um`, `t_ox_nm`, `eps_r`)를 추가했다. 소자별 치수가 다를 수 있어서 행마다 남긴다.
+- 사람이 바꾼 것은 `review.json` 하나에 모은다. 분석 입력(치수, 방법 옵션)과 결정(승인·제외, 그룹 이름)을 구분해, 결정만 바꿀 때는 다시 분석하지 않는다.
+- legacy와 다르게 한 것:
+  1. 소자 삭제 대신 `rejected` 결정이다. 행은 표에 남고 통계와 곡선 표에서만 빠진다.
+  2. 그림 파일(PNG)은 내보내지 않는다. 표와 메타데이터만 쓴다.
+  3. `transfer_curves`는 A 단위 하나만 쓴다 (legacy는 A와 uA/um 두 벌).
+- 검증: `pytest` 60 passed, 2 skipped. 실제 폴더 `260823`을 CLI로 실행해 파일 13개가 쓰이는 것을 확인했다.
+
+## 4단계: Streamlit 화면과 labkit (2026-11-14)
+
+- 파일: `gui/Main.py`, `gui/state.py`, `gui/components/figures.py`, `gui/pages/1_Run.py` ~ `5_Finalize.py`, `tests/test_gui.py`, 저장소 루트의 `labkit/` (`plot_theme.py`, `sidebar.py`)
+- `requirements.txt`에 `streamlit`, `plotly`를 추가했다.
+- 화면 구성과 규칙은 `AGENTS.md`의 "화면 (4단계)"에 정리했다.
+- 결정:
+  1. "분석 실행" 버튼을 두지 않았다. 배치를 고르거나 치수·옵션을 바꾸면 분석이 돌고 결과가 캐시된다 (실제 배치에서 0.2~3초).
+  2. `labkit`은 FET만 쓴다. MoS2는 아직 자기 폴더의 `paper_theme.py`와 `report_loader.sidebar_section`을 쓴다. MoS2를 옮기려면 Dockerfile과 PyInstaller 설정을 같이 바꿔야 한다.
+  3. 화면 그림은 Plotly이고, 저장은 그림의 카메라 버튼(PNG, 3배 해상도)으로 한다.
+- 검증:
+  - `pytest`: 78 passed, 2 skipped (측정 폴더가 없을 때). `data/raw`에 실제 배치 4개를 두면 86 passed. `tests/test_gui.py`가 합성 배치로 6개 페이지를 실행해 예외가 없는지, 사이드바가 번호 구획만 쓰는지, 배치가 없을 때 안내가 나오는지, 치수 저장·결정 저장·결과 파일 쓰기가 되는지 확인한다.
+  - 브라우저에서 실제 배치 `260916`으로 Device Viewer(log / linear 그림, 값, 결정 영역)와 Compare(overlay, 이동도 box)를 눈으로 확인했다.
+- 확인하지 못한 것:
+  - Run, Review, Finalize 페이지는 브라우저에서 눈으로 보지 않았다 (자동 실행만).
+  - 파일 업로드, 소자별 치수 표 저장, 그룹 이름·순서 저장, zip 내려받기는 눌러 보지 않았다.
+  - 클라우드와 exe 환경은 다루지 않았다 (6단계).
+- 한계:
+  - 그래프에서 구간을 직접 고르는 기능과 웨이퍼 위치 맵은 없다 (5단계).
+  - Device Viewer에 gm 곡선 그림은 없다. 접선과 gm 창만 표시한다.
+  - 업로드는 `.csv`와 `.xls` 개별 파일만 받는다 (zip 미지원).
