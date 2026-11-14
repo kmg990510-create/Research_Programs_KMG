@@ -5,7 +5,8 @@ Data analysis programs.
 | Folder | Description |
 | --- | --- |
 | [`MoS2_optical_analysis`](MoS2_optical_analysis/README.md) | MoS2 Raman/PL spectrum fitting pipeline with a Streamlit GUI and a Windows exe build |
-| [`FET_analysis`](FET_analysis/README.md) | FET transfer/output measurement analysis (in progress: instrument readers and data model) |
+| [`FET_analysis`](FET_analysis/README.md) | FET transfer-curve analysis with a Streamlit GUI and a CLI (Keysight B1500 CSV, Keithley 4200A Clarius XLS) |
+| `labkit` | Code shared by the programs: Plotly paper theme, sidebar sections |
 
 ## Windows exe builds (GitHub Actions)
 

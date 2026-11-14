@@ -20,6 +20,17 @@ FET_analysis/
       numeric.py       이동 중앙값, 점프에 강한 기울기, 이동 직선 맞춤
       transfer.py      transfer 곡선 추출, 배치 분석 (디스크에 쓰지 않음)
       results.py       SweepResult, 상태와 사유 목록
+    review.py          사람이 바꾼 것 (치수, 방법 옵션, 결정, 그룹 이름) = review.json
+    pipeline.py        배치 하나를 메모리에서 실행, 검토를 적용한 결과 표
+    report/
+      summary.py       그룹 통계, 지표 목록 (METRICS)
+      export.py        결과 파일 쓰기
+    cli.py             명령줄 진입점 (python -m fet_core)
+  gui/                 Streamlit 화면. 분석 로직을 두지 않는다
+    Main.py
+    state.py           데이터 폴더, 활성 배치, 분석 캐시, 사이드바 1) 2) 구획
+    components/figures.py   Plotly 그림 (streamlit을 import하지 않음)
+    pages/             1_Run, 2_Review, 3_Device_Viewer, 4_Compare, 5_Finalize
     io/
       loader.py        reader 선택, 폴더 읽기, 중복 파일 처리
       tables.py        reader 공용: 열 매칭, 표준 표 만들기, 곡선 종류 판정, Vds 결정
@@ -36,6 +47,11 @@ FET_analysis/
 `FET_analysis` 폴더에서 실행한다.
 
 ```powershell
+# 배치 하나 분석 후 결과 파일 쓰기 (기본 출력: data/results/<배치 이름>)
+.\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch
+# 화면
+.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+# 테스트
 .\.venv\Scripts\python.exe -m pytest
 # 실제 측정 폴더까지 검사 (폴더 안의 각 하위 폴더가 배치 하나)
 $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scripts\python.exe -m pytest
@@ -130,6 +146,48 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 "참고" 사유는 결과에 기록되지만 검토 대상으로 올리지 않는다.
 
+## 실행과 검토 (3단계)
+
+- `pipeline.run_folder`는 디스크에 쓰지 않는다. 쓰는 것은 `report.export.export_run`뿐이다.
+- 사람이 바꾼 것은 전부 `data/results/<배치>/review.json`(`ReviewState`)에 둔다. 원본 파일과 자동 결과는 고치지 않는다.
+  - 분석에 영향을 주는 것: 배치 기본 치수, 소자별 치수, `vth_subtract_half_vds`, `vth_const_current_nA_per_um`. 바뀌면 다시 분석한다.
+  - 분석에 영향을 주지 않는 것: sweep별 결정(`auto` / `approved` / `rejected`)과 메모, 그룹 표시 이름과 순서.
+- 통계에 들어가는 sweep은 `included`가 참인 것이다: invalid가 아니고 rejected가 아니다. `pipeline.results_frame`에서만 정한다.
+- 배치는 `data/raw` 바로 아래 폴더 하나다.
+
+### 출력 계약
+
+`data/results/<배치>/`에 쓴다. CSV는 UTF-8(BOM)이고 첫 행이 열 이름이다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `results_summary.csv` | sweep마다 한 행. `SweepResult`의 모든 필드와 `decision`, `note`, `included`, `group_display`, `i_on_uA_per_um`, `gm_peak_uS_per_um` |
+| `group_summary.csv` | 표시 그룹과 sweep 방향별 `n_sweeps`, `n_included`, 지표별 count / median / mean / std / min / max |
+| `warnings.csv` | reader와 분석의 모든 경고 (`source_file`, `run_id`, `sweep`, `severity`, `code`, `message`) |
+| `measurements.csv` | 모든 측정의 모든 점 (표준 열) |
+| `transfer_curves/<그룹>_<방향>.csv` | Origin용 넓은 표: `Vg (V)`와 소자별 `Id (A)` 열. rejected sweep은 뺀다 |
+| `run_metadata.json` | 프로그램 버전, git commit, 입력 파일 SHA-256, 설정 전체, 분석 설정, 기본 치수, review 전체, 개수 |
+| `review.json` | 검토 상태 (화면이 쓰고 CLI가 읽는다) |
+
+그림 파일은 내보내지 않는다. 화면의 그림은 카메라 버튼으로 저장한다.
+
+## 화면 (4단계)
+
+- 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `gui/components/figures.py`에 둔다.
+- 모든 페이지는 `gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
+- 사이드바는 번호 붙은 구획만 쓴다: `1) Run`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시), 그다음 페이지별 구획(`3) Device`, `3) Groups`).
+- 데이터 폴더는 `FET_analysis/data`이고, 환경 변수 `FET_DATA_ROOT`로 바꿀 수 있다 (테스트가 쓴다).
+- 그림은 `labkit.plot_theme.apply_paper_layout`으로 모양을 맞추고 `st.plotly_chart(..., theme=None)`으로 그린다.
+- 페이지 맨 위의 `sys.path` 4줄은 `fet_core`, `gui`, `labkit`을 찾기 위한 것이다.
+
+| 페이지 | 하는 일 |
+| --- | --- |
+| Run | 파일 업로드로 배치 만들기, 배치 기본 치수와 방법 옵션, 소자별 치수, 파일 목록과 경고 |
+| Review | attention / invalid sweep 표에서 결정과 메모 입력, 사유 설명 |
+| Device Viewer | 소자 하나의 log / linear 그림 (off 구간, SS 직선, gm 접선, Vth 표시), 추출값 표, 결정 저장 |
+| Compare | 그룹별 overlay, 지표별 box + 점, 그룹 통계 표, 그룹 이름과 순서 |
+| Finalize | 그룹 요약, 결과 파일 쓰기, zip 내려받기 |
+
 ## 설정 규칙
 
 - 과학적 수치와 파일 해석 규칙은 `config.yaml`에만 둔다. 키마다 한국어 주석을 단다.
@@ -147,8 +205,8 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 ## 테스트 규칙
 
-- 테스트는 `data/raw/`를 읽지 않는다. `tests/conftest.py`의 합성 곡선과 장비 형식 작성 함수를 쓴다.
-- 실제 파일 검사는 `FET_REAL_DATA_DIR`이 있을 때만 돌고, 없으면 skip한다.
+- 값을 검증하는 테스트는 `data/raw/`를 읽지 않는다. `tests/conftest.py`의 합성 곡선과 장비 형식 작성 함수를 쓴다.
+- 실제 파일 검사는 `data/raw`(또는 `FET_REAL_DATA_DIR`이 가리키는 폴더)에 배치 폴더가 있을 때만 돌고, 없으면 skip한다.
 - 추출 방법의 기준은 합성 곡선의 정답이다. legacy 출력은 참고값이며, 차이는 설명할 수 있어야 한다.
 
 ## 진행 단계
@@ -158,7 +216,7 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | 0 | 뼈대, 규칙 문서, 설정, 테스트 틀 | 완료 |
 | 1 | 측정 모델, reader 2종, 합성 곡선 생성기 | 완료 |
 | 2 | transfer 추출 (전처리, off/on, gm, Vth, SS, 이동도, 히스테리시스, 누설, 품질) | 완료 |
-| 3 | 배치 실행, 출력 파일, CLI | 예정 |
-| 4 | Streamlit 페이지 (Run, Review, Device Viewer, Compare, Finalize) | 예정 |
+| 3 | 배치 실행, 출력 파일, CLI | 완료 |
+| 4 | Streamlit 페이지 (Run, Review, Device Viewer, Compare, Finalize) | 완료 |
 | 5 | 그래프에서 구간 수동 지정, 위치 맵 | 예정 |
 | 6 | exe와 클라우드 배포 | 예정 |

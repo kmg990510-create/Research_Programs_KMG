@@ -1,6 +1,6 @@
 # FET_analysis
 
-FET 측정 파일에서 소자 파라미터를 추출하는 프로그램이다. 지금은 측정 파일을 읽고 transfer 곡선에서 파라미터를 추출하는 코어까지 구현되어 있다. 결과 파일 저장, CLI, 화면은 아직 없다 (진행 단계는 [AGENTS.md](AGENTS.md) 참고).
+FET 측정 파일에서 소자 파라미터를 추출하는 프로그램이다. 측정 파일을 읽어 transfer 곡선의 파라미터를 추출하고, 화면에서 검토한 뒤 결과 파일로 내보낸다 (진행 단계와 규칙은 [AGENTS.md](AGENTS.md) 참고).
 
 ## 지원하는 입력
 
@@ -16,7 +16,21 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-## 사용 (현재 단계)
+## 사용
+
+측정 파일을 `data/raw/<배치 이름>/`에 넣거나, 화면의 Run 페이지에서 올린다.
+
+```powershell
+# 화면
+.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+
+# 명령줄: 분석하고 data/results/<배치 이름>/ 에 결과 파일 쓰기
+.\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch
+```
+
+결과 파일 목록은 [AGENTS.md](AGENTS.md)의 "출력 계약"에 있다.
+
+### 코드에서 쓰기
 
 ```python
 from fet_core.config import load_config
