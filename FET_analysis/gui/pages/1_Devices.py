@@ -22,10 +22,12 @@ from fet_core.analysis.results import REASONS  # noqa: E402
 from fet_core.analysis.sweeps import split_branches  # noqa: E402
 from fet_core.pipeline import ordered_groups  # noqa: E402
 from fet_core.review import sweep_key  # noqa: E402
-from gui.components.figures import gallery_figure, transfer_linear_figure, transfer_log_figure  # noqa: E402
+from gui.components.figures import gallery_figure, gallery_size, transfer_linear_figure, transfer_log_figure  # noqa: E402
 from gui.components.values import extracted_values  # noqa: E402
 from gui.state import active, filters, get_review, put_review, stop_if_empty  # noqa: E402
+from labkit.figure_size import FigureSize, figure_size_inputs, show_figure  # noqa: E402
 from labkit.plot_theme import export_config  # noqa: E402
+from labkit.sidebar import sidebar_section  # noqa: E402
 
 SELECTED_KEY = "fet_devices_selected"
 VIEW_KEY = "fet_devices_view"
@@ -35,6 +37,7 @@ STATUS_RANK = {"attention": 0, "invalid": 1, "valid": 2}
 STATUS_MARK = {"attention": "⚠", "invalid": "✕", "valid": "✓"}
 STATUS_TEXT_COLOR = {"attention": "orange", "invalid": "red", "valid": "green"}
 GALLERY_COLUMNS = 5
+GALLERY_COLUMNS_KEY = "fet_devices_gallery_columns"
 
 st.set_page_config(page_title="Devices · FET Analysis", layout="wide")
 st.title("Devices")
@@ -42,6 +45,11 @@ st.title("Devices")
 batch, run, review, frame = active()
 groups = ordered_groups(frame, review)
 shown = filters(frame, groups)
+with sidebar_section("3) Figure size", expanded=False):
+    curve_size = figure_size_inputs("fet_curves", "Detail: log and linear curves", 520, 420)
+    panel_size = figure_size_inputs("fet_gallery_panel", "Gallery: one panel", 240, 190)
+    st.session_state.setdefault(GALLERY_COLUMNS_KEY, GALLERY_COLUMNS)
+    gallery_columns = st.number_input("Gallery: panels per row", 1, 12, step=1, key=GALLERY_COLUMNS_KEY)
 stop_if_empty(shown)
 
 # sweeps that need a look come first
@@ -131,10 +139,9 @@ if st.session_state[VIEW_KEY] == "Gallery":
             )
     trace_keys = [curve["key"] for panel in panels for curve in panel["curves"]]
     gallery_key = f"fet_devices_gallery_{nonce}"
-    st.plotly_chart(
-        gallery_figure(panels, GALLERY_COLUMNS),
-        width="stretch",
-        theme=None,
+    show_figure(
+        gallery_figure(panels, gallery_columns),
+        FigureSize(*gallery_size(len(panels), gallery_columns, panel_size.width_px, panel_size.height_px)),
         config=export_config(f"{batch}_gallery"),
         key=gallery_key,
         on_select=partial(_gallery_clicked, gallery_key, trace_keys),
@@ -210,9 +217,12 @@ with detail_box:
         (st.error if level == "invalid" else st.warning if level == "attention" else st.info)(f"**{code}** · {message}")
 
     file_stem = f"{measurement.label}_{result.sweep}"
-    left, right = st.columns(2)
-    left.plotly_chart(transfer_log_figure(branches, results, result.sweep, height=420), width="stretch", theme=None, config=export_config(f"{file_stem}_log"))
-    right.plotly_chart(transfer_linear_figure(branches, results, result.sweep, height=420), width="stretch", theme=None, config=export_config(f"{file_stem}_linear"))
+    # a fixed width: the two figures sit side by side and wrap when they do not fit
+    left, right = st.columns(2) if curve_size.width_px is None else (st.container(horizontal=True),) * 2
+    with left:
+        show_figure(transfer_log_figure(branches, results, result.sweep), curve_size, config=export_config(f"{file_stem}_log"))
+    with right:
+        show_figure(transfer_linear_figure(branches, results, result.sweep), curve_size, config=export_config(f"{file_stem}_linear"))
 
     decision = row["decision"]
     approve, reject, clear, note_box = st.columns([1, 1, 1, 4], vertical_alignment="bottom")

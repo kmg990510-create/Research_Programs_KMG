@@ -76,6 +76,7 @@ Research_Programs_KMG/
 - 화면의 대화형 그래프는 Plotly, 내보내는 그림 파일은 matplotlib로 그린다.
 - 프로그램 전체가 하나의 테마를 쓴다 (MoS2 `gui/components/plot_theme.py`).
 - 그리는 코드는 추출·피팅 함수 안에 넣지 않는다.
+- 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 사이드바 `Figure size` 구획에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기다 (`labkit/figure_size.py`).
 
 ### 페이지 코드
 
@@ -101,7 +102,7 @@ Research_Programs_KMG/
 
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
 - 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
-- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획). FET_analysis가 쓴다.
+- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기 입력과 그 크기로 그리기). FET_analysis가 쓴다.
 - 프로그램은 진입 스크립트에서 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다.
 - `labkit`에는 특정 측정 방법(Raman, FET)에 대한 지식을 넣지 않는다.
 
@@ -132,4 +133,5 @@ Research_Programs_KMG/
 - 상태 용어가 다르다: MoS2는 `fit_status`, FET는 `parameter_quality` + `valid_for_summary`.
 - FET는 화면과 내보내기 모두 matplotlib를 쓴다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
+- MoS2의 그래프는 아직 크기 입력이 없다 (Map Viewer Prototype과 Sample Comparison의 스타일 입력만 있다).
 - MoS2는 아직 `labkit`을 쓰지 않고 같은 내용의 `gui/components/paper_theme.py`와 `report_loader.sidebar_section`을 따로 갖고 있다. 옮기려면 Dockerfile과 PyInstaller 설정이 MoS2 폴더 밖의 `labkit`을 포함하도록 바꿔야 한다.
