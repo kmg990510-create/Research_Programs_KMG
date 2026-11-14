@@ -39,7 +39,8 @@ from gui.components.map_figure import (  # noqa: E402
     resolve_color_range,
     save_style_preset,
 )
-from gui.components.paper_theme import export_config  # noqa: E402
+from gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
+from labkit.plot_theme import export_config  # noqa: E402
 from gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
     load_report_payload,
@@ -96,6 +97,7 @@ st.caption("Select points on the map with the mouse. Style changes apply immedia
 report_path, payload, df = choose_report_sidebar("map_proto")
 if report_path is None or payload is None:
     st.stop()
+figure_size_section("2) Figure size", ["map_editor", "spectrum"])
 if df.empty or not {"map_x", "map_y", "spectrum_id"}.issubset(df.columns):
     st.warning("This report has no map_x / map_y rows.")
     st.stop()
@@ -174,16 +176,17 @@ with tab_style:
     l1, l2 = st.columns(2)
     l1.text_input("X label", key=_style_key("x_label"))
     l2.text_input("Y label", key=_style_key("y_label"))
-    s1, s2, s3 = st.columns(3)
+    s1, s3 = st.columns(2)
     s1.number_input("Font size", min_value=8, max_value=28, step=1, key=_style_key("font_size"))
-    s2.number_input("Height (px)", min_value=300, max_value=1200, step=20, key=_style_key("height_px"))
     s3.number_input("Cell gap (px)", min_value=0, max_value=6, step=1, key=_style_key("cell_gap_px"))
+    st.caption("Width and height: sidebar section 2) Figure size.")
     v1, v2, v3 = st.columns(3)
     v1.checkbox("Show values", key=_style_key("show_values"))
     v2.number_input("Decimals", min_value=0, max_value=6, step=1, key=_style_key("value_decimals"))
     v3.checkbox("Y origin at top", key=_style_key("y_origin_top"))
 
-style = MapStyle(**{name: st.session_state[_style_key(name)] for name in STYLE_FIELDS})
+# the height comes from the sidebar size inputs; the cell size of the map follows it
+style = MapStyle(**{**{name: st.session_state[_style_key(name)] for name in STYLE_FIELDS}, "height_px": size_of("map_editor").height_px})
 
 with tab_style:
     if style.axis_mode == "Physical" and not physical_axis_usable(style):
@@ -223,9 +226,9 @@ with map_col:
         hidden_ids=hidden_ids,
         dragmode=MOUSE_MODES[mouse_mode],
     )
-    st.plotly_chart(
+    show(
         fig,
-        width="stretch",
+        "map_editor",
         theme=None,
         key=CHART_KEY,
         on_select=_on_select,

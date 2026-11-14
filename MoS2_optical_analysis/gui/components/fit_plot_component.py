@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from .figure_sizes import show
 from .plot_theme import apply_plotly_theme
 
 apply_plotly_theme()
@@ -25,7 +26,7 @@ def render_metric_histogram(df: pd.DataFrame, metric: str, title: str | None = N
         opacity=0.7,
         title=title or f"{metric} distribution",
     )
-    st.plotly_chart(fig, width="stretch")
+    show(fig, "model_charts")
 
 
 def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
@@ -50,6 +51,6 @@ def render_map_scatter(df: pd.DataFrame, value_col: str, title: str) -> None:
     )
     fig.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": "black"}})
     fig.update_layout(yaxis={"autorange": "reversed"})
-    st.plotly_chart(fig, width="stretch")
+    show(fig, "map_status")
 
 

@@ -24,6 +24,7 @@ from gui.components.report_loader import (  # noqa: E402
     sidebar_filters_section,
     sidebar_section,
 )
+from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
 
 
@@ -85,7 +86,9 @@ ratio_numeric_candidates = [
     for col in work_df.columns
     if pd.api.types.is_numeric_dtype(work_df[col]) and col not in {"map_x", "map_y"}
 ]
-with sidebar_section("3) Ratio Builder", expanded=False):
+ratio_box = sidebar_section("3) Ratio Builder", expanded=False)
+figure_size_section("4) Figure size", ["map_parameter", "map_status"])
+with ratio_box:
     enable_custom_ratio = st.checkbox(
         "Enable custom ratio (numerator / denominator)",
         value=False,
@@ -271,10 +274,9 @@ if required_top_heatmap.issubset(plot_df.columns):
                 labels={"x": "map_x", "y": "map_y", "color": selected_param},
                 title=f"{selected_map}: {selected_param}",
             )
-            fig_top.update_layout(height=720)
             fig_top.update_xaxes(constrain="domain")
             fig_top.update_yaxes(scaleanchor="x", scaleratio=1.0)
-            st.plotly_chart(fig_top, width="stretch", theme=None)
+            show(fig_top, "map_parameter", theme=None)
             if zmin is not None and zmax is not None:
                 st.caption(
                     f"Color scale fixed to [{zmin:.4f}, {zmax:.4f}] "
@@ -301,7 +303,7 @@ with st.expander("Fit Status Map", expanded=True):
             )
             fig_status.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": "black"}})
             fig_status.update_layout(yaxis={"autorange": "reversed"}, legend_title="fit_status")
-            st.plotly_chart(fig_status, width="stretch", theme=None)
+            show(fig_status, "map_status", theme=None)
     else:
         st.info("Need map_x/map_y/fit_status columns to draw status map.")
 

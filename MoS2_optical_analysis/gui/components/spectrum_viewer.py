@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from lmfit.models import GaussianModel, LorentzianModel, PseudoVoigtModel
 
+from .figure_sizes import show
 from .plot_theme import apply_plotly_theme
 
 apply_plotly_theme()
@@ -476,7 +477,7 @@ def render_spectrum_overlay(
     )
     fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,0.08)")
     fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.08)")
-    st.plotly_chart(fig, width="stretch")
+    show(fig, "spectrum")
 
     if used_component_approx:
         st.info("This row was plotted with component approximation (legacy report without area/sigma/fraction).")

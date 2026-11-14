@@ -38,7 +38,23 @@ def figure_size_inputs(kind: str, label: str, default_width_px: int, default_hei
     return FigureSize(None if fit else int(width), int(height))
 
 
-def show_figure(fig: go.Figure, size: FigureSize, **chart_arguments):
-    """``st.plotly_chart`` at the chosen size. Other arguments are passed on."""
+def stored_figure_size(kind: str, default_width_px: int, default_height_px: int) -> FigureSize:
+    """The size chosen for ``kind`` without drawing inputs (for code that only draws the figure).
+
+    Reads the input widgets first, so it does not matter whether the inputs are
+    drawn before or after the figure in the script.
+    """
+    fit, width, height = st.session_state.get(STORE_KEY, {}).get(kind, (True, default_width_px, default_height_px))
+    fit = st.session_state.get(f"labkit_size_fit_{kind}", fit)
+    width = st.session_state.get(f"labkit_size_width_{kind}", width)
+    height = st.session_state.get(f"labkit_size_height_{kind}", height)
+    return FigureSize(None if fit else int(width), int(height))
+
+
+def show_figure(fig: go.Figure, size: FigureSize, theme: str | None = None, **chart_arguments):
+    """``st.plotly_chart`` at the chosen size. Other arguments are passed on.
+
+    ``theme=None`` keeps the figure's own look; ``"streamlit"`` lets Streamlit restyle it.
+    """
     fig.update_layout(height=size.height_px, width=size.width_px)
-    return st.plotly_chart(fig, width=size.width_px or "stretch", theme=None, **chart_arguments)
+    return st.plotly_chart(fig, width=size.width_px or "stretch", theme=theme, **chart_arguments)

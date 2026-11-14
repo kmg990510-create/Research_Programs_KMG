@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import plotly.graph_objects as go
 
-from gui.components.paper_theme import FONT_FAMILY, INK, SURFACE, paper_template
+from labkit.plot_theme import FONT_FAMILY, INK, SURFACE, paper_template
 
 LEGEND_POSITIONS = ("Inside top-right", "Inside top-left", "Right", "Below", "Hidden")
 TICK_DIRECTIONS = ("inside", "outside")

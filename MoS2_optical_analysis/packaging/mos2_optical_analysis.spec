@@ -13,6 +13,7 @@ This build creates multiple executables:
 import importlib.util
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
@@ -22,6 +23,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 DIST_README = PROJECT_ROOT / "packaging" / "DIST_README.md"
 USER_CONFIG = PROJECT_ROOT / "config.yaml"
+
+# `labkit` (shared lab code) lives next to the project folder in the repository.
+REPO_ROOT = PROJECT_ROOT.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # build_info.py is stdlib-only; load it by path so the spec does not import the fitting package.
 _build_info_spec = importlib.util.spec_from_file_location(
@@ -99,6 +105,7 @@ for package_name in (
 hiddenimports = []
 hiddenimports += _safe_collect_submodules("fitting")
 hiddenimports += _safe_collect_submodules("gui")
+hiddenimports += _safe_collect_submodules("labkit")
 hiddenimports += _safe_collect_submodules("streamlit")
 hiddenimports += _safe_collect_submodules("pyqtgraph")
 hiddenimports += [
@@ -111,7 +118,7 @@ hiddenimports = sorted(set(hiddenimports))
 
 
 COMMON_ANALYSIS_KWARGS = dict(
-    pathex=[str(PROJECT_ROOT)],
+    pathex=[str(PROJECT_ROOT), str(REPO_ROOT)],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

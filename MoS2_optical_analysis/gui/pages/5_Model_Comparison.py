@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from gui.components.fit_plot_component import render_metric_histogram  # noqa: E402
+from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
 from gui.components.report_loader import choose_report_sidebar, sidebar_filters_section  # noqa: E402
 
@@ -54,6 +55,7 @@ if "fit_status" in work_df.columns:
     )
     if selected_statuses:
         work_df = work_df[work_df["fit_status"].isin(selected_statuses)]
+figure_size_section("3) Figure size", ["model_charts"])
 if work_df.empty:
     st.warning("No rows left after filters.")
     st.stop()
@@ -61,13 +63,13 @@ if work_df.empty:
 st.subheader("Selected Model Distribution")
 model_counts = work_df["selected_model"].value_counts().rename_axis("model").reset_index(name="count")
 fig_counts = px.bar(model_counts, x="model", y="count", title="Model usage")
-st.plotly_chart(fig_counts, width="stretch")
+show(fig_counts, "model_charts", key="model_cmp_counts")
 
 metric_cols = [c for c in ["rmse", "r2", "aic", "bic"] if c in work_df.columns]
 if metric_cols:
     selected_metric = st.selectbox("Metric for boxplot", metric_cols, index=0)
     fig_box = px.box(work_df, x="selected_model", y=selected_metric, points="outliers", title=f"{selected_metric} by model")
-    st.plotly_chart(fig_box, width="stretch")
+    show(fig_box, "model_charts", key="model_cmp_box")
 
     render_metric_histogram(work_df, selected_metric, title=f"{selected_metric} histogram")
 

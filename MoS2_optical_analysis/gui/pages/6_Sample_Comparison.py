@@ -24,7 +24,8 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from gui.components import report_loader as _report_loader  # noqa: E402
-from gui.components.paper_theme import CATEGORICAL, export_config  # noqa: E402
+from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
+from labkit.plot_theme import CATEGORICAL, export_config  # noqa: E402
 from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
 from gui.components.scatter_style import (  # noqa: E402
     LEGEND_POSITIONS,
@@ -200,7 +201,7 @@ def _render_pl_comparison(sample_frames: dict[str, pd.DataFrame]) -> None:
         hover_data=["sample"],
     )
     fig.update_layout(xaxis_title="Temperature (K)", yaxis_title=selected_metric)
-    st.plotly_chart(fig, width="stretch")
+    show(fig, "sample_pl")
 
     table_cols = ["sample", "treatment_label", "temperature_k", *available_metrics]
     st.dataframe(
@@ -949,19 +950,16 @@ with sidebar_section("5) Figure", expanded=False):
         font_size=fs1.number_input(
             "Font size", 8, 28, ScatterStyle.font_size, 1, key="sample_cmp_style_font", disabled=style_off
         ),
-        height_px=fs2.number_input(
-            "Height (px)", 300, 1200, ScatterStyle.height_px, 20, key="sample_cmp_style_height", disabled=style_off
-        ),
-        point_size=fs1.number_input(
+        point_size=fs2.number_input(
             "Point size", 2, 24, ScatterStyle.point_size, 1, key="sample_cmp_style_point", disabled=style_off
         ),
-        center_size=fs2.number_input(
+        center_size=fs1.number_input(
             "Center size", 4, 30, ScatterStyle.center_size, 1, key="sample_cmp_style_center", disabled=style_off
         ),
-        errorbar_width=fs1.number_input(
+        errorbar_width=fs2.number_input(
             "Error bar width", 0.5, 5.0, ScatterStyle.errorbar_width, 0.1, key="sample_cmp_style_errorbar", disabled=style_off
         ),
-        point_opacity=fs2.slider(
+        point_opacity=fs1.slider(
             "Point opacity", 0.1, 1.0, ScatterStyle.point_opacity, 0.05, key="sample_cmp_style_opacity", disabled=style_off
         ),
         legend_position=st.selectbox("Legend", LEGEND_POSITIONS, key="sample_cmp_style_legend", disabled=style_off),
@@ -979,6 +977,8 @@ with sidebar_section("5) Figure", expanded=False):
     style_image_format = st.radio(
         "Image download format", ["png", "svg"], horizontal=True, key="sample_cmp_style_image", disabled=style_off
     )
+
+figure_size_section("6) Figure size", ["sample_scatter", "sample_square", "sample_heatmap", "sample_pl"])
 
 selected_step_cfg = (
     isoline_steps_cfg.get(isoline_density, {})
@@ -1108,13 +1108,13 @@ if not any(
     st.warning("No plottable numeric data after filtering.")
     st.stop()
 
-def _show_styled(fig: go.Figure) -> None:
-    """Render a comparison figure with the sidebar figure style."""
+def _show_styled(fig: go.Figure, kind: str = "sample_scatter") -> None:
+    """Render a comparison figure with the sidebar figure style and size."""
     if not use_paper_style:
-        st.plotly_chart(fig, width="stretch")
+        show(fig, kind)
         return
     apply_scatter_style(fig, scatter_style)
-    st.plotly_chart(fig, width="stretch", theme=None, config=export_config("sample_comparison", style_image_format))
+    show(fig, kind, theme=None, config=export_config("sample_comparison", style_image_format))
 
 
 tab_epsn, tab_absolute, tab_nfwhm, tab_fwhm, tab_lo = st.tabs(
@@ -1253,7 +1253,7 @@ with tab_absolute:
                 eps_range=isoline_eps_range,
                 n_range=isoline_n_range,
             )
-        _show_styled(fig)
+        _show_styled(fig, "sample_square")
     else:
         st.info("No valid absolute E2g/A1g position data.")
 
@@ -1281,7 +1281,7 @@ with tab_fwhm:
         fig.update_layout(height=720)
         fig.update_xaxes(fixedrange=False)
         fig.update_yaxes(fixedrange=False)
-        _show_styled(fig)
+        _show_styled(fig, "sample_square")
     else:
         st.info("No valid E2g/A1g FWHM pair data.")
 
@@ -1379,5 +1379,5 @@ with tab_lo:
             if heatmap_fig is None:
                 st.info("No valid LO ratio map values for selected sample.")
             else:
-                st.plotly_chart(heatmap_fig, width="stretch")
+                show(heatmap_fig, "sample_heatmap")
 
