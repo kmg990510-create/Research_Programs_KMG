@@ -25,10 +25,7 @@ from gui.components.report_loader import (  # noqa: E402
     sidebar_section,
 )
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from gui.components.plot_theme import apply_plotly_theme  # noqa: E402
-
-
-apply_plotly_theme()
+from labkit.plot_theme import INK, LEGEND_RIGHT, SEQUENTIAL, STATUS_COLORS  # noqa: E402
 
 
 def _add_derived_map_parameters(frame: pd.DataFrame) -> pd.DataFrame:
@@ -268,7 +265,7 @@ if required_top_heatmap.issubset(plot_df.columns):
                 pivot_top,
                 origin="lower",
                 aspect="equal",
-                color_continuous_scale="Viridis",
+                color_continuous_scale=SEQUENTIAL,
                 zmin=zmin,
                 zmax=zmax,
                 labels={"x": "map_x", "y": "map_y", "color": selected_param},
@@ -276,7 +273,7 @@ if required_top_heatmap.issubset(plot_df.columns):
             )
             fig_top.update_xaxes(constrain="domain")
             fig_top.update_yaxes(scaleanchor="x", scaleratio=1.0)
-            show(fig_top, "map_parameter", theme=None)
+            show(fig_top, "map_parameter", filename=f"{selected_map}_{selected_param}")
             if zmin is not None and zmax is not None:
                 st.caption(
                     f"Color scale fixed to [{zmin:.4f}, {zmax:.4f}] "
@@ -298,12 +295,13 @@ with st.expander("Fit Status Map", expanded=True):
                 y="map_y",
                 color="fit_status",
                 category_orders={"fit_status": status_options},
+                color_discrete_map=STATUS_COLORS,
                 hover_data=["spectrum_id", "selected_model"] if "selected_model" in status_df.columns else ["spectrum_id"],
                 title="Spatial distribution of fit_status",
             )
-            fig_status.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": "black"}})
-            fig_status.update_layout(yaxis={"autorange": "reversed"}, legend_title="fit_status")
-            show(fig_status, "map_status", theme=None)
+            fig_status.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": INK}})
+            fig_status.update_layout(yaxis={"autorange": "reversed"}, legend_title="fit_status", legend=LEGEND_RIGHT)  # the map fills the plot area
+            show(fig_status, "map_status", filename=f"{selected_map}_fit_status")
     else:
         st.info("Need map_x/map_y/fit_status columns to draw status map.")
 

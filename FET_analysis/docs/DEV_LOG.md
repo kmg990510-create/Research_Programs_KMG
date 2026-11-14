@@ -128,3 +128,9 @@
 - 검증: `tests/test_gui.py`가 두 페이지의 모든 그림이 사이드바 값(610 x 330)을 따르는지 확인한다. 브라우저에서 Devices Detail의 가로 고정(520 x 420)을 확인했다. Compare와 Gallery의 고정 크기는 브라우저에서 보지 않았다.
 
 - 추가 (같은 날): MoS2도 `labkit`을 쓰게 하면서 `labkit.plot_theme`에 `colorbar_style`, `MUTED_INK`를, `labkit.figure_size`에 `stored_figure_size`와 `show_figure(theme=...)`를 넣었다. FET 동작은 그대로다 (`pytest` 89 passed).
+
+- 추가 (같은 날): 두 프로그램의 그래프 모양을 하나로 맞췄다.
+  - `gui/components/figures.py`의 색(`MUTED`, `MARK`, `FIT`, `STATUS_COLORS`)과 선 굵기·점 크기 숫자를 `labkit.plot_theme`의 이름으로 바꿨다. 눈에 보이는 차이: I_off 구간 선 4 → 2.4, gm 접선 2 → 2.4, Overlay 선 1.4 → 1.6, Statistics 점 9 → 7.
+  - 페이지는 `show_figure(fig, size, filename=...)`만 부른다. 이미지 형식과 3배 해상도는 `show_figure`가 정한다.
+  - `3) Figure size` 구획에 `Grid`(기본 꺼짐)와 `Image format`(png/svg)이 생겼고 모든 그래프에 적용된다.
+  - 검증: `pytest` 90 passed. 브라우저에서 Devices Detail과 Compare의 그림이 Arial 14, 격자 없음, 지정한 파일 이름으로 뜨는 것을 확인했다. FET 화면에서 `Grid`를 켜 보지는 않았다 (MoS2 화면과 자동 테스트로 확인).

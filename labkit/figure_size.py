@@ -1,8 +1,11 @@
-"""Width and height of every figure, set by the user.
+"""Size, grid and image format of every figure, set by the user.
 
-``figure_size_inputs`` draws the inputs for one kind of figure and remembers the
-choice for the session, also across pages. ``show_figure`` draws a Plotly figure
-at that size; the saved image (camera button) has the same size.
+``figure_options_inputs`` draws the options that hold for all figures (grid,
+image format) and ``figure_size_inputs`` the size of one kind of figure. The
+choices are remembered for the session, also across pages. ``show_figure`` is
+the one place where a figure is drawn: it finishes the figure
+(``labkit.plot_theme.finish_figure``), gives it the chosen size and sets the
+camera button to save a figure-quality image of the same size.
 """
 
 from __future__ import annotations
@@ -12,7 +15,15 @@ from dataclasses import dataclass
 import plotly.graph_objects as go
 import streamlit as st
 
+from labkit.plot_theme import export_config, finish_figure, set_default_theme
+
+set_default_theme()  # before any figure is built: Plotly Express fixes colours at creation
+
 STORE_KEY = "labkit_figure_sizes"
+OPTIONS_KEY = "labkit_figure_options"
+GRID_KEY = "labkit_figure_grid"
+IMAGE_FORMAT_KEY = "labkit_figure_image_format"
+IMAGE_FORMATS = ("png", "svg")
 MIN_PX = 150
 MAX_PX = 4000
 STEP_PX = 10
@@ -22,6 +33,36 @@ STEP_PX = 10
 class FigureSize:
     width_px: int | None  # None: as wide as the place it is drawn in
     height_px: int
+
+
+@dataclass(frozen=True)
+class FigureOptions:
+    grid: bool = False
+    image_format: str = "png"
+
+
+def figure_options_inputs() -> FigureOptions:
+    """Inputs that hold for every figure, drawn where this is called (normally the figure sidebar section)."""
+    store = st.session_state.setdefault(OPTIONS_KEY, {})
+    grid = st.checkbox("Grid", value=store.get("grid", False), key=GRID_KEY, help="Grid lines on every figure.")
+    image_format = st.radio(
+        "Image format",
+        IMAGE_FORMATS,
+        index=IMAGE_FORMATS.index(store.get("image_format", "png")),
+        horizontal=True,
+        key=IMAGE_FORMAT_KEY,
+        help="Format of the image saved with the camera button of a figure.",
+    )
+    store.update(grid=bool(grid), image_format=str(image_format))
+    return FigureOptions(bool(grid), str(image_format))
+
+
+def figure_options() -> FigureOptions:
+    """The chosen options without drawing inputs. Reads the input widgets first, then the remembered choice."""
+    store = st.session_state.get(OPTIONS_KEY, {})
+    grid = st.session_state.get(GRID_KEY, store.get("grid", False))
+    image_format = st.session_state.get(IMAGE_FORMAT_KEY, store.get("image_format", "png"))
+    return FigureOptions(bool(grid), str(image_format))
 
 
 def figure_size_inputs(kind: str, label: str, default_width_px: int, default_height_px: int) -> FigureSize:
@@ -51,10 +92,15 @@ def stored_figure_size(kind: str, default_width_px: int, default_height_px: int)
     return FigureSize(None if fit else int(width), int(height))
 
 
-def show_figure(fig: go.Figure, size: FigureSize, theme: str | None = None, **chart_arguments):
-    """``st.plotly_chart`` at the chosen size. Other arguments are passed on.
-
-    ``theme=None`` keeps the figure's own look; ``"streamlit"`` lets Streamlit restyle it.
-    """
+def show_figure(fig: go.Figure, size: FigureSize, filename: str = "figure", **chart_arguments):
+    """Draw ``fig``: common look, chosen size, image saved as ``filename``. Other arguments go to ``st.plotly_chart``."""
+    options = figure_options()
+    finish_figure(fig, grid=options.grid)
     fig.update_layout(height=size.height_px, width=size.width_px)
-    return st.plotly_chart(fig, width=size.width_px or "stretch", theme=theme, **chart_arguments)
+    return st.plotly_chart(
+        fig,
+        width=size.width_px or "stretch",
+        theme=None,  # Streamlit's own theme would replace the font and colours
+        config=export_config(filename, options.image_format),
+        **chart_arguments,
+    )

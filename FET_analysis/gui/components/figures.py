@@ -10,11 +10,22 @@ from plotly.subplots import make_subplots
 from fet_core.analysis.results import SweepResult
 from fet_core.analysis.sweeps import Branch
 from fet_core.report.summary import metric_label
-from labkit.plot_theme import INK, apply_paper_layout
-
-MUTED = "#8a8a8a"
-MARK = "#D55E00"
-FIT = "#0072B2"
+from labkit.plot_theme import (
+    AUX,
+    DATA,
+    FIT,
+    LEGEND_INSIDE,
+    LINE_AUX,
+    LINE_DATA,
+    LINE_FIT,
+    MARK,
+    MARKER_CENTER,
+    MARKER_ON_LINE,
+    MARKER_RAW,
+    STATUS_COLORS,
+    SURFACE,
+    apply_paper_layout,
+)
 
 
 def _positive(values: np.ndarray) -> np.ndarray:
@@ -38,8 +49,8 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                 y=_positive(branch.data["Id"].abs().to_numpy()),
                 mode="lines+markers",
                 name=f"|Id| {branch.direction}",
-                line={"color": INK if active else MUTED, "width": 1.6 if active else 1.0},
-                marker={"size": 4 if active else 3},
+                line={"color": DATA if active else AUX, "width": LINE_DATA if active else LINE_AUX},
+                marker={"size": MARKER_ON_LINE},
                 opacity=1.0 if active else 0.55,
             )
         )
@@ -51,7 +62,7 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                 y=_positive(current.data["Ig"].abs().to_numpy()),
                 mode="lines",
                 name="|Ig|",
-                line={"color": MUTED, "width": 1.0, "dash": "dot"},
+                line={"color": AUX, "width": LINE_AUX, "dash": "dot"},
             )
         )
     result = results.get(shown)
@@ -64,7 +75,7 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                     y=[result.i_off_A, result.i_off_A],
                     mode="lines",
                     name="I_off window",
-                    line={"color": MARK, "width": 4},
+                    line={"color": MARK, "width": LINE_FIT},
                 )
             )
         ss = _span(result.ss_window_start_V, result.ss_window_end_V)
@@ -81,7 +92,7 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                         y=10 ** (slope * x_line + intercept),
                         mode="lines",
                         name=f"SS {result.ss_mV_per_dec:.0f} mV/dec",
-                        line={"color": FIT, "width": 2.4},
+                        line={"color": FIT, "width": LINE_FIT},
                     )
                 )
         if result.vth_const_current_V is not None and result.vth_const_current_level_A:
@@ -91,13 +102,13 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                     y=[result.vth_const_current_level_A],
                     mode="markers",
                     name="Vth (constant current)",
-                    marker={"symbol": "diamond", "size": 11, "color": MARK, "line": {"color": "#ffffff", "width": 1.5}},
+                    marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": 1.5}},
                 )
             )
     apply_paper_layout(fig, height=height)
     fig.update_yaxes(type="log", title_text="|I| (A)", exponentformat="power")
     fig.update_xaxes(title_text="Vg (V)")
-    fig.update_layout(title_text="Log scale", legend={"x": 0.02, "y": 0.98, "xanchor": "left", "yanchor": "top"})
+    fig.update_layout(title_text="Log scale", legend=LEGEND_INSIDE)
     return fig
 
 
@@ -115,8 +126,8 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
                 y=current,
                 mode="lines+markers",
                 name=f"|Id| {branch.direction}",
-                line={"color": INK if active else MUTED, "width": 1.6 if active else 1.0},
-                marker={"size": 4 if active else 3},
+                line={"color": DATA if active else AUX, "width": LINE_DATA if active else LINE_AUX},
+                marker={"size": MARKER_ON_LINE},
                 opacity=1.0 if active else 0.55,
             )
         )
@@ -128,7 +139,7 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
         far = result.gm_peak_Vg_V + sign * (top - result.gm_tangent_current_A) / result.gm_peak_S
         zero = result.gm_peak_Vg_V - sign * result.gm_tangent_current_A / result.gm_peak_S
         fig.add_trace(
-            go.Scatter(x=[zero, far], y=[0.0, top], mode="lines", name="gm tangent", line={"color": FIT, "width": 2, "dash": "dash"})
+            go.Scatter(x=[zero, far], y=[0.0, top], mode="lines", name="gm tangent", line={"color": FIT, "width": LINE_FIT, "dash": "dash"})
         )
         if window:
             inside = [b for b in branches if b.direction == shown][0].data
@@ -139,7 +150,7 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
                     y=inside["Id"].abs(),
                     mode="markers",
                     name="gm window",
-                    marker={"size": 7, "color": FIT},
+                    marker={"size": MARKER_RAW, "color": FIT},
                 )
             )
         fig.add_trace(
@@ -148,13 +159,13 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
                 y=[0.0],
                 mode="markers",
                 name="Vth (linear extrapolation)",
-                marker={"symbol": "diamond", "size": 11, "color": MARK, "line": {"color": "#ffffff", "width": 1.5}},
+                marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": 1.5}},
             )
         )
     apply_paper_layout(fig, height=height)
     fig.update_yaxes(title_text="|Id| (A)", rangemode="tozero", exponentformat="power")
     fig.update_xaxes(title_text="Vg (V)")
-    fig.update_layout(title_text="Linear scale", legend={"x": 0.02, "y": 0.98, "xanchor": "left", "yanchor": "top"})
+    fig.update_layout(title_text="Linear scale", legend=LEGEND_INSIDE)
     return fig
 
 
@@ -177,7 +188,7 @@ def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, 
                 name=curve["group"],
                 legendgroup=curve["group"],
                 showlegend=curve["group"] not in seen,
-                line={"color": colors[curve["group"]], "width": 1.4},
+                line={"color": colors[curve["group"]], "width": LINE_DATA},
                 opacity=0.8,
                 hovertemplate=f"{curve['label']}<br>Vg=%{{x}} V<br>%{{y:.3e}}<extra>{curve['group']}</extra>",
             )
@@ -186,7 +197,7 @@ def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, 
     apply_paper_layout(fig, height=height)
     fig.update_yaxes(type="log", title_text="|Id| (µA/µm)" if per_width else "|Id| (A)", exponentformat="power")
     fig.update_xaxes(title_text="Vg (V)")
-    fig.update_layout(legend={"x": 0.02, "y": 0.98, "xanchor": "left", "yanchor": "top"})
+    fig.update_layout(legend=LEGEND_INSIDE)
     return fig
 
 
@@ -207,7 +218,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
                     name=group,
                     boxpoints=False,
                     width=0.5,
-                    line={"color": colors[group], "width": 1.6},
+                    line={"color": colors[group], "width": LINE_DATA},
                     fillcolor="rgba(0,0,0,0)",
                     showlegend=False,
                     hoverinfo="skip",
@@ -219,7 +230,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
                     y=used,
                     mode="markers",
                     name=group,
-                    marker={"size": 9, "color": colors[group], "line": {"color": "#ffffff", "width": 1}},
+                    marker={"size": MARKER_RAW, "color": colors[group], "line": {"color": SURFACE, "width": 1}},
                     text=part.loc[used.index, "label"] + " · " + part.loc[used.index, "sweep"],
                     hovertemplate="%{text}<br>%{y:.4g}<extra></extra>",
                     showlegend=False,
@@ -232,7 +243,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
                     y=unused_values,
                     mode="markers",
                     name="not in statistics",
-                    marker={"size": 9, "symbol": "circle-open", "color": colors[group], "line": {"width": 1.5}},
+                    marker={"size": MARKER_RAW, "symbol": "circle-open", "color": colors[group], "line": {"width": 1.5}},
                     text=unused.loc[unused_values.index, "label"] + " · " + unused.loc[unused_values.index, "sweep"],
                     hovertemplate="%{text}<br>%{y:.4g}<br>not in statistics<extra></extra>",
                     showlegend=False,
@@ -242,9 +253,6 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
     fig.update_xaxes(tickmode="array", tickvals=list(range(len(groups))), ticktext=groups, range=[-0.6, len(groups) - 0.4], ticks="")
     fig.update_yaxes(title_text=metric_label(metric), exponentformat="power")
     return fig
-
-
-STATUS_COLORS = {"valid": INK, "attention": "#E69F00", "invalid": MARK}  # in order of severity
 
 
 GALLERY_MARGIN_WIDTH_PX = 74
@@ -291,7 +299,7 @@ def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) 
                     mode="lines+markers",  # a click is reported only for a trace that has markers
                     marker={"size": 6, "opacity": 0},
                     meta=curve["key"],
-                    line={"color": MUTED if rejected else STATUS_COLORS[curve["status"]], "width": 1.6, "dash": "dot" if rejected else "solid"},
+                    line={"color": AUX if rejected else STATUS_COLORS[curve["status"]], "width": LINE_DATA, "dash": "dot" if rejected else "solid"},
                     hovertemplate=f"{panel['title']} · {curve['label']}<br>Vg=%{{x}} V<br>%{{y:.3e}} A<extra></extra>",
                     showlegend=False,
                 ),

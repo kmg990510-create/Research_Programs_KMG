@@ -1581,3 +1581,26 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
   - Changing a size in the browser on a MoS2 page (the browser pane stopped drawing); covered by `test_a_figure_follows_the_sidebar_size_even_when_it_is_drawn_first` only.
   - Docker image and PyInstaller exe were not rebuilt.
 - Note: an `AppTest` run replaces `sys.modules["__main__"]`; without restoring it, `test_real_process_pool_fits_without_falling_back` hangs when it runs afterwards.
+
+## One look for every figure (2026-11-14)
+
+- Scope: every figure of the GUI uses the paper style of `labkit.plot_theme`; the large-font theme is removed. Grid lines are off by default and can be switched on by the user.
+- Files:
+  - removed `gui/components/plot_theme.py` (`apply_plotly_theme`, `plotly_white` with font 20 / 24 / 32)
+  - `gui/components/figure_sizes.py`: `show(fig, kind, filename=None)`; `figure_size_section` also draws `Grid` and `Image format`
+  - `gui/components/spectrum_viewer.py`: no own template, no own grid; legend at `LEGEND_RIGHT`
+  - `gui/components/fit_plot_component.py`, pages 4, 5, 6, 8: no `theme=`, no `export_config`, colours and sizes from `labkit.plot_theme`
+  - `gui/components/scatter_style.py`: `show_grid` and `pretty_labels` removed (now common to all figures); `pretty_label` moved to `labkit.plot_theme`; default font 14, default legend inside top-left
+  - `tests/test_labkit_usage.py`, `tests/test_scatter_style.py`
+- Behavior:
+  - All figures: Arial 14, white surface, boxed axes, ticks inside, no grid, superscripts in titles (`cm^-1` -> `cm⁻¹`), camera button saves a 3x image named after the content.
+  - Sidebar `Figure size` section: `Grid` (all figures) and `Image format` png / svg (all figures). The separate image-format inputs of Sample Comparison and Map Viewer (prototype) and the `Show grid` / `Superscripts in labels` inputs of Sample Comparison are removed.
+  - Sample Comparison: `Paper style` is now `Adjust style`; switched off, figures keep the common look without the adjustments.
+  - Fit status map: colours follow `STATUS_COLORS` (valid black, attention orange, invalid red-orange), legend outside on the right.
+  - Not changed on purpose: peak colours and line widths of the spectrum figure come from `raman_graph.yaml`.
+- Verification:
+  - `pytest`: 61 passed.
+  - Browser, existing reports: All Spectra Viewer, Model Comparison and Sample Comparison show Arial 14, boxed axes, no grid, named 3x image; `Grid` switched on in All Spectra Viewer draws grid lines.
+- Not verified:
+  - Map Viewer and Map Viewer (prototype) do not load: `ImportError: cannot import name 'strain_doping_settings' from 'gui.components.report_loader'`. The import is in uncommitted changes of these two pages that are not part of this work (the function is in `gui/components/science_settings.py`). Their figures are covered by tests of `finish_figure` only.
+  - `svg` image format in the browser (test only).

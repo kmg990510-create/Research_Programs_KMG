@@ -18,8 +18,8 @@ from fet_core.pipeline import ordered_groups  # noqa: E402
 from fet_core.report.summary import METRICS, group_summary, metric_label  # noqa: E402
 from gui.components.figures import metric_figure, overlay_figure  # noqa: E402
 from gui.state import active, filters, put_review, stop_if_empty  # noqa: E402
-from labkit.figure_size import figure_size_inputs, show_figure  # noqa: E402
-from labkit.plot_theme import categorical_colors, export_config  # noqa: E402
+from labkit.figure_size import figure_options_inputs, figure_size_inputs, show_figure  # noqa: E402
+from labkit.plot_theme import categorical_colors  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402
 
 GROUPS_NONCE_KEY = "fet_compare_groups_nonce"  # a new editor after every save, so old edits are not applied twice
@@ -33,6 +33,7 @@ batch, run, review, frame = active()
 groups = ordered_groups(frame, review)
 shown = filters(frame, groups)
 with sidebar_section("3) Figure size", expanded=False):
+    figure_options_inputs()
     stats_size = figure_size_inputs("fet_statistics", "Statistics: one quantity", 520, 380)
     overlay_size = figure_size_inputs("fet_overlay", "Overlay", 900, 560)
 stop_if_empty(shown)
@@ -51,7 +52,7 @@ with tab_stats:
         places = [st.container(horizontal=True)] * len(metrics)  # fixed width: side by side, wrapping when they do not fit
     for place, metric in zip(places, metrics):
         with place:
-            show_figure(metric_figure(shown, metric, shown_groups, colors), stats_size, config=export_config(f"{batch}_{metric}"), key=f"fet_compare_metric_{metric}")
+            show_figure(metric_figure(shown, metric, shown_groups, colors), stats_size, filename=f"{batch}_{metric}", key=f"fet_compare_metric_{metric}")
     st.caption("Filled points are in the statistics. Hollow points are invalid or rejected sweeps shown by the filters.")
 
 with tab_overlay:
@@ -72,7 +73,7 @@ with tab_overlay:
             )
     curves.sort(key=lambda curve: shown_groups.index(curve["group"]))
     if curves:
-        show_figure(overlay_figure(curves, colors, per_width), overlay_size, config=export_config(f"{batch}_overlay"))
+        show_figure(overlay_figure(curves, colors, per_width), overlay_size, filename=f"{batch}_overlay")
     left_out = len(shown) - len(curves)
     st.caption(f"{len(curves)} curve(s) from {len({c['group'] for c in curves})} group(s)." + (f" {left_out} invalid or rejected sweep(s) are not drawn." if left_out else ""))
 

@@ -74,9 +74,21 @@ Research_Programs_KMG/
 ### 그래프
 
 - 화면의 대화형 그래프는 Plotly, 내보내는 그림 파일은 matplotlib로 그린다.
-- 프로그램 전체가 하나의 테마를 쓴다. 논문 스타일은 `labkit/plot_theme.py`에 있다.
+- 두 프로그램의 모든 그래프가 하나의 모양을 쓴다: `labkit/plot_theme.py`의 논문 스타일 (Arial 14, 흰 바탕, 사방 테두리 축, 눈금 안쪽). 프로그램이나 페이지가 자기 테마를 따로 만들지 않는다.
+- 그래프 코드는 색·선 굵기·점 크기 숫자를 직접 쓰지 않고 `labkit.plot_theme`의 이름을 쓴다.
+  - 색 역할: `DATA`(측정 곡선), `AUX`(보조·기준선·제외된 것), `FIT`(fit·접선), `MARK`(추출한 값), `STATUS_COLORS`(valid/attention/invalid), `CATEGORICAL`(그룹·샘플)
+  - 색상표: `SEQUENTIAL`(순서 있는 값), `DIVERGING`(0 같은 중심이 있는 값)
+  - 선 굵기: `LINE_DATA`, `LINE_AUX`, `LINE_FIT`. 점 크기: `MARKER_ON_LINE`, `MARKER_RAW`, `MARKER_CENTER`
+- 그리기 직전에 `finish_figure`가 모든 그래프에 같은 마무리를 한다: 위첨자 표기(`cm^-1` → `cm⁻¹`), 10의 거듭제곱 표기, 격자, 범례 위치, colorbar 모양. 축 제목은 `이름 (단위)` 형식으로 쓴다 (`axis_label`).
+- 격자는 기본으로 없다. 사용자가 사이드바 `Figure size` 구획의 `Grid`로 켜며, 모든 그래프에 같이 적용된다. 같은 구획의 `Image format`(png/svg)도 모든 그래프에 적용된다.
+- 그래프마다 달라도 되는 것은 근거가 있는 것뿐이다.
+  - 축 스케일: 값이 여러 자릿수에 걸치면 log
+  - 가로세로 1:1: x와 y가 같은 물리량(위치)인 맵
+  - 범례 위치: 선·점 그래프는 안쪽 좌상단(`LEGEND_INSIDE`), 면을 채우는 그래프(맵·막대·히스토그램·box)와 항목이 많은 그래프는 오른쪽 바깥(`LEGEND_RIGHT`). colorbar가 오른쪽에 있는 맵은 위쪽
+  - 글씨 크기: 패널이 작은 그래프만 작게 (FET Gallery)
+  - 의미가 고정된 색: 피크 종류별 색(MoS2 Spectrum, `raman_graph.yaml`)
 - 그리는 코드는 추출·피팅 함수 안에 넣지 않는다.
-- 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 사이드바 `Figure size` 구획에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기다 (`labkit/figure_size.py`).
+- 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 사이드바 `Figure size` 구획에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기이고 해상도는 3배다. 그리는 쪽은 파일 이름만 넘긴다 (`labkit/figure_size.py`).
 
 ### 페이지 코드
 
@@ -102,7 +114,7 @@ Research_Programs_KMG/
 
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
 - 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
-- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기 입력과 그 크기로 그리기). 두 프로그램이 모두 쓴다.
+- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기·격자·이미지 형식 입력과 그리기). 두 프로그램이 모두 쓴다.
 - 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `gui/__init__.py`).
 - 배포물에는 `labkit`을 프로그램 안에 넣는다: Docker는 `COPY labkit/ $HOME/app/labkit/`, PyInstaller spec은 `pathex`와 `hiddenimports`에 추가한다.
 - 그림을 그리는 코드는 `st.plotly_chart`를 직접 부르지 않고 `labkit.figure_size.show_figure`(또는 프로그램의 얇은 래퍼)를 쓴다.
@@ -135,5 +147,7 @@ Research_Programs_KMG/
 - 상태 용어가 다르다: MoS2는 `fit_status`, FET는 `parameter_quality` + `valid_for_summary`.
 - FET는 화면과 내보내기 모두 matplotlib를 쓴다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
-- MoS2의 이전 페이지(All Spectra, Map Viewer, Model Comparison, Sample Comparison의 PL·heatmap)는 논문 스타일이 아니라 `gui/components/plot_theme.py`의 큰 글씨 테마를 쓴다. 크기 입력은 모든 그래프에 있다.
+- 글씨 크기·눈금 방향 같은 세부 스타일 입력은 아직 공용이 아니다: Sample Comparison(`5) Figure`)과 Map Viewer prototype(Figure style 탭)에만 있다.
+- MoS2 Spectrum의 선 색·굵기는 `raman_graph.yaml` 값을 그대로 쓰며 `labkit`의 역할 이름을 쓰지 않는다.
+- "허용된 색만 쓴다"를 확인하는 테스트는 없다.
 - `labkit`을 넣은 뒤 Docker 이미지와 exe를 다시 빌드해 확인하지 않았다.

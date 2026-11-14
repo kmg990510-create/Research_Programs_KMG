@@ -40,7 +40,6 @@ from gui.components.map_figure import (  # noqa: E402
     save_style_preset,
 )
 from gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
-from labkit.plot_theme import export_config  # noqa: E402
 from gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
     load_report_payload,
@@ -203,8 +202,7 @@ with tab_style:
     if p2.button("Load preset", key=f"{K}_preset_load", width="stretch", disabled=not presets) and chosen:
         st.session_state[f"{K}_pending_style"] = load_style_preset(PRESET_DIR / f"{chosen}.yaml")
         st.rerun()
-    image_format = st.radio("Image download format", ["png", "svg"], horizontal=True, key=f"{K}_image_format")
-    st.caption("Use the camera button on the figure to download it.")
+    st.caption("Use the camera button on the figure to download it. Grid and image format: sidebar section 2) Figure size.")
 
 hidden_ids: list[str] = []
 if hide_rejected and "review_decision" in plot_df.columns:
@@ -229,11 +227,10 @@ with map_col:
     show(
         fig,
         "map_editor",
-        theme=None,
+        filename=f"{map_id}_{param}",
         key=CHART_KEY,
         on_select=_on_select,
         selection_mode=("points", "box", "lasso"),
-        config=export_config(f"{map_id}_{param}", st.session_state[f"{K}_image_format"]),
     )
     zmin, zmax = resolve_color_range(finite_values(plot_df[~plot_df["spectrum_id"].isin(hidden_ids)], param), style)
     if zmin is not None and zmax is not None:

@@ -180,7 +180,7 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 - 저장 규칙: 결정, 메모, 그룹 이름·순서는 바꾸는 즉시 `review.json`에 쓴다 (저장 버튼 없음). 다시 분석해야 하는 치수와 방법 옵션만 `Apply` / `Save per-device geometry` 버튼을 쓴다.
 - sweep 방향 하나가 목록의 한 행이다. 값과 결정은 그 행의 것이고, 그림에는 같은 측정의 다른 방향이 흐리게 같이 그려진다.
 - 데이터 폴더는 `FET_analysis/data`이고, 환경 변수 `FET_DATA_ROOT`로 바꿀 수 있다 (테스트가 쓴다).
-- 그림은 `labkit.plot_theme.apply_paper_layout`으로 모양을 맞추고 `st.plotly_chart(..., theme=None)`으로 그린다.
+- 그림은 `labkit.plot_theme.apply_paper_layout`으로 모양을 맞추고 `labkit.figure_size.show_figure(fig, size, filename=...)`로 그린다. 색·선 굵기·점 크기는 `labkit.plot_theme`의 이름을 쓴다.
 - 페이지 맨 위의 `sys.path` 4줄은 `fet_core`, `gui`, `labkit`을 찾기 위한 것이다.
 
 | 페이지 | 하는 일 |

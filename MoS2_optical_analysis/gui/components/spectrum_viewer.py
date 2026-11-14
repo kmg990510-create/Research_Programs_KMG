@@ -11,10 +11,9 @@ import plotly.graph_objects as go
 import streamlit as st
 from lmfit.models import GaussianModel, LorentzianModel, PseudoVoigtModel
 
-from .figure_sizes import show
-from .plot_theme import apply_plotly_theme
+from labkit.plot_theme import LEGEND_RIGHT
 
-apply_plotly_theme()
+from .figure_sizes import show
 
 _DEFAULT_PEAK_STYLE: dict[str, dict[str, Any]] = {
     "pl": {"label": "PL", "color": "#E60000", "fill": True},
@@ -458,26 +457,14 @@ def render_spectrum_overlay(
         xaxis_title = "Raman Shift (cm^-1)"
 
     fig.update_layout(
-        template="plotly_white",
         title=title,
         xaxis_title=xaxis_title,
         yaxis_title="Intensity",
         hovermode="x unified",
-        legend={
-            "orientation": "v",
-            "x": 1.02,
-            "y": 1.0,
-            "xanchor": "left",
-            "yanchor": "top",
-            "bgcolor": "rgba(255,255,255,0.85)",
-            "bordercolor": "rgba(0,0,0,0.2)",
-            "borderwidth": 1,
-        },
+        legend=LEGEND_RIGHT,  # many entries: outside, so that no peak is covered
         margin={"l": 60, "r": 220, "t": 60, "b": 60},
     )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,0.08)")
-    fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.08)")
-    show(fig, "spectrum")
+    show(fig, "spectrum", filename=str(spectrum_id))
 
     if used_component_approx:
         st.info("This row was plotted with component approximation (legacy report without area/sigma/fraction).")

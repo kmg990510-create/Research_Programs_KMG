@@ -75,3 +75,20 @@ def test_gallery_figure_maps_traces_back_to_sweeps() -> None:
     titles = {a.text: a.font.color for a in fig.layout.annotations if a.text in {"a", "b", "c"}}
     assert titles == {"a": STATUS_COLORS["attention"], "b": STATUS_COLORS["invalid"], "c": STATUS_COLORS["valid"]}  # worst status of the panel
     assert fig.data[3].line.dash == "dot" and fig.data[0].line.dash == "solid"
+
+
+def test_figures_use_the_shared_roles_and_finish_step() -> None:
+    from gui.components.figures import transfer_log_figure
+    from labkit import plot_theme as theme
+
+    assert theme.STATUS_COLORS is STATUS_COLORS  # one definition for both programs
+    fig = go.Figure(go.Scatter(x=[1, 2], y=[1e-9, 1e-6]))
+    fig.update_layout(xaxis_title="Raman shift (cm^-1)")
+    theme.finish_figure(fig, grid=True)
+    assert theme.has_paper_look(fig) and fig.layout.xaxis.title.text == "Raman shift (cm⁻¹)"
+    assert fig.layout.xaxis.showgrid is True and fig.layout.legend.x == theme.LEGEND_INSIDE["x"]
+    assert theme.axis_label("Doping n", "10^13 cm^-2") == "Doping n (10¹³ cm⁻²)" and theme.axis_label("Ratio") == "Ratio"
+
+    shown = transfer_log_figure([], {}, "forward")
+    theme.finish_figure(shown)
+    assert shown.layout.legend.x == theme.LEGEND_INSIDE["x"] and shown.layout.xaxis.showgrid is False
