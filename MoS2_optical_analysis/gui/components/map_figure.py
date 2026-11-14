@@ -72,6 +72,10 @@ def load_style_preset(path: Path) -> MapStyle:
 def default_unit(param: str, modality: str) -> str:
     """Unit shown in the default colorbar title. Empty when unknown or unitless."""
     name = param.lower()
+    if name == "strain_eps_pct":
+        return "%"
+    if name == "doping_n_1e13_cm2":
+        return "10¹³ cm⁻²"
     if "ratio" in name or "fraction" in name or name in {"r2", "aic", "bic"}:
         return ""
     if name.endswith(("_position", "_fwhm")) or name.startswith("delta_") or name.endswith("_split"):

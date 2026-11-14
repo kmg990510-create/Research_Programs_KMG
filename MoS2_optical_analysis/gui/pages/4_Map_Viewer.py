@@ -21,9 +21,11 @@ if str(ROOT) not in sys.path:
 
 from gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
+    load_graph_config,
     sidebar_filters_section,
     sidebar_section,
 )
+from gui.components.science_settings import strain_doping_settings  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
 from labkit.plot_theme import INK, LEGEND_RIGHT, SEQUENTIAL, STATUS_COLORS  # noqa: E402
 
@@ -38,11 +40,32 @@ def _add_derived_map_parameters(frame: pd.DataFrame) -> pd.DataFrame:
         ratio = pd.Series(float("nan"), index=out.index, dtype=float)
         ratio.loc[valid] = e2g_area.loc[valid] / a1g_area.loc[valid]
         out["e2g_a1g_area_ratio"] = ratio
+
+    if {"e2g_position", "a1g_position"}.issubset(out.columns):
+        e2g = pd.to_numeric(out["e2g_position"], errors="coerce")
+        a1g = pd.to_numeric(out["a1g_position"], errors="coerce")
+        ref_mask = e2g.notna() & a1g.notna()
+        if "fit_status" in out.columns:
+            ref_mask &= out["fit_status"].astype(str).str.strip().str.lower() != "invalid"
+        if "review_decision" in out.columns:
+            ref_mask &= out["review_decision"].astype(str).str.strip().str.lower() != "rejected"
+        if bool(ref_mask.any()):
+            coeffs = strain_doping_settings(load_graph_config())["coefficients"]
+            s_e, s_a = float(coeffs["s_e"]), float(coeffs["s_a"])
+            d_e, d_a = float(coeffs["d_e"]), float(coeffs["d_a"])
+            det_k = s_e * d_a - s_a * d_e
+            if abs(det_k) > 1.0e-12:
+                omega_e0 = float(e2g.loc[ref_mask].mean())
+                omega_a0 = float(a1g.loc[ref_mask].mean())
+                d_e2g = e2g - omega_e0
+                d_a1g = a1g - omega_a0
+                out["strain_eps_pct"] = (d_a * d_e2g - d_e * d_a1g) / det_k
+                out["doping_n_1e13_cm2"] = (-s_a * d_e2g + s_e * d_a1g) / det_k
     return out
 
 
 st.title("Map Viewer")
-st.caption("Spatial view of Raman fit parameters across measurement points.")
+st.caption("Spatial view of Raman/PL fit parameters across measurement points.")
 
 report_path, payload, df = choose_report_sidebar("map_viewer")
 if report_path is None or payload is None:
@@ -54,6 +77,14 @@ if df.empty:
 work_df = _add_derived_map_parameters(df)
 status_options = ["valid", "attention", "invalid"]
 filters_box = sidebar_filters_section()
+if "review_decision" in work_df.columns:
+    hide_rejected = filters_box.checkbox(
+        "Exclude rejected spectra",
+        value=True,
+        key="map_viewer_hide_rejected",
+    )
+    if hide_rejected:
+        work_df = work_df[work_df["review_decision"].astype(str).str.strip().str.lower() != "rejected"]
 if "fit_status" in work_df.columns:
     work_df["fit_status"] = work_df["fit_status"].astype(str).str.strip().str.lower()
     available_statuses = set(work_df["fit_status"].dropna().tolist())
@@ -140,6 +171,8 @@ preferred_candidates = [
     "i1_position",
     "i2_position",
     "delta_e2g_a1g",
+    "strain_eps_pct",
+    "doping_n_1e13_cm2",
     "e2g_a1g_area_ratio",
     "e2g_position",
     "a1g_position",
@@ -300,7 +333,9 @@ with st.expander("Fit Status Map", expanded=True):
                 title="Spatial distribution of fit_status",
             )
             fig_status.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": INK}})
-            fig_status.update_layout(yaxis={"autorange": "reversed"}, legend_title="fit_status", legend=LEGEND_RIGHT)  # the map fills the plot area
+            fig_status.update_layout(legend_title="fit_status", legend=LEGEND_RIGHT)  # the map fills the plot area
+            fig_status.update_xaxes(constrain="domain")
+            fig_status.update_yaxes(scaleanchor="x", scaleratio=1.0)
             show(fig_status, "map_status", filename=f"{selected_map}_fit_status")
     else:
         st.info("Need map_x/map_y/fit_status columns to draw status map.")
