@@ -13,6 +13,7 @@ from lmfit.model import ModelResult
 from lmfit.models import GaussianModel, LinearModel, PseudoVoigtModel
 
 from ..core.interfaces import ModelEnsembleFittingStage
+from ..core.progress_log import progress
 from ..core.types import BaselineResult, FitCandidate, FitEnsembleResult, PipelineContext, PreprocessedSpectrum
 from ..io import config_access as cfgx
 
@@ -1821,7 +1822,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
         total = len(spectra)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[fit] start: {total} spectra", flush=True)
+            progress.info(f"[fit] start: {total} spectra")
 
         for spectrum in spectra:
             metadata_index[spectrum.spectrum_id] = dict(spectrum.metadata)
@@ -1930,14 +1931,12 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                         completed += 1
                         if progress_enabled and (completed % progress_every == 0 or completed == total):
                             elapsed = time.perf_counter() - t0
-                            print(
+                            progress.info(
                                 "[fit] "
                                 f"{completed}/{total} | valid={fit_status_counts.get('valid', 0)} "
                                 f"attention={fit_status_counts.get('attention', 0)} "
                                 f"invalid={fit_status_counts.get('invalid', 0)} "
-                                f"| elapsed={elapsed:.1f}s",
-                                flush=True,
-                            )
+                                f"| elapsed={elapsed:.1f}s")
             except Exception as exc:  # pragma: no cover - environment-dependent fallback
                 parallel_failed = True
                 failures.append(
@@ -1948,7 +1947,7 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                     }
                 )
                 if progress_enabled:
-                    print(f"[fit] multiprocessing disabled; fallback to sequential ({exc})", flush=True)
+                    progress.info(f"[fit] multiprocessing disabled; fallback to sequential ({exc})")
 
         if fit_workers <= 1 or total <= 1 or parallel_failed:
             completed = len(results_by_id)
@@ -1971,14 +1970,12 @@ class LmfitRamanModelEnsembleFitting(ModelEnsembleFittingStage):
                 completed += 1
                 if progress_enabled and (completed % progress_every == 0 or completed == total):
                     elapsed = time.perf_counter() - t0
-                    print(
+                    progress.info(
                         "[fit] "
                         f"{completed}/{total} | valid={fit_status_counts.get('valid', 0)} "
                         f"attention={fit_status_counts.get('attention', 0)} "
                         f"invalid={fit_status_counts.get('invalid', 0)} "
-                        f"| elapsed={elapsed:.1f}s",
-                        flush=True,
-                    )
+                        f"| elapsed={elapsed:.1f}s")
 
         for spectrum in spectra:
             fit_result = results_by_id.get(spectrum.spectrum_id)

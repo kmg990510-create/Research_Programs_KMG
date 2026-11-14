@@ -11,8 +11,11 @@ from labkit.plot_theme import (
     INK,
     LEGEND_INSIDE,
     LEGEND_RIGHT,
+    ERRORBAR_WIDTH,
     MARKER_CENTER,
     MARKER_RAW,
+    OUTLINE,
+    OUTLINE_THIN,
     SURFACE,
     paper_template,
 )
@@ -37,7 +40,7 @@ class ScatterStyle:
     point_opacity: float = 0.6
     point_outline: bool = False
     center_size: int = MARKER_CENTER
-    errorbar_width: float = 1.4
+    errorbar_width: float = ERRORBAR_WIDTH
     tick_direction: str = "inside"
     legend_position: str = "Inside top-left"
 
@@ -57,7 +60,7 @@ def apply_scatter_style(fig: go.Figure, style: ScatterStyle) -> go.Figure:
             continue
         if _is_center_trace(trace):
             trace.marker.size = style.center_size
-            trace.marker.line = {"width": 1.4, "color": INK}
+            trace.marker.line = {"width": OUTLINE, "color": INK}
             trace.error_x.thickness = style.errorbar_width
             trace.error_y.thickness = style.errorbar_width
             trace.error_x.width = style.center_size * 0.4
@@ -65,7 +68,7 @@ def apply_scatter_style(fig: go.Figure, style: ScatterStyle) -> go.Figure:
         else:
             trace.marker.size = style.point_size
             trace.marker.opacity = style.point_opacity
-            trace.marker.line = {"width": 0.8 if style.point_outline else 0, "color": SURFACE}
+            trace.marker.line = {"width": OUTLINE_THIN if style.point_outline else 0, "color": SURFACE}
 
     axis = {
         "showline": True,

@@ -164,6 +164,9 @@ def _print_run_summary(summary: RunSummary) -> None:
 
 
 def main() -> None:
+    from fitting.mos2_core.core.progress_log import configure_cli_logging
+
+    configure_cli_logging()
     args = _build_arg_parser().parse_args()
     project_root = Path(__file__).resolve().parents[2]
     resolved_raw_dir = _resolve_raw_dir(args.raw_dir, project_root)

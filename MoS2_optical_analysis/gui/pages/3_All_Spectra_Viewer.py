@@ -47,6 +47,7 @@ from gui.components.manual_refit_contract import (  # noqa: E402
 from gui.desktop_editor.controller import ManualEditorController  # noqa: E402
 from gui.desktop_editor.models import EditorRequest  # noqa: E402
 from gui.components.figure_sizes import figure_size_section  # noqa: E402
+from gui.components.spectrum_view import default_view_range, si_check_range, to_plot_axis, view_window  # noqa: E402
 from gui.components.spectrum_viewer import (  # noqa: E402
     load_raw_xy,
     render_fit_summary,
@@ -60,7 +61,6 @@ sidebar_filters_section = _report_loader.sidebar_filters_section
 sidebar_section = _report_loader.sidebar_section
 
 _POINT_TOKEN_RE = re.compile(r"Y(?P<y>\d+)-X(?P<x>\d+)", re.IGNORECASE)
-PL_DEFAULT_VIEW_MIN_EV = 1.4
 
 
 def _sanitize_filename(value: str) -> str:
@@ -249,13 +249,10 @@ if df.empty:
 
 graph_cfg = load_graph_config()
 all_spectra_cfg = graph_cfg.get("all_spectra_viewer", {}) if isinstance(graph_cfg, dict) else {}
-x_window_cfg = all_spectra_cfg.get("x_window", {}) if isinstance(all_spectra_cfg, dict) else {}
 overlay_style_cfg = all_spectra_cfg.get("style", {}) if isinstance(all_spectra_cfg, dict) else {}
 fit_curve_cfg = all_spectra_cfg.get("fit_curve", {}) if isinstance(all_spectra_cfg, dict) else {}
 fwhm_warn_cfg = fwhm_warn_limits(graph_cfg)
-fallback_x_min = float(x_window_cfg.get("fallback_min", 340.0))
-fallback_x_max = float(x_window_cfg.get("fallback_max", 430.0))
-peak_padding = float(x_window_cfg.get("peak_padding", 18.0))
+window = view_window(graph_cfg)
 
 work_df = df.copy()
 filters_box = sidebar_filters_section()
@@ -492,44 +489,10 @@ else:
     x_raw = [float(v) for v in embedded_raw_x]
     y_raw = [float(v) for v in embedded_raw_y]
 modality = _resolve_modality(payload=payload, row=display_row, report_path=report_path)
-try:
-    cal_offset = float(display_row.get("calibration_offset", 0.0) or 0.0)
-except (TypeError, ValueError):
-    cal_offset = 0.0
-x_for_plot = [xv + cal_offset for xv in x_raw]
-if modality == "pl" and str(display_row.get("x_unit", "")).strip().lower() == "ev" and x_for_plot and max(x_for_plot) > 100.0:
-    converted_pairs = sorted(
-        (
-            (1239.8419843320026 / float(xv), float(yv))
-            for xv, yv in zip(x_for_plot, y_raw)
-            if float(xv) > 0.0
-        ),
-        key=lambda item: item[0],
-    )
-    x_for_plot = [xv for xv, _ in converted_pairs]
-    y_raw = [yv for _, yv in converted_pairs]
+x_for_plot, y_raw = to_plot_axis(x_raw, y_raw, display_row, modality, window)
+auto_min, auto_max = default_view_range(x_for_plot, display_row, modality, window)
 
-pl_pos = display_row.get("pl_position")
-if modality == "pl" or (modality != "raman" and pl_pos is not None and str(pl_pos).strip() != ""):
-    try:
-        pl_val = float(pl_pos)
-        x_span = float(max(x_for_plot) - min(x_for_plot))
-        pl_padding = max(0.08, min(0.25, x_span * 0.25)) if x_span <= 10.0 else max(peak_padding, 60.0)
-        auto_min = max(float(min(x_for_plot)), min(PL_DEFAULT_VIEW_MIN_EV, pl_val - pl_padding))
-        auto_max = min(float(max(x_for_plot)), pl_val + pl_padding)
-    except (TypeError, ValueError):
-        auto_min = float(min(x_for_plot))
-        auto_max = float(max(x_for_plot))
-else:
-    e2g = display_row.get("e2g_position")
-    a1g = display_row.get("a1g_position")
-    try:
-        auto_min = min(float(e2g), float(a1g)) - peak_padding
-        auto_max = max(float(e2g), float(a1g)) + peak_padding
-    except (TypeError, ValueError):
-        auto_min, auto_max = fallback_x_min, fallback_x_max
-
-has_si_region = modality == "raman" and bool(x_for_plot) and max(x_for_plot) >= 510.0
+has_si_region = modality == "raman" and bool(x_for_plot) and max(x_for_plot) >= window.si_visible_from
 xcols = st.columns([1, 1, 1, 1] if has_si_region else [1, 1, 2])
 x_step = 0.01 if modality == "pl" else 1.0
 x_min = xcols[0].number_input("X min", value=float(auto_min), step=x_step)
@@ -542,8 +505,7 @@ show_si_520 = (
 )
 
 if show_si_520:
-    x_min = max(float(min(x_for_plot)), 505.0)
-    x_max = min(float(max(x_for_plot)), 535.0)
+    x_min, x_max = si_check_range(x_for_plot, window)
     st.caption(
         f"Si 520.7 cm⁻¹ calibration: offset = {display_row.get('calibration_offset', 'NA')} cm⁻¹ | "
         f"success = {display_row.get('calibration_success', 'NA')} | "

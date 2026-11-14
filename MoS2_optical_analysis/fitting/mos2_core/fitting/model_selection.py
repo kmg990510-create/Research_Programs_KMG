@@ -6,6 +6,7 @@ import time
 from typing import Mapping, Sequence
 
 from ..core.interfaces import ModelSelectionStage
+from ..core.progress_log import progress
 from ..core.types import FitCandidate, FitEnsembleResult, PipelineContext, SelectionResult
 from ..io import config_access as cfgx
 
@@ -103,7 +104,7 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
         total = len(fit_results)
         t0 = time.perf_counter()
         if progress_enabled and total > 0:
-            print(f"[select] start: {total} spectra", flush=True)
+            progress.info(f"[select] start: {total} spectra")
 
         for index, (spectrum_id, result) in enumerate(fit_results.items(), start=1):
             if not result.candidates:
@@ -181,14 +182,12 @@ class EnsembleMetricModelSelection(ModelSelectionStage):
             selected_status_counts[status] = selected_status_counts.get(status, 0) + 1
             if progress_enabled and (index % progress_every == 0 or index == total):
                 elapsed = time.perf_counter() - t0
-                print(
+                progress.info(
                     "[select] "
                     f"{index}/{total} | valid={selected_status_counts.get('valid', 0)} "
                     f"attention={selected_status_counts.get('attention', 0)} "
                     f"invalid={selected_status_counts.get('invalid', 0)} "
-                    f"| elapsed={elapsed:.1f}s",
-                    flush=True,
-                )
+                    f"| elapsed={elapsed:.1f}s")
 
         context.state["selection_count"] = len(selected)
         context.state["selection_metric_usage"] = metric_usage

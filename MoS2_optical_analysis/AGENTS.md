@@ -92,6 +92,13 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Prefer editing shared behavior in `fitting/mos2_core`.
 - Keep modality-specific behavior in `fitting/mos2_raman` or `fitting/mos2_pl`.
 - Keep GUI path logic in `gui/components/report_loader.py`.
+- Logic used by more than one page lives in one component, not in the pages:
+  - `gui/components/derived_parameters.py`: strain / doping separation, map-level derived columns
+  - `gui/components/spectrum_view.py`: plotted x axis (calibration offset, PL wavelength -> energy) and the range shown first
+- Display values (view ranges, line colours and widths of the spectrum figure) live in
+  `fitting/mos2_raman/config/raman_graph.yaml` and are read without code-side defaults: a missing key raises `KeyError` naming it.
+- Pipeline stages report progress with the `mos2.progress` logger (`fitting/mos2_core/core/progress_log.py`), not `print`.
+  Only command-line entry points call `configure_cli_logging()`; the Run Analysis page reads the lines from the subprocess output.
 
 ## Git Workflow Rules
 

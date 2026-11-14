@@ -34,7 +34,12 @@ NONCE_KEY = "fet_devices_nonce"  # changes the widget keys so a stale table or p
 VIEWS = ("Detail", "Gallery")
 STATUS_RANK = {"attention": 0, "invalid": 1, "valid": 2}
 STATUS_MARK = {"attention": "⚠", "invalid": "✕", "valid": "✓"}
-STATUS_TEXT_COLOR = {"attention": "orange", "invalid": "red", "valid": "green"}
+# Streamlit text colours nearest to labkit.plot_theme.STATUS_COLORS; valid is plain text, as it is black in the figures.
+STATUS_TEXT_COLOR = {"attention": "orange", "invalid": "red"}
+
+
+def _status_text(status: str) -> str:
+    return f":{STATUS_TEXT_COLOR[status]}[{status}]" if status in STATUS_TEXT_COLOR else status
 GALLERY_COLUMNS = 5
 GALLERY_COLUMNS_KEY = "fet_devices_gallery_columns"
 
@@ -200,7 +205,7 @@ with detail_box:
     title, previous, following = st.columns([6, 1, 1], vertical_alignment="center")
     run_part = f" · run {result.run_id}" if result.run_id not in (row["label"], "1") else ""
     title.markdown(
-        f"#### {_device_name(row['group_display'], row['label'])}{run_part} — {result.sweep} sweep · :{STATUS_TEXT_COLOR[result.status]}[{result.status}]"
+        f"#### {_device_name(row['group_display'], row['label'])}{run_part} — {result.sweep} sweep · {_status_text(result.status)}"
     )
     title.caption(f"{position + 1} of {len(keys)} · {result.source_file}")
     previous.button("Previous", on_click=_step, args=(-1, keys), width="stretch", key="fet_devices_prev", disabled=len(keys) < 2)

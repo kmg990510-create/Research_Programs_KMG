@@ -22,6 +22,8 @@ from labkit.plot_theme import (
     MARKER_CENTER,
     MARKER_ON_LINE,
     MARKER_RAW,
+    OUTLINE,
+    OUTLINE_THIN,
     STATUS_COLORS,
     SURFACE,
     apply_paper_layout,
@@ -102,7 +104,7 @@ def transfer_log_figure(branches: list[Branch], results: dict[str, SweepResult],
                     y=[result.vth_const_current_level_A],
                     mode="markers",
                     name="Vth (constant current)",
-                    marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": 1.5}},
+                    marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": OUTLINE}},
                 )
             )
     apply_paper_layout(fig, height=height)
@@ -159,7 +161,7 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
                 y=[0.0],
                 mode="markers",
                 name="Vth (linear extrapolation)",
-                marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": 1.5}},
+                marker={"symbol": "diamond", "size": MARKER_CENTER, "color": MARK, "line": {"color": SURFACE, "width": OUTLINE}},
             )
         )
     apply_paper_layout(fig, height=height)
@@ -230,7 +232,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
                     y=used,
                     mode="markers",
                     name=group,
-                    marker={"size": MARKER_RAW, "color": colors[group], "line": {"color": SURFACE, "width": 1}},
+                    marker={"size": MARKER_RAW, "color": colors[group], "line": {"color": SURFACE, "width": OUTLINE_THIN}},
                     text=part.loc[used.index, "label"] + " · " + part.loc[used.index, "sweep"],
                     hovertemplate="%{text}<br>%{y:.4g}<extra></extra>",
                     showlegend=False,
@@ -243,7 +245,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
                     y=unused_values,
                     mode="markers",
                     name="not in statistics",
-                    marker={"size": MARKER_RAW, "symbol": "circle-open", "color": colors[group], "line": {"width": 1.5}},
+                    marker={"size": MARKER_RAW, "symbol": "circle-open", "color": colors[group], "line": {"width": OUTLINE}},
                     text=unused.loc[unused_values.index, "label"] + " · " + unused.loc[unused_values.index, "sweep"],
                     hovertemplate="%{text}<br>%{y:.4g}<br>not in statistics<extra></extra>",
                     showlegend=False,
@@ -255,6 +257,7 @@ def metric_figure(frame: pd.DataFrame, metric: str, groups: list[str], colors: d
     return fig
 
 
+GALLERY_FONT_SIZE = 11  # panels are small: the one figure with a smaller font
 GALLERY_MARGIN_WIDTH_PX = 74
 GALLERY_MARGIN_HEIGHT_PX = 94
 
@@ -297,7 +300,7 @@ def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) 
                     x=curve["vg"],
                     y=_positive(np.abs(np.asarray(curve["current"], dtype=float))),
                     mode="lines+markers",  # a click is reported only for a trace that has markers
-                    marker={"size": 6, "opacity": 0},
+                    marker={"size": MARKER_RAW, "opacity": 0},
                     meta=curve["key"],
                     line={"color": AUX if rejected else STATUS_COLORS[curve["status"]], "width": LINE_DATA, "dash": "dot" if rejected else "solid"},
                     hovertemplate=f"{panel['title']} · {curve['label']}<br>Vg=%{{x}} V<br>%{{y:.3e}} A<extra></extra>",
@@ -306,12 +309,12 @@ def gallery_figure(panels: list[dict], columns: int = 5, row_height: int = 190) 
                 row=index // columns + 1,
                 col=index % columns + 1,
             )
-        fig.layout.annotations[index].update(font={"size": 12, "color": STATUS_COLORS[worst]})
-    apply_paper_layout(fig, font_size=11, height=row_height * rows + GALLERY_MARGIN_HEIGHT_PX)
+        fig.layout.annotations[index].update(font={"size": GALLERY_FONT_SIZE + 1, "color": STATUS_COLORS[worst]})
+    apply_paper_layout(fig, font_size=GALLERY_FONT_SIZE, height=row_height * rows + GALLERY_MARGIN_HEIGHT_PX)
     fig.update_yaxes(type="log", exponentformat="power")
     fig.update_xaxes(showticklabels=True)
     # hoverdistance -1: a click anywhere in a panel picks the nearest point of that panel
     fig.update_layout(margin={"l": 64, "r": 10, "t": 40, "b": 54}, dragmode="zoom", hovermode="closest", hoverdistance=-1)
-    fig.add_annotation(text="Vg (V)", xref="paper", yref="paper", x=0.5, y=0, yshift=-40, showarrow=False, font={"size": 13})
-    fig.add_annotation(text="|Id| (A)", xref="paper", yref="paper", x=0, y=0.5, xshift=-54, textangle=-90, showarrow=False, font={"size": 13})
+    fig.add_annotation(text="Vg (V)", xref="paper", yref="paper", x=0.5, y=0, yshift=-40, showarrow=False, font={"size": GALLERY_FONT_SIZE + 2})
+    fig.add_annotation(text="|Id| (A)", xref="paper", yref="paper", x=0, y=0.5, xshift=-54, textangle=-90, showarrow=False, font={"size": GALLERY_FONT_SIZE + 2})
     return fig

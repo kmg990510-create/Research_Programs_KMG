@@ -53,6 +53,13 @@ LINE_FIT = 2.4
 MARKER_ON_LINE = 4  # points of a curve that is drawn as a line
 MARKER_RAW = 7  # single measured points
 MARKER_CENTER = 11  # representative value (mean, median, extracted value)
+MARKER_MAP = 14  # one measurement point of a map, drawn as a marker
+
+# Marker outlines and error bars (px).
+OUTLINE = 1.5  # outline of a marker that carries a value
+OUTLINE_THIN = 0.8  # outline that only separates neighbouring points
+ERRORBAR_WIDTH = 1.4  # thickness of an error bar
+ERRORBAR_CAP = 4  # half-length of the cap of an error bar
 
 # Legend places. Inside: line and point plots. Right: plots whose area is filled
 # (maps, bars, histograms, boxes) or that have many entries.

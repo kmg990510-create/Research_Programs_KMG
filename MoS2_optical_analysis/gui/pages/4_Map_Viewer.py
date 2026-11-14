@@ -27,43 +27,10 @@ from gui.components.report_loader import (  # noqa: E402
     sidebar_filters_section,
     sidebar_section,
 )
+from gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
 from gui.components.science_settings import strain_doping_settings  # noqa: E402
 from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from labkit.plot_theme import INK, LEGEND_RIGHT, SEQUENTIAL, STATUS_COLORS  # noqa: E402
-
-
-def _add_derived_map_parameters(frame: pd.DataFrame) -> pd.DataFrame:
-    out = frame.copy()
-    required = {"e2g_area", "a1g_area"}
-    if required.issubset(out.columns):
-        e2g_area = pd.to_numeric(out["e2g_area"], errors="coerce")
-        a1g_area = pd.to_numeric(out["a1g_area"], errors="coerce")
-        valid = e2g_area.notna() & a1g_area.notna() & (a1g_area != 0.0)
-        ratio = pd.Series(float("nan"), index=out.index, dtype=float)
-        ratio.loc[valid] = e2g_area.loc[valid] / a1g_area.loc[valid]
-        out["e2g_a1g_area_ratio"] = ratio
-
-    if {"e2g_position", "a1g_position"}.issubset(out.columns):
-        e2g = pd.to_numeric(out["e2g_position"], errors="coerce")
-        a1g = pd.to_numeric(out["a1g_position"], errors="coerce")
-        ref_mask = e2g.notna() & a1g.notna()
-        if "fit_status" in out.columns:
-            ref_mask &= out["fit_status"].astype(str).str.strip().str.lower() != "invalid"
-        if "review_decision" in out.columns:
-            ref_mask &= out["review_decision"].astype(str).str.strip().str.lower() != "rejected"
-        if bool(ref_mask.any()):
-            coeffs = strain_doping_settings(load_graph_config())["coefficients"]
-            s_e, s_a = float(coeffs["s_e"]), float(coeffs["s_a"])
-            d_e, d_a = float(coeffs["d_e"]), float(coeffs["d_a"])
-            det_k = s_e * d_a - s_a * d_e
-            if abs(det_k) > 1.0e-12:
-                omega_e0 = float(e2g.loc[ref_mask].mean())
-                omega_a0 = float(a1g.loc[ref_mask].mean())
-                d_e2g = e2g - omega_e0
-                d_a1g = a1g - omega_a0
-                out["strain_eps_pct"] = (d_a * d_e2g - d_e * d_a1g) / det_k
-                out["doping_n_1e13_cm2"] = (-s_a * d_e2g + s_e * d_a1g) / det_k
-    return out
+from labkit.plot_theme import INK, LEGEND_RIGHT, MARKER_MAP, OUTLINE_THIN, SEQUENTIAL, STATUS_COLORS  # noqa: E402
 
 
 st.title("Map Viewer")
@@ -80,7 +47,7 @@ modality = str(payload.get("modality", "")).strip().lower()
 if modality not in {"raman", "pl"}:
     modality = "pl" if "pl" in {part.lower() for part in report_path.parts} else "raman"
 
-work_df = _add_derived_map_parameters(df)
+work_df = add_derived_map_parameters(df, strain_doping_settings(load_graph_config())["coefficients"])
 status_options = ["valid", "attention", "invalid"]
 f_store = filter_store()
 filters_box = sidebar_filters_section()
@@ -352,7 +319,7 @@ with st.expander("Fit Status Map", expanded=True):
                 hover_data=["spectrum_id", "selected_model"] if "selected_model" in status_df.columns else ["spectrum_id"],
                 title="Spatial distribution of fit_status",
             )
-            fig_status.update_traces(marker={"size": 14, "line": {"width": 0.5, "color": INK}})
+            fig_status.update_traces(marker={"size": MARKER_MAP, "line": {"width": OUTLINE_THIN, "color": INK}})
             fig_status.update_layout(legend_title="fit_status", legend=LEGEND_RIGHT)  # the map fills the plot area
             fig_status.update_xaxes(constrain="domain")
             fig_status.update_yaxes(scaleanchor="x", scaleratio=1.0)

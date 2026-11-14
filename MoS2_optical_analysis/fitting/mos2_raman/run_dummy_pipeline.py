@@ -10,6 +10,9 @@ from fitting.mos2_core.io import generate_dummy_spectra
 
 
 def main() -> None:
+    from fitting.mos2_core.core.progress_log import configure_cli_logging
+
+    configure_cli_logging()
     project_root = Path(__file__).resolve().parents[2]
     config_dir = Path(__file__).resolve().parent / "config"
     raw_spectra = generate_dummy_spectra(count=8)
