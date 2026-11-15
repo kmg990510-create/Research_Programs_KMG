@@ -1,0 +1,19 @@
+numpy>=1.26
+scipy>=1.12
+pandas>=2.2
+PyYAML>=6.0
+ase>=3.23
+pymatgen>=2024.10
+matplotlib>=3.8
+plotly>=5.24
+pytest>=8.2
+
+# GUI & 3D structure viewer
+streamlit>=1.40
+py3Dmol>=2.1
+
+# Optional uMLIP + DFT-D3 backends (installed in WSL2 Ubuntu for production runs)
+# torch
+# torch-dftd
+# mace-torch
+# mattersim
