@@ -10,7 +10,7 @@ pinned: false
 
 # MoS2 Fit Workspace
 
-Current workspace is organized into `fitting`, `gui`, and `data`.
+Current workspace is organized into `fitting`, `mos2_gui`, and `data`.
 
 ## Structure
 
@@ -18,7 +18,7 @@ Current workspace is organized into `fitting`, `gui`, and `data`.
 - `fitting/mos2_core`: shared pipeline modules
 - `fitting/mos2_raman`: Raman entrypoints and non-scientific config (report export, graph style)
 - `fitting/mos2_pl`: PL entrypoints and non-scientific config
-- `gui`: Streamlit UI and desktop manual refit editor
+- `mos2_gui`: Streamlit UI and desktop manual refit editor
 - `packaging`: PyInstaller spec, exe entry scripts, end-user `DIST_README.md`
 - `tests`: pytest suite
 - `docs`: `ARCHITECTURE.md` (design), `PACKAGING.md` (build notes), `DEV_LOG.md` (task history)
@@ -152,7 +152,11 @@ Current guardrail status:
 ## Run GUI
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+# Standalone (or double-click Run_MoS2_GUI.cmd)
+.\.venv\Scripts\python.exe -m streamlit run mos2_gui/Main.py
+
+# Unified lab hub (all 3 programs, from repo root: ..\Run_Lab_GUI.cmd)
+streamlit run ..\app.py
 ```
 
 Recommended review flow in Home navigation:
@@ -224,7 +228,7 @@ Distribution minimum:
 Direct desktop editor launch:
 
 ```powershell
-.\.venv\Scripts\python.exe -m gui.desktop_editor.app --request <request.json> --output <response.json>
+.\.venv\Scripts\python.exe -m mos2_gui.desktop_editor.app --request <request.json> --output <response.json>
 ```
 
 If desktop launch fails with `PySide6 import failed`, reinstall dependencies:
@@ -284,7 +288,7 @@ Each page sidebar also includes:
 
 ## Cloud / Hugging Face Spaces Deployment
 
-- The top-level YAML frontmatter (`sdk: docker`, `app_port: 7860`), root `Dockerfile`, and root `requirements.txt` support both **Streamlit Community Cloud** (`MoS2_optical_analysis/gui/Main.py`) and **Hugging Face Spaces**.
+- The top-level YAML frontmatter (`sdk: docker`, `app_port: 7860`), root `Dockerfile` (launching unified `app.py`), and root `requirements.txt` support both **Streamlit Community Cloud** (`app.py` or standalone `MoS2_optical_analysis/mos2_gui/Main.py`) and **Hugging Face Spaces**.
 - `fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()` automatically detects web/cloud execution (or `MOS2_CLOUD_MODE=1/0`), auto-expanding upload/export panels and hiding local desktop-only buttons (`Open Manual Editor (Desktop)` and custom local path input).
 - **Standalone Single-File JSON Restoration**: each spectrum row in `*_fit_report.json` embeds pre-ROI `raw_x` and `raw_y` arrays (excluded from `*_fit_parameters.csv`), allowing **All Spectra Viewer** and in-browser **Web Manual Refit** to work from a single uploaded `_fit_report.json` even when original `.txt`/`.asc` files are not present on disk.
 - **Flagged Spectra Persistence**: in **Flagged Spectra**, `Apply Edits to Active Report` saves `review_decision` and table peak parameter edits directly into `{run_id}_manual_overrides.json` so they carry over to **All Spectra Viewer**, **Finalize**, and exported JSON/CSV files.

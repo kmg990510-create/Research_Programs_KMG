@@ -10,12 +10,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import gui  # noqa: E402,F401  (puts the repository root on sys.path so that labkit is found)
-from gui.components import figure_sizes  # noqa: E402
-from gui.components.report_loader import sidebar_section  # noqa: E402
+import mos2_gui  # noqa: E402,F401  (puts the repository root on sys.path so that labkit is found)
+from mos2_gui.components import figure_sizes  # noqa: E402
+from mos2_gui.components.report_loader import sidebar_section  # noqa: E402
 from labkit import sidebar as labkit_sidebar  # noqa: E402
 
-GUI_DIR = PROJECT_ROOT / "gui"
+GUI_DIR = PROJECT_ROOT / "mos2_gui"
 
 
 def _sources() -> dict[str, str]:
@@ -81,7 +81,7 @@ def test_a_figure_follows_the_sidebar_size_even_when_it_is_drawn_first() -> None
     def app() -> None:
         import plotly.graph_objects as go
 
-        from gui.components.figure_sizes import figure_size_section, show
+        from mos2_gui.components.figure_sizes import figure_size_section, show
 
         show(go.Figure(go.Scatter(x=[1, 2], y=[1, 2])), "spectrum", key="figure")  # drawn before the inputs
         figure_size_section("1) Figure size", ["spectrum"])
@@ -152,7 +152,7 @@ def test_grid_and_image_format_follow_the_sidebar() -> None:
     def app() -> None:
         import plotly.graph_objects as go
 
-        from gui.components.figure_sizes import figure_size_section, show
+        from mos2_gui.components.figure_sizes import figure_size_section, show
 
         show(go.Figure(go.Scatter(x=[1, 2], y=[1, 2])), "spectrum", filename="S1", key="figure")
         figure_size_section("1) Figure size", ["spectrum"])

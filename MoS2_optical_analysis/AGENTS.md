@@ -7,7 +7,7 @@ This guide defines safe working conventions for the migrated workspace.
 - `fitting/mos2_core`: shared pipeline modules
 - `fitting/mos2_raman`: Raman entrypoints and config
 - `fitting/mos2_pl`: PL entrypoints and config
-- `gui`: Streamlit UI
+- `mos2_gui`: Streamlit UI
 - `data/raw`, `data/bin/results`, `data/results`: runtime I/O
 
 ## Required References
@@ -36,11 +36,11 @@ Run from workspace root (`MoS2_optical_analysis`):
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --batch-subdirs
 .\.venv\Scripts\python.exe -m fitting.mos2_pl.run_raw_pipeline --raw-dir data/raw/pl/... --run-id my_pl_mp --workers 4
 
-# GUI
-.\.venv\Scripts\python.exe -m streamlit run gui/Main.py
+# GUI (standalone) or unified hub (..\Run_Lab_GUI.cmd / streamlit run ../app.py)
+.\.venv\Scripts\python.exe -m streamlit run mos2_gui/Main.py
 
 # Desktop editor (manual refit)
-.\.venv\Scripts\python.exe -m gui.desktop_editor.app --request <request.json> --output <response.json>
+.\.venv\Scripts\python.exe -m mos2_gui.desktop_editor.app --request <request.json> --output <response.json>
 ```
 
 ## Run Analysis UI Rules
@@ -61,7 +61,7 @@ Run from workspace root (`MoS2_optical_analysis`):
   - `manual_refits/*_manual_overrides.json`
 - When a report JSON is moved/restored/purged, paired CSV + matching override JSON are linked and processed together.
 - Bin entries can be restored or permanently deleted later with explicit confirmation.
-- Web/cloud upload expander in Step 2 stages `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` archives into `data/raw/{modality}/{folder_name}` via `stage_uploaded_raw_files` in `gui/components/report_loader.py`.
+- Web/cloud upload expander in Step 2 stages `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` archives into `data/raw/{modality}/{folder_name}` via `stage_uploaded_raw_files` in `mos2_gui/components/report_loader.py`.
 - Environment auto-detection (`fitting/mos2_core/core/runtime_paths.py::is_cloud_runtime()`): checks `MOS2_CLOUD_MODE` override or standard cloud environment markers (`STREAMLIT_SHARING_MODE`, `SPACE_ID`, `/mount/src`, `/home/user/app`). When in cloud mode, upload/export expanders open automatically, desktop-only UI (`Custom raw folder path`, `Open Manual Editor (Desktop)`) is hidden, and `Run Analysis` defaults `fit_workers=1` (max `2`) and `progress_every=5` with throttled UI updates to prevent 1 GB container OOM kills.
 - Sidebar report loader includes `Upload Report JSON / CSV` (`save_uploaded_report_files`) and `Export / Save Intermediate State` (`build_projected_report_json_bytes`, `build_projected_csv_bytes`) so external reports and override JSONs can be loaded and saved mid-review in cloud sessions.
 - Flagged Spectra `Manual Decision Editor` includes `Apply Edits to Active Report` (`apply_table_edits_to_report` -> `upsert_manual_override`), persisting `review_decision` and table parameter edits into `{run_id}_manual_overrides.json`.
@@ -91,10 +91,10 @@ Run from workspace root (`MoS2_optical_analysis`):
 
 - Prefer editing shared behavior in `fitting/mos2_core`.
 - Keep modality-specific behavior in `fitting/mos2_raman` or `fitting/mos2_pl`.
-- Keep GUI path logic in `gui/components/report_loader.py`.
+- Keep GUI path logic in `mos2_gui/components/report_loader.py`.
 - Logic used by more than one page lives in one component, not in the pages:
-  - `gui/components/derived_parameters.py`: strain / doping separation, map-level derived columns
-  - `gui/components/spectrum_view.py`: plotted x axis (calibration offset, PL wavelength -> energy) and the range shown first
+  - `mos2_gui/components/derived_parameters.py`: strain / doping separation, map-level derived columns
+  - `mos2_gui/components/spectrum_view.py`: plotted x axis (calibration offset, PL wavelength -> energy) and the range shown first
 - Display values (view ranges, line colours and widths of the spectrum figure) live in
   `fitting/mos2_raman/config/raman_graph.yaml` and are read without code-side defaults: a missing key raises `KeyError` naming it.
 - Pipeline stages report progress with the `mos2.progress` logger (`fitting/mos2_core/core/progress_log.py`), not `print`.
@@ -152,6 +152,6 @@ After changes, run at least:
 2. PL dummy pipeline
 3. Raman raw single-folder run (`run_raw_pipeline --raw-dir ... --run-id ...`)
 4. Raman or PL batch run (`run_raw_pipeline --raw-dir ... --batch-subdirs`)
-5. GUI launch (`streamlit run gui/Main.py`) and HTTP reachability check
+5. GUI launch (`streamlit run mos2_gui/Main.py`) and HTTP reachability check
 6. All Spectra Viewer smoke check with a filter resulting in exactly one row
 7. Manual refit API smoke (`SingleSpectrumRefitAPI`) with one report row

@@ -7,18 +7,30 @@ ENV HOME=/home/user \
 
 WORKDIR $HOME/app
 
-COPY --chown=user:user MoS2_optical_analysis/requirements.txt /tmp/requirements.txt
-RUN grep -v -E "^(PySide6|pyqtgraph)" /tmp/requirements.txt > /tmp/requirements-web.txt && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /tmp/requirements-web.txt
+COPY --chown=user:user requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
-COPY --chown=user:user MoS2_optical_analysis/ $HOME/app/
-# shared lab code (plot theme, sidebar sections, figure size); gui/__init__.py finds it here
+COPY --chown=user:user app.py $HOME/app/app.py
+COPY --chown=user:user MoS2_optical_analysis/ $HOME/app/MoS2_optical_analysis/
+COPY --chown=user:user FET_analysis/ $HOME/app/FET_analysis/
+COPY --chown=user:user MoS2_adsorption_sim/ $HOME/app/MoS2_adsorption_sim/
+# shared lab code (plot theme, sidebar sections, figure size); each program adds repo root to sys.path
 COPY --chown=user:user labkit/ $HOME/app/labkit/
-RUN mkdir -p $HOME/app/data/raw/raman $HOME/app/data/raw/pl $HOME/app/data/results/raman/reports $HOME/app/data/results/pl/reports && \
+RUN mkdir -p \
+    $HOME/app/MoS2_optical_analysis/data/raw/raman \
+    $HOME/app/MoS2_optical_analysis/data/raw/pl \
+    $HOME/app/MoS2_optical_analysis/data/results/raman/reports \
+    $HOME/app/MoS2_optical_analysis/data/results/pl/reports \
+    $HOME/app/FET_analysis/data/raw \
+    $HOME/app/FET_analysis/data/results \
+    $HOME/app/FET_analysis/data/outputs \
+    $HOME/app/MoS2_adsorption_sim/data/raw \
+    $HOME/app/MoS2_adsorption_sim/data/results \
+    $HOME/app/MoS2_adsorption_sim/data/outputs && \
     chown -R user:user $HOME/app
 
 USER user
 EXPOSE 7860
 
-CMD ["streamlit", "run", "gui/Main.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.maxUploadSize=500"]
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.maxUploadSize=500"]

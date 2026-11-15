@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gui.desktop_editor.app import main
+from mos2_gui.desktop_editor.app import main
 
 
 if __name__ == "__main__":

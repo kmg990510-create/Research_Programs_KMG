@@ -9,14 +9,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import gui  # noqa: F401  (puts the repository root on sys.path)
+import mos2_gui  # noqa: F401  (puts the repository root on sys.path)
 from fitting.mos2_pl.run_raw_pipeline import NM_TO_EV
-from gui.components import graph_style
-from gui.components.derived_parameters import add_derived_map_parameters, strain_doping
-from gui.components.spectrum_view import ViewWindow, default_view_range, si_check_range, to_plot_axis, view_window
-from gui.components.spectrum_viewer import _PEAKS, _resolve_fit_curve_cfg, _resolve_overlay_style
+from mos2_gui.components import graph_style
+from mos2_gui.components.derived_parameters import add_derived_map_parameters, strain_doping
+from mos2_gui.components.spectrum_view import ViewWindow, default_view_range, si_check_range, to_plot_axis, view_window
+from mos2_gui.components.spectrum_viewer import _PEAKS, _resolve_fit_curve_cfg, _resolve_overlay_style
 
-GUI_DIR = Path(__file__).resolve().parents[1] / "gui"
+GUI_DIR = Path(__file__).resolve().parents[1] / "mos2_gui"
 COEFFICIENTS = {"s_e": -6.48, "s_a": -1.21, "d_e": -0.33, "d_a": -2.22}
 
 

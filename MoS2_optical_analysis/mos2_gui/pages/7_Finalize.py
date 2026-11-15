@@ -20,12 +20,12 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components import report_loader as _report_loader_mod  # noqa: E402
+from mos2_gui.components import report_loader as _report_loader_mod  # noqa: E402
 
 if not hasattr(_report_loader_mod, "build_projected_csv_bytes"):
     importlib.reload(_report_loader_mod)
 
-from gui.components.report_loader import (  # noqa: E402
+from mos2_gui.components.report_loader import (  # noqa: E402
     build_projected_csv_bytes,
     build_projected_report_json_bytes,
     choose_report_sidebar,

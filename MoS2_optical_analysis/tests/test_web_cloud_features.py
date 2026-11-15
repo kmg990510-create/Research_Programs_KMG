@@ -8,11 +8,11 @@ import zipfile
 from pathlib import Path
 
 from fitting.mos2_core.review.refit_api import ManualRefitRequest, SingleSpectrumRefitAPI
-from gui.components.manual_refit_contract import build_editor_request, extract_peak_rows_from_row
-from gui.components.report_loader import save_uploaded_report_files, stage_uploaded_raw_files
-from gui.components.spectrum_viewer import resolve_source_file
-from gui.desktop_editor.controller import ManualEditorController
-from gui.desktop_editor.models import EditorRequest
+from mos2_gui.components.manual_refit_contract import build_editor_request, extract_peak_rows_from_row
+from mos2_gui.components.report_loader import save_uploaded_report_files, stage_uploaded_raw_files
+from mos2_gui.components.spectrum_viewer import resolve_source_file
+from mos2_gui.desktop_editor.controller import ManualEditorController
+from mos2_gui.desktop_editor.models import EditorRequest
 
 
 class _FakeUpload:
@@ -174,8 +174,8 @@ def test_standalone_report_embeds_raw_xy_only_in_json_and_merges_overrides_on_ex
     from fitting.mos2_core.core.pipeline import run_pipeline
     from fitting.mos2_core.io import generate_dummy_spectra
     from fitting.mos2_core.review.manual_overrides import upsert_manual_override
-    from gui.components.parameter_editor import apply_table_edits_to_report
-    from gui.components.report_loader import (
+    from mos2_gui.components.parameter_editor import apply_table_edits_to_report
+    from mos2_gui.components.report_loader import (
         build_projected_csv_bytes,
         build_projected_report_json_bytes,
         load_report_payload,

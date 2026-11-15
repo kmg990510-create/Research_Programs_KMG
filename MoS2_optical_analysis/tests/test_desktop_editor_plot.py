@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from gui.desktop_editor.plot_widget import SpectrumPlotWidget  # noqa: E402
+from mos2_gui.desktop_editor.plot_widget import SpectrumPlotWidget  # noqa: E402
 
 
 def test_set_data_autoscale_uses_raman_anchor_window() -> None:

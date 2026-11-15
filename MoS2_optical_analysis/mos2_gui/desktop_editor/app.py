@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from gui.components.manual_refit_contract import REQUEST_SCHEMA_VERSION
+from mos2_gui.components.manual_refit_contract import REQUEST_SCHEMA_VERSION
 
 
 def _parse_args() -> argparse.Namespace:

@@ -23,9 +23,9 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components import report_loader as _report_loader  # noqa: E402
-from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from gui.components.map_figure import default_colorbar_title  # noqa: E402
+from mos2_gui.components import report_loader as _report_loader  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_size_section, show  # noqa: E402
+from mos2_gui.components.map_figure import default_colorbar_title  # noqa: E402
 from labkit.plot_theme import (  # noqa: E402
     AUX,
     CATEGORICAL,
@@ -41,14 +41,14 @@ from labkit.plot_theme import (  # noqa: E402
     SEQUENTIAL,
     categorical_colors,
 )
-from gui.components.scatter_style import (  # noqa: E402
+from mos2_gui.components.scatter_style import (  # noqa: E402
     LEGEND_POSITIONS,
     TICK_DIRECTIONS,
     ScatterStyle,
     apply_scatter_style,
 )
-from gui.components.derived_parameters import strain_doping  # noqa: E402
-from gui.components.science_settings import strain_doping_settings  # noqa: E402
+from mos2_gui.components.derived_parameters import strain_doping  # noqa: E402
+from mos2_gui.components.science_settings import strain_doping_settings  # noqa: E402
 
 list_report_json_files = _report_loader.list_report_json_files
 load_spectra_dataframe = _report_loader.load_spectra_dataframe

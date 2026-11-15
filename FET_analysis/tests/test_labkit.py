@@ -8,9 +8,10 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from gui.components.figures import STATUS_COLORS, gallery_figure, metric_figure, overlay_figure  # noqa: E402
+from fet_gui.components.figures import STATUS_COLORS, gallery_figure, metric_figure, overlay_figure  # noqa: E402
 from labkit.plot_theme import CATEGORICAL, FONT_FAMILY, SURFACE, apply_paper_layout, categorical_colors, export_config  # noqa: E402
 
 
@@ -78,7 +79,7 @@ def test_gallery_figure_maps_traces_back_to_sweeps() -> None:
 
 
 def test_figures_use_the_shared_roles_and_finish_step() -> None:
-    from gui.components.figures import transfer_log_figure
+    from fet_gui.components.figures import transfer_log_figure
     from labkit import plot_theme as theme
 
     assert theme.STATUS_COLORS is STATUS_COLORS  # one definition for both programs

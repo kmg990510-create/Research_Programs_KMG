@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from gui.components.manual_refit_contract import RESPONSE_SCHEMA_VERSION
+from mos2_gui.components.manual_refit_contract import RESPONSE_SCHEMA_VERSION
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:

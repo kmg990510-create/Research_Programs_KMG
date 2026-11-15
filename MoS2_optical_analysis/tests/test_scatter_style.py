@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from gui.components.scatter_style import ScatterStyle, apply_scatter_style
+from mos2_gui.components.scatter_style import ScatterStyle, apply_scatter_style
 from labkit.plot_theme import finish_figure, pretty_label
 
 

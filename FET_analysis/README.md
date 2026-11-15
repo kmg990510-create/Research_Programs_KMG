@@ -21,8 +21,8 @@ python -m venv .venv
 측정 파일을 `data/raw/<배치 이름>/`에 넣거나, 화면의 Run 페이지에서 올린다.
 
 ```powershell
-# 화면
-.\.venv\Scripts\python.exe -m streamlit run gui/Run.py
+# 화면 (단독 실행: Run_FET_GUI.cmd / 통합 실행: ..\Run_Lab_GUI.cmd)
+.\.venv\Scripts\python.exe -m streamlit run fet_gui/Run.py
 
 # 명령줄: 분석하고 data/results/<배치 이름>/ 에 결과 파일 쓰기
 .\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch

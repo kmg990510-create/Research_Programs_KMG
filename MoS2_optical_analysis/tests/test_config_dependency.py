@@ -20,7 +20,7 @@ from fitting.mos2_core.io import config_access as cfgx
 from fitting.mos2_core.io import generate_dummy_spectra, load_pipeline_config
 from fitting.mos2_pl.run_raw_pipeline import _pl_intensity_density_correction_enabled
 from fitting.mos2_pl.sample_data import generate_dummy_pl_spectra
-from gui.components.science_settings import fwhm_warn_limits, flagged_legacy_thresholds, strain_doping_settings
+from mos2_gui.components.science_settings import fwhm_warn_limits, flagged_legacy_thresholds, strain_doping_settings
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 RAMAN_CONFIG_DIR = WORKSPACE / "fitting" / "mos2_raman" / "config"

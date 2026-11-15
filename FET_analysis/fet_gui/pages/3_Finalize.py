@@ -18,7 +18,7 @@ import streamlit as st  # noqa: E402
 from fet_core.pipeline import ordered_groups, status_counts  # noqa: E402
 from fet_core.report.export import export_run  # noqa: E402
 from fet_core.report.summary import group_summary  # noqa: E402
-from gui.state import REVIEW_FILE, active, results_root  # noqa: E402
+from fet_gui.state import REVIEW_FILE, active, results_root  # noqa: E402
 
 st.set_page_config(page_title="Finalize · FET Analysis", layout="wide")
 st.title("Finalize")

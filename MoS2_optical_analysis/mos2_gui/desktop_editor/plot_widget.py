@@ -10,9 +10,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from gui.components.graph_style import fit_curve_cfg as load_fit_curve_cfg
-from gui.components.graph_style import overlay_style_cfg as load_overlay_style_cfg
-from gui.components.graph_style import x_window_cfg as load_x_window_cfg
+from mos2_gui.components.graph_style import fit_curve_cfg as load_fit_curve_cfg
+from mos2_gui.components.graph_style import overlay_style_cfg as load_overlay_style_cfg
+from mos2_gui.components.graph_style import x_window_cfg as load_x_window_cfg
 
 from .models import PeakRow
 
