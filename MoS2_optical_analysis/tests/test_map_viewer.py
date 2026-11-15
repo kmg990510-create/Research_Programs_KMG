@@ -1,4 +1,4 @@
-"""Map viewer prototype: figure builder, style presets, and bulk review edits."""
+"""Map Viewer: figure builders, style presets, parameter list, ratio column and bulk review edits."""
 
 from __future__ import annotations
 
@@ -9,7 +9,15 @@ import numpy as np
 import pandas as pd
 
 from mos2_gui.components.map_editing import apply_decision, selected_ids_from_event
-from mos2_gui.components.map_figure import MapStyle, build_map_figure, load_style_preset, resolve_color_range, save_style_preset
+from mos2_gui.components.map_figure import (
+    MapStyle,
+    build_map_figure,
+    load_style_preset,
+    resolve_color_range,
+    save_style_preset,
+    status_map_figure,
+)
+from mos2_gui.components.map_parameters import add_ratio_column, parameter_candidates
 
 
 def _frame() -> pd.DataFrame:
@@ -83,3 +91,29 @@ def test_physical_axis_places_first_and_last_point_at_start_and_end() -> None:
 def test_physical_axis_falls_back_to_index_when_degenerate() -> None:
     style = MapStyle(axis_mode="Physical", x_start=3.0, x_end=3.0)
     assert list(build_map_figure(_frame(), "delta", style).data[0].x) == [1, 2, 3]
+
+
+def test_parameter_list_and_ratio_column() -> None:
+    frame = pd.DataFrame(
+        {"map_x": [0, 1], "map_y": [0, 0], "rmse": [1.0, 2.0], "other": [3.0, 4.0], "e2g_position": [384.0, 385.0], "name": ["a", "b"]}
+    )
+    assert parameter_candidates(frame) == ["e2g_position", "rmse", "other"]  # preferred order first, coordinates and text left out
+    with_ratio = add_ratio_column(frame.assign(zero=[0.0, 2.0]), "other", "zero", "my_ratio")
+    assert np.isnan(with_ratio["my_ratio"].iloc[0]) and with_ratio["my_ratio"].iloc[1] == 2.0  # no division by zero
+    assert parameter_candidates(with_ratio, first=("my_ratio",))[0] == "my_ratio"
+    assert "my_ratio" not in frame.columns
+
+
+def test_status_map_uses_the_status_colours() -> None:
+    from labkit.plot_theme import STATUS_COLORS
+
+    frame = _frame()
+    frame.loc[0, "fit_status"] = "invalid"
+    fig = status_map_figure(frame)
+    assert {trace.name: trace.marker.color for trace in fig.data} == {s: STATUS_COLORS[s] for s in ("valid", "invalid")}
+    assert fig.layout.yaxis.scaleanchor == "x" and fig.layout.xaxis.title.text == "X (point index)"
+
+
+def test_there_is_one_map_page() -> None:
+    pages = sorted(p.name for p in (Path(__file__).resolve().parents[1] / "mos2_gui" / "pages").glob("*Map*.py"))
+    assert pages == ["4_Map_Viewer.py"]

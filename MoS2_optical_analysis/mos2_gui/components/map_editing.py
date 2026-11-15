@@ -1,4 +1,4 @@
-"""Bulk review edits made from the map view (prototype). No Streamlit import."""
+"""Bulk review edits made from the Map Viewer. No Streamlit import."""
 
 from __future__ import annotations
 
