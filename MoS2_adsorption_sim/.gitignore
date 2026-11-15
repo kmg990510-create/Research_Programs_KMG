@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Simulation outputs, trajectories, and user molecule files stay local
+data/molecules/*
+!data/molecules/.gitkeep
+data/results/*
+!data/results/.gitkeep
+
+# Results moved to the bin are results too
+data/bin/

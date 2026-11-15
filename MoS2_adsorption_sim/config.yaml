@@ -1,0 +1,89 @@
+# MoS2_adsorption_sim 설정 파일.
+# 과학적 수치와 구조·포즈 생성 규칙은 여기에만 둔다.
+# 코드에는 기본값이 없다: 키가 없으면 ConfigKeyError가 난다.
+
+slab:
+  substrate: "2H-MoS2"          # 현재 활성 기판 물질 (향후 다른 기판 추가 예정)
+  substrate_candidates:         # 지원 예정 포함 기판 후보 목록
+    - "2H-MoS2"
+    - "1T-MoS2"
+    - "WS2"
+    - "WSe2"
+    - "MoSe2"
+    - "Graphene"
+    - "h-BN"
+  supported_substrates:         # 현재 구조 생성기가 지원되는 기판 목록
+    - "2H-MoS2"
+  lattice_a_A: 3.16             # 2H-MoS2 단층 격자 상수 a (Å)
+  s_s_thickness_A: 3.17         # 상·하부 S 원자층 간 수직 두께 (Å)
+  supercell_nx: 4               # 기본 x방향 슈퍼셀 반복 수
+  supercell_ny: 4               # 기본 y방향 슈퍼셀 반복 수
+  supercell_min_n: 2            # GUI에서 선택 가능한 최소 슈퍼셀 반복 수
+  supercell_max_n: 8            # GUI에서 선택 가능한 최대 슈퍼셀 반복 수
+  vacuum_A: 20.0                # 슬랩 상하 전체 진공층 두께 (Å)
+  defect_type: "pristine"       # 기본 표면 결함 유형 ("pristine", "V_S", "V_S2")
+  fix_bottom_layer: true        # 하부 S 원자층 고정 여부 (전체 슬랩 평행이동 방지)
+  layer_tolerance_A: 0.35       # S-Mo-S 층 구분을 위한 z 좌표 허용 오차 (Å)
+
+molecules:
+  vacuum_box_A: 20.0            # 기체 분자 단독 계산용 입방 진공 박스 한 변 길이 (Å)
+  covalent_bond_scale: 1.25     # 공유결합 판정 시 원소별 공유결합 반지름 합 배수
+  min_internal_distance_A: 0.6  # 분자 내부 비물리적 원자 겹침 판정 최소 거리 (Å)
+  presets: ["H2O", "NH3", "CO", "O2", "CH4", "TMA"]  # 내장 프리셋 분자 목록
+  tma:
+    al_c_bond_A: 1.96           # TMA(Al(CH3)3)의 Al-C 결합 길이 (Å)
+    c_h_bond_A: 1.09            # TMA 메틸기 C-H 결합 길이 (Å)
+    h_c_h_angle_deg: 109.5      # TMA 메틸기 H-C-H 사면체 각도 (deg)
+
+poses:
+  site_search_height_A: 2.0     # pymatgen AdsorbateSiteFinder 탐색 기준 높이 (Å)
+  site_symm_reduce: 0.01        # 대칭 등가 사이트 축약 허용 오차 (Å)
+  site_match_tolerance_A: 0.45  # 사이트를 Mo_top/S_top/Hollow/Bridge로 분류할 때의 수평 허용 오차 (Å)
+  initial_heights_A: [2.8]      # 상부 S 평면 기준 초기 배치 높이 목록 (Å)
+  orientations: ["flat", "anchor_down", "anchor_up"]  # 초기 분자 배향 목록
+  azimuth_angles_deg: [0.0, 60.0]                     # z축 기준 회전 방위각 목록 (deg)
+  azimuth_candidates_deg: [0.0, 30.0, 60.0, 90.0, 120.0]  # GUI에서 선택 가능한 방위각 후보 목록 (deg)
+  min_initial_distance_A: 1.6   # 초기 배치 시 분자-슬랩 원자간 최소 허용 거리 (Å)
+  defect_initial_height_A: 0.8  # 결함(V_S, V_S2) 사이트 위 초기 배치 높이 (Å)
+  defect_rim_radius_A: 2.3      # 결함 중심 주변 노출된 Mo 림(rim) 사이트 탐색 반경 (Å)
+
+calculator:
+  backend: "mace_mp"            # 기본 계산기 백엔드 ("mace_mp", "mattersim", "synth_morse")
+  device: "auto"                # 연산 장치 ("auto", "cpu", "cuda", "cuda:0")
+  mace_model: "medium"          # MACE 파운데이션 모델 이름 또는 가중치 경로
+  mace_dtype: "float64"         # MACE 정밀도 ("float64" 구조 최적화 권장, "float32" 고속)
+  mattersim_load_path: "MatterSim-v1.0.0-5M.pth"  # MatterSim 체크포인트 경로 또는 모델 ID
+  d3:
+    enabled: true               # DFT-D3 분산력 보정 사용 여부
+    xc: "pbe"                   # D3 파라미터 기준 범함수 ("pbe", "rpbe" 등)
+    damping: "bj"               # D3 감쇠 함수 ("bj", "zero" 등)
+    cutoff_bohr: 40.0           # D3 실공간 컷오프 반경 (Bohr)
+  synth:
+    mo_s_de_eV: 1.8             # 합성 포텐셜: Mo-S 결합 깊이 (eV)
+    mo_s_r0_A: 2.414            # 합성 포텐셜: Mo-S 평형 결합 거리 (Å)
+    mo_adsorbate_de_eV: 0.70    # 합성 포텐셜: 노출된 Mo와 흡착 원자 간 화학흡착 깊이 (eV)
+    mo_adsorbate_r0_A: 2.25     # 합성 포텐셜: 노출된 Mo와 흡착 원자 간 평형 거리 (Å)
+    s_repulsion_eV: 0.45        # 합성 포텐셜: 상부 S-분자 파울리 반발 세기 (eV)
+    d3_c6_eV_A6: 26.0           # 합성 포텐셜: 슬랩-분자 D3 분산력 계수 (eV·Å^6)
+    d3_damp_r0_A: 2.8           # 합성 포텐셜: D3 단거리 감쇠 반경 (Å)
+
+relaxation:
+  optimizer: "BFGS"             # 구조 이완 알고리즘 ("BFGS", "LBFGS", "FIRE")
+  fmax_eV_per_A: 0.03           # 힘 수렴 기준 (eV/Å)
+  max_steps: 200                # 최대 이완 스텝 수
+  trajectory_stride: 1          # 3D 궤적 저장 간격 (스텝)
+  scan_heights_A: [1.8, 2.2, 2.6, 3.0, 3.4, 3.8, 4.5, 5.5, 7.0]  # 1D 결합 곡선 E(z) 높이 목록 (Å)
+
+quality:
+  min_allowed_distance_A: 1.1   # 이 거리 미만이면 원자 충돌(atomic_overlap -> invalid)
+  max_adsorption_distance_A: 5.0 # 이 거리 초과면 진공 이탈(desorbed_to_vacuum -> attention)
+  max_slab_rmsd_invalid_A: 0.8  # 슬랩 RMSD 초과 시 격자 붕괴(slab_disrupted -> invalid)
+  max_slab_rmsd_warn_A: 0.25    # 슬랩 RMSD 초과 시 변형 주의(large_slab_distortion -> attention)
+  max_slab_def_warn_eV: 0.5     # 슬랩 변형 에너지 초과 시 주의(large_slab_distortion -> attention)
+  bond_stretch_warn_pct: 20.0   # 분자 내 결합 길이 증가율 임계값 (%: 결함=해리 후보, 기저면=비정상 해리)
+  migration_threshold_A: 1.2    # 수평 이동 거리가 이 값을 넘으면 사이트 이동(migrated_to_other_site)
+  chemisorption_threshold_eV: -1.0  # 이 값 이하이면 화학흡착(chemisorption_regime)
+  physisorption_threshold_eV: -0.05 # 이 값 이하이면 물리흡착(physisorption_regime)
+
+report:
+  boltzmann_temp_K: 300.0       # 볼츠만 가중 평균 흡착 에너지 산출 기준 온도 (K)
