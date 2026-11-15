@@ -23,8 +23,8 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.map_editing import REVIEW_DECISIONS, apply_decision, selected_ids_from_event  # noqa: E402
-from gui.components.map_figure import (  # noqa: E402
+from mos2_gui.components.map_editing import REVIEW_DECISIONS, apply_decision, selected_ids_from_event  # noqa: E402
+from mos2_gui.components.map_figure import (  # noqa: E402
     AXIS_MODES,
     COLORMAPS,
     MOUSE_MODES,
@@ -39,8 +39,8 @@ from gui.components.map_figure import (  # noqa: E402
     resolve_color_range,
     save_style_preset,
 )
-from gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
-from gui.components.report_loader import (  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
+from mos2_gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
     filter_store,
     load_graph_config,
@@ -48,10 +48,10 @@ from gui.components.report_loader import (  # noqa: E402
     load_spectra_dataframe,
     project_root,
 )
-from gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
-from gui.components.science_settings import strain_doping_settings  # noqa: E402
-from gui.components.spectrum_view import default_view_range, to_plot_axis, view_window  # noqa: E402
-from gui.components.spectrum_viewer import load_raw_xy, render_spectrum_overlay, resolve_source_file  # noqa: E402
+from mos2_gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
+from mos2_gui.components.science_settings import strain_doping_settings  # noqa: E402
+from mos2_gui.components.spectrum_view import default_view_range, to_plot_axis, view_window  # noqa: E402
+from mos2_gui.components.spectrum_viewer import load_raw_xy, render_spectrum_overlay, resolve_source_file  # noqa: E402
 
 K = "mapproto"  # session_state key prefix
 CHART_KEY = f"{K}_chart"

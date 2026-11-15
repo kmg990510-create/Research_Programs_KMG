@@ -17,7 +17,7 @@ from fet_core import __version__  # noqa: E402
 from fet_core.pipeline import effective_geometry, results_frame, status_counts  # noqa: E402
 from fet_core.report.export import warnings_frame  # noqa: E402
 from fet_core.review import GEOMETRY_FIELDS, run_key  # noqa: E402
-from gui.state import ACTIVE_BATCH_KEY, choose_batch, get_review, load_run, put_review, raw_root, safe_batch_name  # noqa: E402
+from fet_gui.state import ACTIVE_BATCH_KEY, choose_batch, get_review, load_run, put_review, raw_root, safe_batch_name  # noqa: E402
 
 st.set_page_config(page_title="FET Analysis · Run", layout="wide")
 st.title("Run")

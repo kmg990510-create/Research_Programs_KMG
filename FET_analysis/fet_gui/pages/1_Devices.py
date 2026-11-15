@@ -22,9 +22,9 @@ from fet_core.analysis.results import REASONS  # noqa: E402
 from fet_core.analysis.sweeps import split_branches  # noqa: E402
 from fet_core.pipeline import ordered_groups  # noqa: E402
 from fet_core.review import sweep_key  # noqa: E402
-from gui.components.figures import gallery_figure, gallery_size, transfer_linear_figure, transfer_log_figure  # noqa: E402
-from gui.components.values import extracted_values  # noqa: E402
-from gui.state import active, filters, get_review, put_review, stop_if_empty  # noqa: E402
+from fet_gui.components.figures import gallery_figure, gallery_size, transfer_linear_figure, transfer_log_figure  # noqa: E402
+from fet_gui.components.values import extracted_values  # noqa: E402
+from fet_gui.state import active, filters, get_review, put_review, stop_if_empty  # noqa: E402
 from labkit.figure_size import FigureSize, figure_options_inputs, figure_size_inputs, show_figure  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402
 

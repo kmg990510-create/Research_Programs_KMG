@@ -284,7 +284,7 @@ def test_manual_overrides_recompute_payload_counts_and_map_summary(tmp_path) -> 
 
 
 def test_map_figure_units_include_strain_and_doping() -> None:
-    from gui.components.map_figure import default_unit
+    from mos2_gui.components.map_figure import default_unit
 
     assert default_unit("strain_eps_pct", "raman") == "%"
     assert default_unit("doping_n_1e13_cm2", "raman") == "10¹³ cm⁻²"

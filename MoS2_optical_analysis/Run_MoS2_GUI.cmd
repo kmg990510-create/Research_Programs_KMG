@@ -16,6 +16,6 @@ echo Starting MoS2 Raman/PL Analysis Viewer...
 echo Close this window to stop the GUI server.
 echo.
 
-".venv\Scripts\python.exe" -m streamlit run gui\Main.py
+".venv\Scripts\python.exe" -m streamlit run mos2_gui\Main.py
 
 endlocal

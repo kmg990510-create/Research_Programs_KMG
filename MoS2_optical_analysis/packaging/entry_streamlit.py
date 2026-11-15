@@ -11,20 +11,20 @@ def _resolve_main_script() -> Path:
     candidates: list[Path] = []
 
     exe_dir = Path(sys.executable).resolve().parent
-    candidates.append(exe_dir / "gui" / "Main.py")
+    candidates.append(exe_dir / "mos2_gui" / "Main.py")
 
     meipass = getattr(sys, "_MEIPASS", "")
     if meipass:
-        candidates.append(Path(meipass) / "gui" / "Main.py")
+        candidates.append(Path(meipass) / "mos2_gui" / "Main.py")
 
-    candidates.append(Path(__file__).resolve().parents[1] / "gui" / "Main.py")
+    candidates.append(Path(__file__).resolve().parents[1] / "mos2_gui" / "Main.py")
 
     for path in candidates:
         if path.exists():
             return path.resolve()
 
     checked = "\n".join(str(path) for path in candidates)
-    raise FileNotFoundError(f"Could not locate gui/Main.py. Checked:\n{checked}")
+    raise FileNotFoundError(f"Could not locate mos2_gui/Main.py. Checked:\n{checked}")
 
 
 def _with_default_streamlit_args(user_args: list[str]) -> list[str]:

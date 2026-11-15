@@ -13,7 +13,7 @@ from fet_core.review import load_review
 from fet_core.synth import transfer_curve
 from tests.conftest import write_b1500_csv
 
-GUI = Path(__file__).resolve().parents[1] / "gui"
+GUI = Path(__file__).resolve().parents[1] / "fet_gui"
 PAGES = ["Run.py", "pages/1_Devices.py", "pages/2_Compare.py", "pages/3_Finalize.py"]
 SECTIONS = {
     "Run.py": ["1) Batch"],

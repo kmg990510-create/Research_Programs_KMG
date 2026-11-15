@@ -16,8 +16,8 @@ import streamlit as st  # noqa: E402
 from fet_core.analysis.sweeps import split_branches  # noqa: E402
 from fet_core.pipeline import ordered_groups  # noqa: E402
 from fet_core.report.summary import METRICS, group_summary, metric_label  # noqa: E402
-from gui.components.figures import metric_figure, overlay_figure  # noqa: E402
-from gui.state import active, filters, put_review, stop_if_empty  # noqa: E402
+from fet_gui.components.figures import metric_figure, overlay_figure  # noqa: E402
+from fet_gui.state import active, filters, put_review, stop_if_empty  # noqa: E402
 from labkit.figure_size import figure_options_inputs, figure_size_inputs, show_figure  # noqa: E402
 from labkit.plot_theme import categorical_colors  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402

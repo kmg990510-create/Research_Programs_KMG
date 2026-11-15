@@ -66,7 +66,7 @@ def _safe_copy_metadata(package: str):
 datas = []
 
 # Streamlit multipage needs real app/page .py files bundled as data.
-datas += _safe_collect_data_files("gui", include_py_files=True)
+datas += _safe_collect_data_files("mos2_gui", include_py_files=True)
 
 # Streamlit frontend/static assets (index.html, JS/CSS bundles, templates).
 datas += _safe_collect_data_files("streamlit")
@@ -104,7 +104,7 @@ for package_name in (
 
 hiddenimports = []
 hiddenimports += _safe_collect_submodules("fitting")
-hiddenimports += _safe_collect_submodules("gui")
+hiddenimports += _safe_collect_submodules("mos2_gui")
 hiddenimports += _safe_collect_submodules("labkit")
 hiddenimports += _safe_collect_submodules("streamlit")
 hiddenimports += _safe_collect_submodules("pyqtgraph")

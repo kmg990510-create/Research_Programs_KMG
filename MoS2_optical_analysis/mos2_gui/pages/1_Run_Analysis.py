@@ -28,8 +28,8 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components import data_bin as _data_bin  # noqa: E402
-from gui.components.report_loader import stage_uploaded_raw_files  # noqa: E402
+from mos2_gui.components import data_bin as _data_bin  # noqa: E402
+from mos2_gui.components.report_loader import stage_uploaded_raw_files  # noqa: E402
 
 STAGES = ("fit", "select", "review")
 SPECTRUM_EXTENSIONS = ("*.txt", "*.asc")

@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from gui.components.map_editing import apply_decision, selected_ids_from_event
-from gui.components.map_figure import MapStyle, build_map_figure, load_style_preset, resolve_color_range, save_style_preset
+from mos2_gui.components.map_editing import apply_decision, selected_ids_from_event
+from mos2_gui.components.map_figure import MapStyle, build_map_figure, load_style_preset, resolve_color_range, save_style_preset
 
 
 def _frame() -> pd.DataFrame:

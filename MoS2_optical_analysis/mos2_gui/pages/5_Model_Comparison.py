@@ -19,10 +19,10 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.fit_plot_component import render_metric_histogram  # noqa: E402
-from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
-from gui.components.map_figure import default_colorbar_title  # noqa: E402
-from gui.components.report_loader import choose_report_sidebar, filter_store, sidebar_filters_section  # noqa: E402
+from mos2_gui.components.fit_plot_component import render_metric_histogram  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_size_section, show  # noqa: E402
+from mos2_gui.components.map_figure import default_colorbar_title  # noqa: E402
+from mos2_gui.components.report_loader import choose_report_sidebar, filter_store, sidebar_filters_section  # noqa: E402
 
 
 st.title("Model Comparison")

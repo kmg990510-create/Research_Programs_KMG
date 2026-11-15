@@ -19,17 +19,17 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components.map_figure import default_colorbar_title  # noqa: E402
-from gui.components.report_loader import (  # noqa: E402
+from mos2_gui.components.map_figure import default_colorbar_title  # noqa: E402
+from mos2_gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
     filter_store,
     load_graph_config,
     sidebar_filters_section,
     sidebar_section,
 )
-from gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
-from gui.components.science_settings import strain_doping_settings  # noqa: E402
-from gui.components.figure_sizes import figure_size_section, show  # noqa: E402
+from mos2_gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
+from mos2_gui.components.science_settings import strain_doping_settings  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_size_section, show  # noqa: E402
 from labkit.plot_theme import INK, LEGEND_RIGHT, MARKER_MAP, OUTLINE_THIN, SEQUENTIAL, STATUS_COLORS  # noqa: E402
 
 

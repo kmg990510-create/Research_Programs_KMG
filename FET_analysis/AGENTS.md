@@ -26,7 +26,7 @@ FET_analysis/
       summary.py       그룹 통계, 지표 목록 (METRICS)
       export.py        결과 파일 쓰기
     cli.py             명령줄 진입점 (python -m fet_core)
-  gui/                 Streamlit 화면. 분석 로직을 두지 않는다
+  fet_gui/             Streamlit 화면. 분석 로직을 두지 않는다
     Run.py             진입 페이지 (배치, 치수, 방법 옵션)
     state.py           데이터 폴더, 활성 배치, 분석 캐시, 사이드바 1) 2) 구획
     components/        figures.py (Plotly 그림), values.py (추출값 표). streamlit을 import하지 않음
@@ -49,8 +49,8 @@ FET_analysis/
 ```powershell
 # 배치 하나 분석 후 결과 파일 쓰기 (기본 출력: data/results/<배치 이름>)
 .\.venv\Scripts\python.exe -m fet_core --input-dir data/raw/my_batch
-# 화면
-.\.venv\Scripts\python.exe -m streamlit run gui/Run.py
+# 화면 (단독 실행: Run_FET_GUI.cmd / 통합 실행: ..\Run_Lab_GUI.cmd 또는 streamlit run ..\app.py)
+.\.venv\Scripts\python.exe -m streamlit run fet_gui/Run.py
 # 테스트
 .\.venv\Scripts\python.exe -m pytest
 # 실제 측정 폴더까지 검사 (폴더 안의 각 하위 폴더가 배치 하나)
@@ -173,15 +173,15 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 ## 화면 (4단계)
 
-- 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `gui/components/figures.py`에 둔다.
-- 모든 페이지는 `gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
+- 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `fet_gui/components/figures.py`에 둔다.
+- 모든 페이지는 `fet_gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
 - 사이드바의 공통 구획은 두 개다: `1) Batch`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시). 필터 선택은 모든 페이지가 공유하고, 기본값은 아무것도 숨기지 않는다.
 - 그래프가 있는 페이지(Devices, Compare)는 `3) Figure size` 구획을 가진다. 그래프 종류마다 가로·세로(px)를 정하고, 그림은 `labkit.figure_size.show_figure`로만 그린다. Gallery는 패널 하나의 크기와 한 줄의 패널 수를 정한다. 가로를 고정하면 그림들이 옆으로 놓이다가 자리가 모자라면 다음 줄로 넘어간다.
 - 저장 규칙: 결정, 메모, 그룹 이름·순서는 바꾸는 즉시 `review.json`에 쓴다 (저장 버튼 없음). 다시 분석해야 하는 치수와 방법 옵션만 `Apply` / `Save per-device geometry` 버튼을 쓴다.
 - sweep 방향 하나가 목록의 한 행이다. 값과 결정은 그 행의 것이고, 그림에는 같은 측정의 다른 방향이 흐리게 같이 그려진다.
 - 데이터 폴더는 `FET_analysis/data`이고, 환경 변수 `FET_DATA_ROOT`로 바꿀 수 있다 (테스트가 쓴다).
 - 그림은 `labkit.plot_theme.apply_paper_layout`으로 모양을 맞추고 `labkit.figure_size.show_figure(fig, size, filename=...)`로 그린다. 색·선 굵기·점 크기는 `labkit.plot_theme`의 이름을 쓴다.
-- 페이지 맨 위의 `sys.path` 4줄은 `fet_core`, `gui`, `labkit`을 찾기 위한 것이다.
+- 페이지 맨 위의 `sys.path` 4줄은 `fet_core`, `fet_gui`, `labkit`을 찾기 위한 것이다.
 
 | 페이지 | 하는 일 |
 | --- | --- |

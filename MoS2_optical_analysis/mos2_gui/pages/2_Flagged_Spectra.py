@@ -19,17 +19,17 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from gui.components import parameter_editor as _parameter_editor  # noqa: E402
-from gui.components import report_loader as _report_loader  # noqa: E402
+from mos2_gui.components import parameter_editor as _parameter_editor  # noqa: E402
+from mos2_gui.components import report_loader as _report_loader  # noqa: E402
 
 if not hasattr(_report_loader, "build_projected_csv_bytes"):
     importlib.reload(_report_loader)
 if not hasattr(_parameter_editor, "apply_table_edits_to_report"):
     importlib.reload(_parameter_editor)
 
-from gui.components.parameter_editor import render_changes_download, render_parameter_editor  # noqa: E402
-from gui.components.review_table import render_review_table  # noqa: E402
-from gui.components.science_settings import flagged_legacy_thresholds  # noqa: E402
+from mos2_gui.components.parameter_editor import render_changes_download, render_parameter_editor  # noqa: E402
+from mos2_gui.components.review_table import render_review_table  # noqa: E402
+from mos2_gui.components.science_settings import flagged_legacy_thresholds  # noqa: E402
 
 choose_report_sidebar = _report_loader.choose_report_sidebar
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})

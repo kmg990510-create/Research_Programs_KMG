@@ -37,18 +37,18 @@ from fitting.mos2_core.review.refit_api import (  # noqa: E402
 from fitting.mos2_core.review.manual_overrides import (  # noqa: E402
     upsert_manual_override,
 )
-from gui.components import report_loader as _report_loader  # noqa: E402
-from gui.components.science_settings import fwhm_warn_limits  # noqa: E402
-from gui.components.manual_refit_contract import (  # noqa: E402
+from mos2_gui.components import report_loader as _report_loader  # noqa: E402
+from mos2_gui.components.science_settings import fwhm_warn_limits  # noqa: E402
+from mos2_gui.components.manual_refit_contract import (  # noqa: E402
     build_editor_request,
     extract_peak_rows_from_row,
     validate_editor_response,
 )
-from gui.desktop_editor.controller import ManualEditorController  # noqa: E402
-from gui.desktop_editor.models import EditorRequest  # noqa: E402
-from gui.components.figure_sizes import figure_size_section  # noqa: E402
-from gui.components.spectrum_view import default_view_range, si_check_range, to_plot_axis, view_window  # noqa: E402
-from gui.components.spectrum_viewer import (  # noqa: E402
+from mos2_gui.desktop_editor.controller import ManualEditorController  # noqa: E402
+from mos2_gui.desktop_editor.models import EditorRequest  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_size_section  # noqa: E402
+from mos2_gui.components.spectrum_view import default_view_range, si_check_range, to_plot_axis, view_window  # noqa: E402
+from mos2_gui.components.spectrum_viewer import (  # noqa: E402
     load_raw_xy,
     render_fit_summary,
     render_spectrum_overlay,
@@ -218,7 +218,7 @@ def _launch_desktop_editor(request_path: Path, output_path: Path) -> subprocess.
         cmd = [
             sys.executable,
             "-m",
-            "gui.desktop_editor.app",
+            "mos2_gui.desktop_editor.app",
             "--request",
             str(request_path),
             "--output",

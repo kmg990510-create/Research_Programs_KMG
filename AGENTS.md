@@ -13,13 +13,17 @@
 ```text
 Research_Programs_KMG/
   AGENTS.md                 공통 원칙 (이 문서)
+  app.py                    통합 Streamlit 진입점 (Program Hub + 3개 프로그램 전환)
+  Run_Lab_GUI.cmd           통합 GUI Windows 실행 스크립트
   MoS2_optical_analysis/    Raman/PL 분석
   FET_analysis/             FET 분석 (새로 작성 중, 진행 단계는 FET_analysis/AGENTS.md)
+  MoS2_adsorption_sim/      MoS2 흡착 에너지 uMLIP + DFT-D3 시뮬레이션
   labkit/                   공용 코드: Plotly 테마, 사이드바 구획 (6장 참고)
   legacy/                   이전 프로그램. 참고용이며 수정하지 않고 코드를 가져오지 않는다
 ```
 
-- 프로그램 하나는 폴더 하나이고, 그 폴더만으로 실행·테스트·배포가 된다.
+- 프로그램 하나는 폴더 하나이고, 그 폴더만으로 실행·테스트·배포가 된다. 통합 실행 시에는 루트 `app.py`(`Run_Lab_GUI.cmd`)가 `Program Hub`에서 세 프로그램을 함께 띄운다.
+- 통합 실행 시 `sys.modules` 패키지 충돌이 나지 않도록 각 프로그램의 Streamlit GUI 패키지 이름은 고유하게 둔다 (`mos2_gui`, `fet_gui`, `ads_gui`).
 - 프로그램 폴더는 `AGENTS.md`, `README.md`, 설정 YAML, `tests/`, `docs/`를 가진다.
 - 측정 데이터와 분석 결과(`data/raw`, `data/results`, `data/outputs`)는 git에 올리지 않는다.
 
@@ -93,7 +97,7 @@ Research_Programs_KMG/
 
 ### 페이지 코드
 
-- 페이지 파일은 화면 배치만 한다. 로직은 `gui/components/` 또는 분석 패키지에 둔다.
+- 페이지 파일은 화면 배치만 한다. 로직은 각 GUI 패키지의 `components/` (`mos2_gui/components/`, `fet_gui/components/`, `ads_gui/components/`) 또는 분석 패키지에 둔다.
 - 두 페이지 이상이 쓰는 계산은 component 한 곳에만 둔다 (MoS2: strain·doping은 `derived_parameters.py`, 스펙트럼 축 변환과 처음 보여 주는 범위는 `spectrum_view.py`).
 - 페이지 파일이 400줄을 넘으면 component로 나눈다.
 - `st.session_state` 키는 `페이지이름_용도` 형태로 붙인다.
@@ -117,7 +121,7 @@ Research_Programs_KMG/
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
 - 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
 - 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기·격자·이미지 형식 입력과 그리기). 두 프로그램이 모두 쓴다.
-- 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `gui/__init__.py`).
+- 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `mos2_gui/__init__.py`, 통합 실행: 루트 `app.py`).
 - 배포물에는 `labkit`을 프로그램 안에 넣는다: Docker는 `COPY labkit/ $HOME/app/labkit/`, PyInstaller spec은 `pathex`와 `hiddenimports`에 추가한다.
 - 그림을 그리는 코드는 `st.plotly_chart`를 직접 부르지 않고 `labkit.figure_size.show_figure`(또는 프로그램의 얇은 래퍼)를 쓴다.
 - `labkit`에는 특정 측정 방법(Raman, FET)에 대한 지식을 넣지 않는다.
@@ -145,14 +149,14 @@ Research_Programs_KMG/
 
 - MoS2 페이지 파일이 크다: `6_Sample_Comparison.py` 1560줄, `1_Run_Analysis.py` 939줄, `3_All_Spectra_Viewer.py` 867줄.
 - MoS2 페이지마다 `sys.path` 부트스트랩 코드가 복사되어 있다.
-- 루트 `requirements.txt`, `Dockerfile`, GitHub Actions 워크플로가 MoS2 하나만을 전제로 한다.
+- GitHub Actions 워크플로(`.github/workflows/build-mos2-optical-analysis.yml`)는 MoS2 exe 빌드만 다룬다 (루트 `requirements.txt`와 `Dockerfile`은 통합 `app.py` 기준으로 세 프로그램을 함께 포함한다).
 - 상태 열 이름이 다르다: MoS2는 `fit_status`, FET는 `status`. 값은 둘 다 `valid` / `attention` / `invalid`다.
 - 그림 파일을 내보내는 기능은 두 프로그램 모두 없다. 화면의 그림을 카메라 버튼으로 저장한다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
 - 글씨 크기·눈금 방향 같은 세부 스타일 입력은 아직 공용이 아니다: Sample Comparison(`5) Figure`)과 Map Viewer prototype(Figure style 탭)에만 있다.
 - MoS2 Spectrum의 선 색·굵기는 `raman_graph.yaml` 값을 그대로 쓰며 `labkit`의 역할 이름을 쓰지 않는다.
 - MoS2는 결정·메모를 즉시 저장하지 않고 버튼으로 저장한다: Flagged Spectra의 `Apply Edits to Active Report`, Map Viewer prototype의 `Apply to N point(s)`.
-- MoS2 데스크톱 편집기(`gui/desktop_editor/plot_widget.py`)는 처음 보여 주는 범위를 자체 코드와 기본값으로 정한다 (`spectrum_view.py`를 쓰지 않는다).
+- MoS2 데스크톱 편집기(`mos2_gui/desktop_editor/plot_widget.py`)는 처음 보여 주는 범위를 자체 코드와 기본값으로 정한다 (`spectrum_view.py`를 쓰지 않는다).
 - MoS2의 명령줄 진입 모듈(`run_raw_pipeline.py` 등)은 요약을 `print`로 낸다. 단계 진행 상황만 `mos2.progress` 로거를 쓴다.
 - "허용된 색만 쓴다"를 확인하는 테스트는 없다.
 - `labkit`을 넣은 뒤 Docker 이미지와 exe를 다시 빌드해 확인하지 않았다.
