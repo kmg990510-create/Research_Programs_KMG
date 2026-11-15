@@ -15,14 +15,13 @@ from labkit.sidebar import sidebar_section
 # kind -> (label in the sidebar, width in px when "fit to the page" is off, height in px)
 KINDS: dict[str, tuple[str, int, int]] = {
     "spectrum": ("Spectrum", 1000, 450),
-    "map_parameter": ("Parameter map", 800, 720),
+    "map_editor": ("Map", 800, 620),
     "map_status": ("Status map", 800, 450),
     "model_charts": ("Charts", 800, 450),
     "sample_scatter": ("Comparison plots", 800, 520),
     "sample_square": ("Absolute position and FWHM plots", 800, 720),
     "sample_heatmap": ("LO ratio map", 800, 450),
     "sample_pl": ("PL comparison", 800, 450),
-    "map_editor": ("Map", 800, 620),
 }
 
 

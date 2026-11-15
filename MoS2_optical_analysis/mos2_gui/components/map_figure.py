@@ -1,4 +1,4 @@
-"""Map heatmap figure builder with an editable style (prototype).
+"""Figures of the Map Viewer: the parameter map with an editable style, and the fit-status map.
 
 No Streamlit import: the page passes data and a ``MapStyle`` and gets a figure.
 """
@@ -11,10 +11,22 @@ from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import yaml
 
-from labkit.plot_theme import FONT_FAMILY, INK, MISSING_CELL, SURFACE, colorbar_style, paper_template
+from labkit.plot_theme import (
+    FONT_FAMILY,
+    INK,
+    LEGEND_RIGHT,
+    MARKER_MAP,
+    MISSING_CELL,
+    OUTLINE_THIN,
+    STATUS_COLORS,
+    SURFACE,
+    colorbar_style,
+    paper_template,
+)
 
 COLORMAPS = ("Viridis", "Cividis", "Magma", "Inferno", "Blues", "Greys", "RdBu")
 RANGE_MODES = ("Full range", "Robust 2-98%", "Manual")
@@ -295,4 +307,25 @@ def build_map_figure(
         range=y_range[::-1] if style.y_origin_top else y_range,
         dtick=y_step if ny <= 20 and not physical else None,
     )
+    return fig
+
+
+def status_map_figure(frame: pd.DataFrame, title: str = "Spatial distribution of fit_status") -> go.Figure:
+    """One marker per measurement point, coloured by ``fit_status``. Needs ``map_x``, ``map_y``, ``fit_status``."""
+    data = frame.dropna(subset=["map_x", "map_y", "fit_status"])
+    fig = px.scatter(
+        data,
+        x="map_x",
+        y="map_y",
+        color="fit_status",
+        category_orders={"fit_status": list(STATUS_COLORS)},
+        color_discrete_map=STATUS_COLORS,
+        labels={"map_x": "X (point index)", "map_y": "Y (point index)"},
+        hover_data=[c for c in ("spectrum_id", "selected_model") if c in data.columns],
+        title=title,
+    )
+    fig.update_traces(marker={"size": MARKER_MAP, "line": {"width": OUTLINE_THIN, "color": INK}})
+    fig.update_layout(legend_title="fit_status", legend=LEGEND_RIGHT)  # the map fills the plot area
+    fig.update_xaxes(constrain="domain")
+    fig.update_yaxes(scaleanchor="x", scaleratio=1.0)
     return fig

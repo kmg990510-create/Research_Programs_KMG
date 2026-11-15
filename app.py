@@ -148,11 +148,6 @@ _PROGRAM_SECTIONS: dict[str, tuple[str, st.Page, list[st.Page]]] = {
                 title="7 Finalize",
                 url_path="mos2_finalize",
             ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "8_Map_Viewer_Prototype.py"),
-                title="8 Map Viewer Prototype",
-                url_path="mos2_map_proto",
-            ),
         ],
     ),
     "fet": (

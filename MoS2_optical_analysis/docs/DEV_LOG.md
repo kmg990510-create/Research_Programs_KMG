@@ -1630,3 +1630,24 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
   - Pages 3, 4, 6 and 8 executed with `AppTest` on the existing `proto_map_SampleA` report: no exceptions; prototype with one point selected draws its spectrum; a report without map coordinates shows a message instead of an error.
 - Not verified: the pages in a real browser after this change (the browser pane did not accept input); Run Analysis reading the progress lines from a real run.
 - Not done: splitting the large pages (`6_Sample_Comparison.py`, `1_Run_Analysis.py`, `3_All_Spectra_Viewer.py`); the desktop editor keeps its own view-range code.
+
+## Map Viewer replaces its prototype (2026-11-15)
+
+- Scope: the prototype page becomes the Map Viewer; the old Map Viewer features that the prototype did not have are kept. There is one map page.
+- Files:
+  - `mos2_gui/pages/4_Map_Viewer.py` rewritten (194 lines, layout only); `mos2_gui/pages/8_Map_Viewer_Prototype.py` removed; its entry removed from root `app.py`
+  - new `mos2_gui/components/map_parameters.py` (parameter list, ratio builder), `map_style_panel.py` (style inputs, presets), `map_selection.py` (selected points, decision, spectrum)
+  - `mos2_gui/components/map_figure.py`: `status_map_figure`
+  - `mos2_gui/components/figure_sizes.py`: kind `map_parameter` removed (the map uses `map_editor`)
+  - `tests/test_map_viewer_prototype.py` -> `tests/test_map_viewer.py`
+- Behavior:
+  - From the prototype: paper-style map with editable style and presets, box / lasso / click selection, review decision for the selected points, spectrum of a single selected point.
+  - Kept from the old Map Viewer: sidebar `2) Filters` (exclude rejected, allowed fit_status), `3) Ratio Builder`, Fit Status Map, Map Rows table, Map Summary.
+  - Filters hide points: a hidden point is drawn as an empty cell and is left out of the selection, the colour range, the status map and the table. The old page removed the rows, which changed the map grid.
+  - `Hide rejected points` toggle of the prototype is now the `Exclude rejected spectra` filter in the sidebar.
+  - Session keys start with `map_viewer_`. Style presets saved by the prototype (`data/style_presets/map`) still load.
+  - Fit Status Map is collapsed by default (was expanded).
+- Verification:
+  - `pytest`: 72 passed.
+  - Page executed with `AppTest` on the existing `proto_map_SampleA` report: map and status map draw; selecting one point shows its statistics and spectrum; status filter hides all 81 points; custom ratio is offered first in the parameter list; manual colour range; a report without map coordinates shows a message.
+- Not verified: mouse selection, saving a decision and saving / loading a preset in a real browser.

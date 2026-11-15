@@ -153,9 +153,9 @@ Research_Programs_KMG/
 - 상태 열 이름이 다르다: MoS2는 `fit_status`, FET는 `status`. 값은 둘 다 `valid` / `attention` / `invalid`다.
 - 그림 파일을 내보내는 기능은 두 프로그램 모두 없다. 화면의 그림을 카메라 버튼으로 저장한다.
 - `legacy/FET device analysis/`는 자체 `.git`을 가진 별도 저장소다. 이 저장소에 그대로 `git add` 하지 않는다.
-- 글씨 크기·눈금 방향 같은 세부 스타일 입력은 아직 공용이 아니다: Sample Comparison(`5) Figure`)과 Map Viewer prototype(Figure style 탭)에만 있다.
+- 글씨 크기·눈금 방향 같은 세부 스타일 입력은 아직 공용이 아니다: Sample Comparison(`5) Figure`)과 Map Viewer(Figure style 탭)에만 있다.
 - MoS2 Spectrum의 선 색·굵기는 `raman_graph.yaml` 값을 그대로 쓰며 `labkit`의 역할 이름을 쓰지 않는다.
-- MoS2는 결정·메모를 즉시 저장하지 않고 버튼으로 저장한다: Flagged Spectra의 `Apply Edits to Active Report`, Map Viewer prototype의 `Apply to N point(s)`.
+- MoS2는 결정·메모를 즉시 저장하지 않고 버튼으로 저장한다: Flagged Spectra의 `Apply Edits to Active Report`, Map Viewer의 `Apply to N point(s)`.
 - MoS2 데스크톱 편집기(`mos2_gui/desktop_editor/plot_widget.py`)는 처음 보여 주는 범위를 자체 코드와 기본값으로 정한다 (`spectrum_view.py`를 쓰지 않는다).
 - MoS2의 명령줄 진입 모듈(`run_raw_pipeline.py` 등)은 요약을 `print`로 낸다. 단계 진행 상황만 `mos2.progress` 로거를 쓴다.
 - "허용된 색만 쓴다"를 확인하는 테스트는 없다.
