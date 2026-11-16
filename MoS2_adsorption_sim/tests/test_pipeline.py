@@ -15,6 +15,8 @@ from ads_core.pipeline import ordered_groups, poses_frame, run_batch
 from ads_core.report.export import (
     BATCH_STATE_FILE,
     BINDING_CURVES_DIR,
+    MD_CURVES_DIR,
+    MD_SUMMARY_FILE,
     METADATA_FILE,
     MOLECULES_FILE,
     POSES_FILE,
@@ -233,3 +235,46 @@ def test_cli_run_and_reexport(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     rc2 = cli_main(["export", "--batch-dir", str(out_dir), "--quiet"])
     assert rc2 == 0
     assert "Re-exported" in capsys.readouterr().out
+
+
+def test_cli_md_and_reload(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out_dir = tmp_path / "md_batch"
+    rc = cli_main(
+        [
+            "md",
+            "--batch",
+            "md_batch",
+            "--surfaces",
+            "pristine_2x2",
+            "--molecules",
+            "H2O",
+            "--backend",
+            "synth_morse",
+            "--sites",
+            "Hollow",
+            "--orientations",
+            "flat",
+            "--temp",
+            "300",
+            "--steps",
+            "20",
+            "--dt",
+            "0.5",
+            "--output-dir",
+            str(out_dir),
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "MD Batch: md_batch" in captured
+    assert "stayed_adsorbed:" in captured
+    assert (out_dir / MD_SUMMARY_FILE).is_file()
+    assert len(list((out_dir / MD_CURVES_DIR).glob("*.csv"))) == 2
+
+    md_df = pd.read_csv(out_dir / MD_SUMMARY_FILE, encoding="utf-8-sig")
+    assert len(md_df) == 2
+    assert set(md_df["temperature_K"]) == {300.0}
+
+    restored = load_batch_run(out_dir)
+    assert len(restored.md_results) == 2
+    assert len(restored.md_results[0].trajectory_frames) >= 2

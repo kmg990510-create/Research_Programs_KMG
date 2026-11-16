@@ -17,6 +17,7 @@ import streamlit as st  # noqa: E402
 from ads_core import __version__  # noqa: E402
 from ads_core.config import Config, load_config  # noqa: E402
 from ads_core.model import (  # noqa: E402
+    MdSettings,
     MoleculeSettings,
     PoseSettings,
     RelaxationSettings,
@@ -34,23 +35,19 @@ from ads_core.model import (  # noqa: E402
     VALID_OPTIMIZERS,
     VALID_ORIENTATIONS,
 )
-from ads_core.pipeline import ordered_groups, poses_frame, run_batch, status_counts  # noqa: E402
+from ads_core.pipeline import md_results_table, ordered_groups, poses_frame, run_batch, status_counts  # noqa: E402
 from ads_core.report.export import export_run, warnings_frame  # noqa: E402
 from ads_core.report.summary import molecule_summary  # noqa: E402
 from ads_gui.state import (  # noqa: E402
     ACTIVE_BATCH_KEY,
     choose_batch,
     clear_run_cache,
-    delete_trashed_item_permanently,
     get_review,
-    list_trashed_items,
     load_run,
     molecules_root,
-    restore_trashed_item,
+    render_data_manager,
     results_root,
     safe_batch_name,
-    trash_batch,
-    trash_molecule_file,
 )
 
 SITE_OPTIONS = [SITE_MO_TOP, SITE_S_TOP, SITE_HOLLOW, SITE_BRIDGE, SITE_VS, SITE_VS_RIM, SITE_VS2]
@@ -67,6 +64,7 @@ mol_defaults = MoleculeSettings.from_config(base_cfg)
 slab_defaults = SlabSettings.from_config(base_cfg)
 pose_defaults = PoseSettings.from_config(base_cfg)
 relax_defaults = RelaxationSettings.from_config(base_cfg)
+md_defaults = MdSettings.from_config(base_cfg)
 
 batch = choose_batch()
 
@@ -158,6 +156,31 @@ with st.expander("Create and run a simulation batch", expanded=batch is None):
         help="Scan one 1D E(z) curve per selected site type instead of one per pair.",
     )
 
+    m1, m2 = st.columns(2)
+    run_md = m1.checkbox(
+        "Run finite-temperature MD (Langevin NVT)",
+        value=md_defaults.enabled,
+        key="run_md_enabled",
+        help="Run NVT Langevin MD to check surface residence vs desorption at finite temperature.",
+    )
+    md_only = m2.checkbox(
+        "Skip relaxation (MD only)",
+        value=False,
+        disabled=not run_md,
+        key="run_md_only",
+        help="Run MD directly from initial poses without structural relaxation.",
+    )
+    md_temp = float(md_defaults.temperature_K)
+    md_steps = int(md_defaults.steps)
+    md_dt = float(md_defaults.timestep_fs)
+    md_seed = int(md_defaults.seed)
+    if run_md:
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        md_temp = float(mc1.number_input("MD Temp (K)", min_value=10.0, max_value=3000.0, value=md_temp, step=25.0, key="run_md_temp"))
+        md_steps = int(mc2.number_input("MD steps", min_value=1, max_value=100000, value=md_steps, step=100, key="run_md_steps"))
+        md_dt = float(mc3.number_input("MD dt (fs)", min_value=0.05, max_value=5.0, value=md_dt, step=0.05, format="%.2f", key="run_md_dt"))
+        md_seed = int(mc4.number_input("MD seed", min_value=0, max_value=999999, value=md_seed, step=1, key="run_md_seed"))
+
     chosen_optimizer = relax_defaults.optimizer
     chosen_fmax = relax_defaults.fmax_eV_per_A
     chosen_steps = relax_defaults.max_steps
@@ -179,14 +202,24 @@ with st.expander("Create and run a simulation batch", expanded=batch is None):
 
     cli_surfs = " ".join(f"{s}_{nx}x{ny}" for s in (chosen_surfaces or ["pristine"]))
     cli_mols = " ".join((chosen_presets or ["H2O"]) + chosen_custom)
-    cli_flags = (
-        f"--backend {chosen_backend}"
-        + ("" if enable_d3 else " --no-d3")
-        + (" --compare-no-d3" if (enable_d3 and compare_no_d3) else "")
-        + (" --scan-binding-curves" if scan_curves else "")
-        + (" --scan-all-sites" if (scan_curves and scan_all_sites) else "")
-    )
-    st.code(f"python -m ads_core run --batch {safe_batch_name(batch_raw) or 'batch'} --surfaces {cli_surfs} --molecules {cli_mols} {cli_flags}", language="bash")
+    if run_md and md_only:
+        cli_cmd = (
+            f"python -m ads_core md --batch {safe_batch_name(batch_raw) or 'batch'} "
+            f"--surfaces {cli_surfs} --molecules {cli_mols} --backend {chosen_backend}"
+            + ("" if enable_d3 else " --no-d3")
+            + f" --temp {md_temp:g} --steps {md_steps} --dt {md_dt:g} --seed {md_seed}"
+        )
+    else:
+        cli_flags = (
+            f"--backend {chosen_backend}"
+            + ("" if enable_d3 else " --no-d3")
+            + (" --compare-no-d3" if (enable_d3 and compare_no_d3) else "")
+            + (" --scan-binding-curves" if scan_curves else "")
+            + (" --scan-all-sites" if (scan_curves and scan_all_sites) else "")
+            + (f" --md --md-temp {md_temp:g} --md-steps {md_steps} --md-dt {md_dt:g} --md-seed {md_seed}" if run_md else "")
+        )
+        cli_cmd = f"python -m ads_core run --batch {safe_batch_name(batch_raw) or 'batch'} --surfaces {cli_surfs} --molecules {cli_mols} {cli_flags}"
+    st.code(cli_cmd, language="bash")
 
     if st.button("Run simulation batch", type="primary", key="run_execute_btn"):
         clean_name = safe_batch_name(batch_raw)
@@ -223,9 +256,11 @@ with st.expander("Create and run a simulation batch", expanded=batch is None):
 
             def _on_progress(cur: int, tot: int, pid: str) -> None:
                 frac = min(1.0, max(0.0, cur / max(1, tot)))
-                prog.progress(frac, text=f"Relaxing pose {cur}/{tot}: {pid}")
+                action = "MD" if (run_md and md_only) else "Running pose"
+                prog.progress(frac, text=f"{action} {cur}/{tot}: {pid}")
 
             try:
+                skip_relax_flag = bool(run_md and md_only)
                 sim_run = run_batch(
                     clean_name,
                     run_cfg,
@@ -237,9 +272,15 @@ with st.expander("Create and run a simulation batch", expanded=batch is None):
                     site_types=chosen_sites or None,
                     orientations=chosen_orientations,
                     azimuth_angles_deg=chosen_azimuths or [0.0],
-                    scan_binding_curves=scan_curves,
-                    scan_all_sites=bool(scan_curves and scan_all_sites),
-                    compare_no_d3=bool(enable_d3 and compare_no_d3),
+                    scan_binding_curves=bool(scan_curves and not skip_relax_flag),
+                    scan_all_sites=bool(scan_curves and scan_all_sites and not skip_relax_flag),
+                    compare_no_d3=bool(enable_d3 and compare_no_d3 and not skip_relax_flag),
+                    run_md=run_md,
+                    md_temperature_K=md_temp if run_md else None,
+                    md_steps=md_steps if run_md else None,
+                    md_timestep_fs=md_dt if run_md else None,
+                    md_seed=md_seed if run_md else None,
+                    skip_relax=skip_relax_flag,
                     progress_callback=_on_progress,
                 )
                 out_dir = results_root() / clean_name
@@ -251,68 +292,7 @@ with st.expander("Create and run a simulation batch", expanded=batch is None):
             except Exception as exc:
                 st.error(f"Batch run failed: {exc}")
 
-trashed_batches = list_trashed_items("results")
-trashed_molecules = list_trashed_items("molecules")
-trash_total = len(trashed_batches) + len(trashed_molecules)
-
-with st.expander(f"Manage data (delete / trash: {trash_total})", expanded=False):
-    if batch is not None:
-        st.markdown("**Active simulation batch**")
-        if st.button(f"Move batch '{batch}' to trash", key="run_trash_active_batch"):
-            trash_batch(batch)
-            st.toast(f"Moved batch '{batch}' to trash.")
-            st.rerun()
-    if existing_mol_files:
-        st.markdown("**Uploaded molecule files**")
-        del_mols = st.multiselect(
-            "Select molecule files to move to trash",
-            [p.name for p in existing_mol_files],
-            default=[],
-            key="run_trash_mol_select",
-        )
-        if st.button("Move selected molecule(s) to trash", disabled=not del_mols, key="run_trash_mols_btn"):
-            for fname in del_mols:
-                trash_molecule_file(fname)
-            st.toast(f"Moved {len(del_mols)} molecule file(s) to trash.")
-            st.rerun()
-
-    st.divider()
-    st.markdown("**Trash bin (restore or permanently delete)**")
-    if not trashed_batches and not trashed_molecules:
-        st.caption("Trash is empty.")
-    else:
-        trash_items = [
-            {"scope": "results", "label": f"[Batch] {e['original_name']} ({e['deleted_at'][:19]})", **e}
-            for e in trashed_batches
-        ] + [
-            {"scope": "molecules", "label": f"[Molecule] {e['original_name']} ({e['deleted_at'][:19]})", **e}
-            for e in trashed_molecules
-        ]
-        labels = [item["label"] for item in trash_items]
-        selected_label = st.selectbox("Trashed item", labels, key="run_trash_selected")
-        selected_item = trash_items[labels.index(selected_label)]
-
-        t1, t2 = st.columns(2)
-        if t1.button("Restore selected item", key="run_restore_trash_btn"):
-            try:
-                restored_name = restore_trashed_item(selected_item["scope"], selected_item["entry_id"])
-                if selected_item["scope"] == "results":
-                    st.session_state[ACTIVE_BATCH_KEY] = restored_name
-                st.toast(f"Restored '{restored_name}'.")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Restore failed: {exc}")
-
-        confirm_perm = t2.checkbox("Confirm permanent deletion", value=False, key="run_confirm_perm_delete")
-        if t2.button(
-            "Delete permanently",
-            disabled=not confirm_perm,
-            type="secondary",
-            key="run_perm_delete_btn",
-        ):
-            delete_trashed_item_permanently(selected_item["scope"], selected_item["entry_id"])
-            st.toast(f"Permanently deleted '{selected_item['original_name']}'.")
-            st.rerun()
+render_data_manager(batch, existing_mol_files)
 
 if batch is None:
     st.info("No batch yet. Configure parameters above and click **Run simulation batch**.")
@@ -332,28 +312,35 @@ m_cols[4].metric("Invalid", counts["invalid"])
 
 st.caption(
     f"Calculator: `{run.calculator_id}` · DFT-D3: `{'enabled' if run.d3_enabled else 'disabled'}` · "
-    f"1D binding curves: `{len(run.binding_curves)}`"
+    f"1D binding curves: `{len(run.binding_curves)}` · MD runs: `{len(run.md_results)}`"
 )
 
-st.subheader("Group summary (active batch)")
-temp_K = ReportSettings.from_config(run.config).boltzmann_temp_K
-summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
-if not summary.empty:
-    show_cols = [
-        "group_display",
-        "n_poses",
-        "n_included",
-        "best_site",
-        "e_ads_min_eV",
-        "e_ads_boltzmann_eV",
-        "vdw_fraction_at_best",
-        "d_min_at_best_A",
-    ]
-    st.dataframe(summary[show_cols], hide_index=True, width="stretch")
+if not frame.empty:
+    st.subheader("Group summary (active batch)")
+    temp_K = ReportSettings.from_config(run.config).boltzmann_temp_K
+    summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
+    if not summary.empty:
+        show_cols = [
+            "group_display",
+            "n_poses",
+            "n_included",
+            "best_site",
+            "e_ads_min_eV",
+            "e_ads_boltzmann_eV",
+            "vdw_fraction_at_best",
+            "d_min_at_best_A",
+        ]
+        st.dataframe(summary[show_cols], hide_index=True, width="stretch")
 
-with st.expander(f"All poses ({len(frame)})", expanded=False):
-    pose_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "status", "e_ads_eV", "d_min_A", "decision"]
-    st.dataframe(frame[pose_cols], hide_index=True, width="stretch")
+    with st.expander(f"All poses ({len(frame)})", expanded=False):
+        pose_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "status", "e_ads_eV", "d_min_A", "decision"]
+        st.dataframe(frame[pose_cols], hide_index=True, width="stretch")
+
+if run.md_results:
+    st.subheader(f"Finite-temperature MD summary ({len(run.md_results)})")
+    md_df = md_results_table(run.md_results)
+    md_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "temperature_K", "n_steps", "residence_fraction", "stayed_adsorbed", "final_dz_com_A", "mean_dz_com_A"]
+    st.dataframe(md_df[md_cols], hide_index=True, width="stretch")
 
 warn_df = warnings_frame(run)
 with st.expander(f"Warnings ({len(warn_df)})", expanded=False):

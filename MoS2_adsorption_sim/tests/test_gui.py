@@ -18,11 +18,20 @@ from streamlit.testing.v1 import AppTest
 from ads_core.config import load_config
 from ads_core.model import ORIENTATION_ANCHOR_DOWN, ORIENTATION_FLAT, SITE_HOLLOW, SITE_S_TOP, SITE_VS
 from ads_core.pipeline import run_batch
-from ads_core.report.export import BATCH_STATE_FILE, METADATA_FILE, MOLECULES_FILE, POSES_FILE, STRUCTURES_DIR, export_run
+from ads_core.report.export import (
+    BATCH_STATE_FILE,
+    MD_CURVES_DIR,
+    MD_SUMMARY_FILE,
+    METADATA_FILE,
+    MOLECULES_FILE,
+    POSES_FILE,
+    STRUCTURES_DIR,
+    export_run,
+)
 from ads_core.review import load_review
 from ads_core.simulation.quality import REASONS, REASON_MESSAGES
 from ads_gui.components.atoms2d import pose_top_side_png, slab_sites_png
-from ads_gui.components.viewer3d import pose_3d_html
+from ads_gui.components.viewer3d import md_3d_html, pose_3d_html
 
 GUI = Path(__file__).resolve().parents[1] / "ads_gui"
 ADS_CORE = Path(__file__).resolve().parents[1] / "ads_core"
@@ -102,7 +111,7 @@ def test_no_streamlit_import_in_core_or_components() -> None:
 
 
 def test_gui_pages_stay_under_400_lines() -> None:
-    for page in PAGES:
+    for page in (*PAGES, "pages/4_Coverage_Dimer.py"):
         path = GUI / page
         lines = path.read_text(encoding="utf-8").splitlines()
         assert len(lines) < 400, f"{page} has {len(lines)} lines (limit: < 400)"
@@ -390,4 +399,116 @@ def test_run_page_exposes_substrate_and_supercell(tmp_path: Path, monkeypatch) -
     assert at.selectbox(key="run_substrate").value == "2H-MoS2"
     assert at.number_input(key="run_nx").value == 4
     assert at.number_input(key="run_ny").value == 4
+
+
+def test_gui_md_only_batch_workflow_across_all_pages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run.py launches MD-only batches and Poses/Compare/Finalize render MD trajectories cleanly."""
+    from ads_core.report.export import load_batch_run
+
+    monkeypatch.setenv("ADS_DATA_ROOT", str(tmp_path))
+    at = run_page("Run.py")
+    assert [str(e.value) for e in at.exception] == []
+
+    next(c for c in at.checkbox if c.key == "run_show_advanced").set_value(True)
+    next(c for c in at.checkbox if c.key == "run_md_enabled").set_value(True)
+    at.run()
+    assert [str(e.value) for e in at.exception] == []
+
+    next(t for t in at.text_input if t.key == "run_batch_name").set_value("ui_md_only")
+    next(m for m in at.multiselect if m.key == "run_surfaces").set_value(["pristine"])
+    next(m for m in at.multiselect if m.key == "run_presets").set_value(["H2O"])
+    next(n for n in at.number_input if n.key == "run_nx").set_value(2)
+    next(n for n in at.number_input if n.key == "run_ny").set_value(2)
+    next(m for m in at.multiselect if m.key == "run_sites").set_value(["Hollow"])
+    next(m for m in at.multiselect if m.key == "run_orientations").set_value(["flat"])
+    next(m for m in at.multiselect if m.key == "run_azimuths").set_value([0.0])
+    next(c for c in at.checkbox if c.key == "run_md_only").set_value(True)
+    next(n for n in at.number_input if n.key == "run_md_steps").set_value(10)
+    at.run()
+
+    next(b for b in at.button if b.key == "run_execute_btn").click()
+    at.run()
+    assert [str(e.value) for e in at.exception] == []
+
+    out_dir = tmp_path / "results" / "ui_md_only"
+    assert (out_dir / BATCH_STATE_FILE).is_file()
+    assert (out_dir / MD_SUMMARY_FILE).is_file()
+    assert any((out_dir / MD_CURVES_DIR).iterdir())
+
+    loaded = load_batch_run(out_dir)
+    assert len(loaded.md_results) == 1
+    assert "<div" in md_3d_html(loaded.md_results[0])
+
+    for page in ("pages/1_Poses.py", "pages/2_Compare.py", "pages/3_Finalize.py"):
+        page_at = run_page(page)
+        assert [str(e.value) for e in page_at.exception] == []
+        assert [e.label for e in page_at.sidebar.expander] == SECTIONS[page]
+
+    poses_at = run_page("pages/1_Poses.py")
+    assert len(poses_at.get("plotly_chart")) == 1
+    assert any(m.label == "Stayed adsorbed" for m in poses_at.metric)
+
+
+def test_coverage_dimer_page_renders_empty_and_populated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """4_Coverage_Dimer.py handles both empty results and populated coverage/disulfide studies."""
+    import yaml
+    from ads_core.simulation.coverage import run_coverage_study
+    from ads_core.report.coverage_view import analyze_disulfide_geometry, analyze_multimol_contacts, load_coverage_study
+    from ads_gui.components.atoms2d import multimol_top_side_png
+    from ads_gui.components.viewer3d import multimol_3d_html
+
+    monkeypatch.setenv("ADS_DATA_ROOT", str(tmp_path))
+    empty_at = run_page("pages/4_Coverage_Dimer.py")
+    assert [str(e.value) for e in empty_at.exception] == []
+    assert [e.label for e in empty_at.sidebar.expander] == ["1) Study"]
+    assert empty_at.info
+
+    # Build a small synthetic coverage study with N1, N2 dimer, and disulfide
+    sim_root = Path(__file__).resolve().parents[1]
+    raw = load_config(sim_root / "configs" / "track_a_4atp.yaml").as_dict()
+    raw["study"]["base_config_path"] = str(sim_root / "config.yaml")
+    raw["adsorbate"]["molecule_path"] = str(sim_root / "data" / "molecules" / "4-ATP.xyz")
+    raw["relaxation"]["max_steps"] = 6
+    raw["relaxation"]["fmax_eV_per_A"] = 0.25
+    raw["grid_cases"] = {"N1_monomer_flat": raw["grid_cases"]["N1_monomer_flat"]}
+    raw["cluster_cases"] = {"N2_dimer_head_to_tail": raw["cluster_cases"]["N2_dimer_head_to_tail"]}
+    raw["vacancy_desorption"]["source_cases"] = []
+    raw["vacancy_desorption"]["sequential_pairs"] = {"N2_dimer_head_to_tail": "N1_monomer_flat"}
+    study_yaml = tmp_path / "study.yaml"
+    study_yaml.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+
+    run_coverage_study(
+        study_yaml,
+        backend_override="synth_morse",
+        device_override="cpu",
+        output_dir_override=tmp_path / "results",
+    )
+
+    pop_at = run_page("pages/4_Coverage_Dimer.py")
+    assert [str(e.value) for e in pop_at.exception] == []
+    assert [e.label for e in pop_at.sidebar.expander] == [
+        "1) Study",
+        "2) Display & Distance Options",
+        "3) Figure size",
+    ]
+    figures = pop_at.get("plotly_chart")
+    assert figures and all(json.loads(f.proto.spec)["layout"].get("width") is None for f in figures)
+
+    bundle = load_coverage_study(tmp_path / "results" / raw["study"]["name"])
+    n2_rel = bundle.structures["N2_dimer_head_to_tail_relaxed"]
+    geo = analyze_multimol_contacts(n2_rel, bundle.slab_count, bundle.mol_count)
+    assert geo.n_molecules == 2
+    assert "S···S" in geo.contacts
+    assert "<div" in multimol_3d_html(n2_rel, slab_count=bundle.slab_count, mol_count=bundle.mol_count, distance_lines=list(geo.contacts.values()))
+    assert multimol_top_side_png(n2_rel, slab_count=bundle.slab_count, mol_count=bundle.mol_count).startswith(b"\x89PNG")
+
+    drep = analyze_disulfide_geometry(
+        bundle.structures["reference_slab_relaxed"],
+        bundle.structures["disulfide_gas_relaxed"],
+        bundle.structures["disulfide_adsorbed_initial"],
+        bundle.structures["disulfide_adsorbed_relaxed"],
+        bundle.slab_count,
+    )
+    assert drep.d_ss_relaxed_A is not None
+
 

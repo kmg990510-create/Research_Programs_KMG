@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 
+from typing import Sequence
+
 import numpy as np
 import py3Dmol
 from ase import Atoms
@@ -12,6 +14,8 @@ from ase.io import write as ase_write
 
 from ads_core.model import PoseResult
 from ads_core.pipeline import PoseArtifact
+from ads_core.report.coverage_view import ContactLine, MOLECULE_COLORS, unwrap_molecule_groups
+from ads_core.simulation.md import MdResult
 from labkit.plot_theme import MARK, SURFACE
 
 
@@ -75,6 +79,44 @@ def _closest_pair_coords(
     )
 
 
+def _trajectory_3d_html(
+    frames: Sequence[Atoms],
+    pose_id: str,
+    width: int = 560,
+    height: int = 420,
+    *,
+    cell_atoms: Atoms | None = None,
+) -> str:
+    """Render interactive py3Dmol animation for a multi-frame trajectory with unit-cell box."""
+    view = py3Dmol.view(width=width, height=height)
+    view.setBackgroundColor(SURFACE)
+    box_atoms = cell_atoms if cell_atoms is not None else frames[0]
+    view.addModel(atoms_to_cif_str(box_atoms), "cif")
+    view.addUnitCell({"model": 0}, {"box": {"color": "#8a8a8a"}})
+    view.setStyle({"model": 0}, {})  # keep unit-cell box without double-drawing static atoms
+
+    multi_xyz = "".join(
+        atoms_to_xyz_str(frame, comment=f"{pose_id} frame {idx}")
+        for idx, frame in enumerate(frames)
+    )
+    view.addModelsAsFrames(multi_xyz, "xyz")
+    view.setStyle({"model": 1}, {"stick": {"radius": 0.14}, "sphere": {"scale": 0.34}, "colorscheme": "Jmol"})
+    if len(frames) > 1:
+        view.animate({"loop": "forward", "interval": 160})
+    view.zoomTo()
+    return view._make_html()
+
+
+def md_3d_html(
+    md_result: MdResult,
+    width: int = 560,
+    height: int = 420,
+) -> str:
+    """Render interactive py3Dmol 3D trajectory animation for one ``MdResult``."""
+    frames = md_result.trajectory_frames if md_result.trajectory_frames else (md_result.final_atoms,)
+    return _trajectory_3d_html(frames, md_result.pose_id, width=width, height=height)
+
+
 def pose_3d_html(
     artifact: PoseArtifact,
     result: PoseResult,
@@ -83,24 +125,18 @@ def pose_3d_html(
     height: int = 420,
 ) -> str:
     """Render interactive py3Dmol HTML for either Ghost comparison or relaxation trajectory animation."""
+    if mode == "trajectory" and len(artifact.trajectory_frames) > 1:
+        slab_cif_atoms = artifact.relaxed_atoms[list(artifact.slab_indices)]
+        return _trajectory_3d_html(
+            artifact.trajectory_frames,
+            result.pose_id,
+            width=width,
+            height=height,
+            cell_atoms=slab_cif_atoms,
+        )
+
     view = py3Dmol.view(width=width, height=height)
     view.setBackgroundColor(SURFACE)
-
-    if mode == "trajectory" and len(artifact.trajectory_frames) > 1:
-        multi_xyz = "".join(
-            atoms_to_xyz_str(frame, comment=f"{result.pose_id} step {idx}")
-            for idx, frame in enumerate(artifact.trajectory_frames)
-        )
-        slab_cif = atoms_to_cif_str(artifact.relaxed_atoms[list(artifact.slab_indices)])
-        view.addModel(slab_cif, "cif")
-        view.addUnitCell({"model": 0}, {"box": {"color": "#8a8a8a"}})
-        view.setStyle({"model": 0}, {})  # keep unit-cell box without double-drawing static slab atoms
-
-        view.addModelsAsFrames(multi_xyz, "xyz")
-        view.setStyle({"model": 1}, {"stick": {"radius": 0.14}, "sphere": {"scale": 0.34}, "colorscheme": "Jmol"})
-        view.animate({"loop": "forward", "interval": 160})
-        view.zoomTo()
-        return view._make_html()
 
     slab_atoms = artifact.relaxed_atoms[list(artifact.slab_indices)]
     mol_relaxed = _unwrap_mol_near_slab(artifact.relaxed_atoms, artifact.slab_indices, artifact.mol_indices)
@@ -150,6 +186,147 @@ def pose_3d_html(
                 "fontSize": 12,
                 "backgroundOpacity": 0.85,
                 "borderColor": MARK,
+                "borderThickness": 1,
+            },
+        )
+
+    view.zoomTo()
+    return view._make_html()
+
+
+_CONTACT_COLOR_MAP = {
+    "S···S": "#d62728",
+    "S–S bond": "#d62728",
+    "N···S": "#1f77b4",
+    "N···N": "#9467bd",
+    "H···S/N": "#ff7f0e",
+    "Heavy···Heavy": MARK,
+    "COM···COM": "#2ca02c",
+    "N···N span": "#9467bd",
+}
+
+
+def multimol_3d_html(
+    relaxed_atoms: Atoms,
+    *,
+    slab_count: int = 0,
+    mol_count: int = 15,
+    initial_atoms: Atoms | None = None,
+    repeat_xy: int = 1,
+    show_ghost: bool = True,
+    color_by_molecule: bool = True,
+    distance_lines: Sequence[ContactLine] = (),
+    width: int = 600,
+    height: int = 440,
+) -> str:
+    """Interactive py3Dmol 3D viewer for N=1..4 / disulfide / multilayer structures with contacts."""
+    view = py3Dmol.view(width=width, height=height)
+    view.setBackgroundColor(SURFACE)
+    rep = max(1, min(2, int(repeat_xy)))
+
+    has_slab = slab_count > 0 and len(relaxed_atoms) > slab_count
+    slab_atoms = relaxed_atoms[:slab_count].copy() if has_slab else relaxed_atoms.copy()
+
+    # Model 0: Slab (repeated if requested) with primary unit-cell wireframe
+    slab_draw = slab_atoms.repeat((rep, rep, 1)) if (has_slab and rep > 1) else slab_atoms
+    if has_slab:
+        view.addModel(atoms_to_cif_str(slab_atoms), "cif")
+        view.addUnitCell({"model": 0}, {"box": {"color": "#8a8a8a"}})
+        if rep > 1:
+            view.setStyle({"model": 0}, {})
+            view.addModel(atoms_to_xyz_str(slab_draw, comment="slab_repeat"), "xyz")
+            slab_model_id = 1
+            next_model_id = 2
+        else:
+            slab_model_id = 0
+            next_model_id = 1
+        view.setStyle(
+            {"model": slab_model_id},
+            {"stick": {"radius": 0.10, "opacity": 0.68}, "sphere": {"scale": 0.30, "opacity": 0.68}, "colorscheme": "Jmol"},
+        )
+    else:
+        # Gas-phase molecule in vacuum box
+        view.addModel(atoms_to_cif_str(relaxed_atoms), "cif")
+        view.addUnitCell({"model": 0}, {"box": {"color": "#8a8a8a"}})
+        view.setStyle({"model": 0}, {})
+        next_model_id = 1
+
+    cell = np.asarray(relaxed_atoms.cell)
+    mol_groups = unwrap_molecule_groups(relaxed_atoms, slab_count if has_slab else 0, mol_count)
+    for m_idx, grp in enumerate(mol_groups):
+        if rep > 1 and has_slab:
+            copies = []
+            for ix in range(rep):
+                for iy in range(rep):
+                    dup = grp.copy()
+                    dup.translate(ix * cell[0] + iy * cell[1])
+                    copies.append(dup)
+            combined_grp = copies[0]
+            for c_atom in copies[1:]:
+                combined_grp += c_atom
+        else:
+            combined_grp = grp
+
+        view.addModel(atoms_to_xyz_str(combined_grp, comment=f"mol_{m_idx + 1}"), "xyz")
+        if color_by_molecule and len(mol_groups) > 1:
+            tint = MOLECULE_COLORS[m_idx % len(MOLECULE_COLORS)]
+            view.setStyle(
+                {"model": next_model_id},
+                {
+                    "stick": {"radius": 0.16, "colorscheme": "Jmol"},
+                    "sphere": {"scale": 0.34, "colorscheme": "Jmol"},
+                },
+            )
+            # Highlight carbon backbone with distinct per-molecule color while keeping S/N/H readable
+            view.setStyle(
+                {"model": next_model_id, "elem": "C"},
+                {"stick": {"radius": 0.16, "color": tint}, "sphere": {"scale": 0.34, "color": tint}},
+            )
+        else:
+            view.setStyle(
+                {"model": next_model_id},
+                {"stick": {"radius": 0.16}, "sphere": {"scale": 0.35}, "colorscheme": "Jmol"},
+            )
+        next_model_id += 1
+
+    if show_ghost and initial_atoms is not None and len(initial_atoms) > (slab_count if has_slab else 0):
+        init_groups = unwrap_molecule_groups(initial_atoms, slab_count if has_slab else 0, mol_count)
+        for grp in init_groups:
+            view.addModel(atoms_to_xyz_str(grp, comment="initial_ghost"), "xyz")
+            view.setStyle(
+                {"model": next_model_id},
+                {
+                    "stick": {"radius": 0.08, "color": "#888888", "opacity": 0.32},
+                    "sphere": {"scale": 0.20, "color": "#888888", "opacity": 0.32},
+                },
+            )
+            next_model_id += 1
+
+    for line in distance_lines:
+        color = _CONTACT_COLOR_MAP.get(line.kind, MARK)
+        start = {"x": line.start_xyz[0], "y": line.start_xyz[1], "z": line.start_xyz[2]}
+        end = {"x": line.end_xyz[0], "y": line.end_xyz[1], "z": line.end_xyz[2]}
+        view.addCylinder(
+            {
+                "start": start,
+                "end": end,
+                "radius": 0.06,
+                "color": color,
+                "dashed": True,
+                "fromCap": 1,
+                "toCap": 1,
+            }
+        )
+        mid = {k: 0.5 * (start[k] + end[k]) for k in ("x", "y", "z")}
+        view.addLabel(
+            line.label,
+            {
+                "position": mid,
+                "backgroundColor": SURFACE,
+                "fontColor": "#111111",
+                "fontSize": 11,
+                "backgroundOpacity": 0.88,
+                "borderColor": color,
                 "borderThickness": 1,
             },
         )

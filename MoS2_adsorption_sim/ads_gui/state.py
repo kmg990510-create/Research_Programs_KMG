@@ -210,8 +210,8 @@ def active() -> tuple[str, BatchRun, ReviewState, pd.DataFrame]:
     run = load_run(batch)
     review = get_review(batch)
     frame = poses_frame(run, review)
-    if frame.empty:
-        st.warning("This batch contains no evaluated poses. Check Run settings or warnings.")
+    if frame.empty and not run.md_results:
+        st.warning("This batch contains no evaluated poses or MD runs. Check Run settings or warnings.")
         st.stop()
     return batch, run, review, frame
 
@@ -264,3 +264,70 @@ def stop_if_empty(frame: pd.DataFrame) -> None:
     if frame.empty:
         st.info("No poses match the active filters in the sidebar.")
         st.stop()
+
+
+def render_data_manager(batch: str | None, existing_mol_files: list[Path]) -> None:
+    """Render the soft-delete / trash restore expander used on Run.py."""
+    trashed_batches = list_trashed_items("results")
+    trashed_molecules = list_trashed_items("molecules")
+    trash_total = len(trashed_batches) + len(trashed_molecules)
+
+    with st.expander(f"Manage data (delete / trash: {trash_total})", expanded=False):
+        if batch is not None:
+            st.markdown("**Active simulation batch**")
+            if st.button(f"Move batch '{batch}' to trash", key="run_trash_active_batch"):
+                trash_batch(batch)
+                st.toast(f"Moved batch '{batch}' to trash.")
+                st.rerun()
+        if existing_mol_files:
+            st.markdown("**Uploaded molecule files**")
+            del_mols = st.multiselect(
+                "Select molecule files to move to trash",
+                [p.name for p in existing_mol_files],
+                default=[],
+                key="run_trash_mol_select",
+            )
+            if st.button("Move selected molecule(s) to trash", disabled=not del_mols, key="run_trash_mols_btn"):
+                for fname in del_mols:
+                    trash_molecule_file(fname)
+                st.toast(f"Moved {len(del_mols)} molecule file(s) to trash.")
+                st.rerun()
+
+        st.divider()
+        st.markdown("**Trash bin (restore or permanently delete)**")
+        if not trashed_batches and not trashed_molecules:
+            st.caption("Trash is empty.")
+            return
+
+        trash_items = [
+            {"scope": "results", "label": f"[Batch] {e['original_name']} ({e['deleted_at'][:19]})", **e}
+            for e in trashed_batches
+        ] + [
+            {"scope": "molecules", "label": f"[Molecule] {e['original_name']} ({e['deleted_at'][:19]})", **e}
+            for e in trashed_molecules
+        ]
+        labels = [item["label"] for item in trash_items]
+        selected_label = st.selectbox("Trashed item", labels, key="run_trash_selected")
+        selected_item = trash_items[labels.index(selected_label)]
+
+        t1, t2 = st.columns(2)
+        if t1.button("Restore selected item", key="run_restore_trash_btn"):
+            try:
+                restored_name = restore_trashed_item(selected_item["scope"], selected_item["entry_id"])
+                if selected_item["scope"] == "results":
+                    st.session_state[ACTIVE_BATCH_KEY] = restored_name
+                st.toast(f"Restored '{restored_name}'.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Restore failed: {exc}")
+
+        confirm_perm = t2.checkbox("Confirm permanent deletion", value=False, key="run_confirm_perm_delete")
+        if t2.button(
+            "Delete permanently",
+            disabled=not confirm_perm,
+            type="secondary",
+            key="run_perm_delete_btn",
+        ):
+            delete_trashed_item_permanently(selected_item["scope"], selected_item["entry_id"])
+            st.toast(f"Permanently deleted '{selected_item['original_name']}'.")
+            st.rerun()
