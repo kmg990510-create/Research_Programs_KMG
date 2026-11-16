@@ -9,6 +9,7 @@ from ads_core.calculators.factory import build_calculator_bundle
 from ads_core.config import Config, ConfigKeyError, load_config
 from ads_core.model import (
     CalculatorSettings,
+    MdSettings,
     MoleculeSettings,
     PoseSettings,
     QualitySettings,
@@ -56,6 +57,7 @@ def test_every_config_key_is_read() -> None:
     PoseSettings.from_config(config)
     CalculatorSettings.from_config(config)
     RelaxationSettings.from_config(config)
+    MdSettings.from_config(config)
     QualitySettings.from_config(config)
     ReportSettings.from_config(config)
 
@@ -78,3 +80,8 @@ def test_invalid_defect_and_orientation_rejected() -> None:
     data2["poses"]["orientations"] = ["sideways"]
     with pytest.raises(ValueError, match="orientation"):
         PoseSettings.from_config(Config(data2))
+
+    data3 = config.as_dict()
+    data3["md"]["temperature_K"] = -10.0
+    with pytest.raises(ValueError, match="temperature_K"):
+        MdSettings.from_config(Config(data3))

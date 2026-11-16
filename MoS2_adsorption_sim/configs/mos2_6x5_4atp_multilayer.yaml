@@ -1,0 +1,358 @@
+# 6x5 MoS2 (64.86 Å²/mol) Track B: 1층 -> 2층 -> 3층 다층 적층 에너지·결합력 감쇠 스터디
+# 가설 2 (E_ads^(1) -> E_ads^(2) -> E_ads^(3)) 및 층별 1분자/만충층 탈착 장벽 비교용
+
+study:
+  name: "mos2_6x5_4atp_multilayer"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 6
+  supercell_ny: 5
+  defect_type: "pristine"
+  vacuum_A: 38.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.3
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+cluster_motifs: {}
+
+cluster_cases: {}
+
+grid_cases:
+  # --- Layer 1 baseline (bare MoS2) ---
+  L1_N1_monomer:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+
+  L1_N4_parallel:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+  # --- Layer 2 single-molecule probes on 1L (N=1 added -> total 5) ---
+  L2_N1_ontop_par:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L2_N1_ontop_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L2_N1_bridge_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L2_N1_bridge_par:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  # --- Layer 2 full-monolayer stacking polymorphs on 1L (N=4 added -> total 8) ---
+  L2_N4_AA_par:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L2_N4_AA_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L2_N4_AB_x_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.30]
+
+  L2_N4_AB_y_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.55]
+
+  L2_N4_AB_diag_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L2_N4_AB_diag_par:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L2_N4_brick_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.55]
+
+  L2_N4_cross90:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 240.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  # --- Layer 3 single-molecule probes on best 2L (N=1 added -> total 9) ---
+  L3_N1_A_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L3_N1_B_anti:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L3_N1_C_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.02, 0.05]
+
+  # --- Layer 3 full-monolayer polymorphs on best 2L (N=4 added -> total 12) ---
+  L3_N4_ABA_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L3_N4_ABA_anti:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L3_N4_ABC_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.02, 0.05]
+
+  L3_N4_ABC_anti:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.02, 0.05]
+
+  L3_N4_B_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L3_N4_brick_par:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L3_N4_cross90:
+    base_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 240.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.02, 0.05]
+
+vacancy_desorption:
+  source_cases:
+    - "L1_N4_parallel"
+    - "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    - "best_of:L3_N4_ABA_par,L3_N4_ABA_anti,L3_N4_ABC_par,L3_N4_ABC_anti,L3_N4_B_par,L3_N4_brick_par,L3_N4_cross90"
+  remove_mol_index: 0
+  sequential_pairs:
+    L2_N1_ontop_par: "L1_N4_parallel"
+    L2_N1_ontop_anti: "L1_N4_parallel"
+    L2_N1_bridge_anti: "L1_N4_parallel"
+    L2_N1_bridge_par: "L1_N4_parallel"
+    L3_N1_A_par: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    L3_N1_B_anti: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    L3_N1_C_par: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

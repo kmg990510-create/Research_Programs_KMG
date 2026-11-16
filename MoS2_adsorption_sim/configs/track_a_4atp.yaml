@@ -1,0 +1,160 @@
+# Track A (미리 쌓인 4-ATP의 안정화 검증) 연구 설정 파일
+# 모든 과학적 수치(슈퍼셀 크기, 피복률 N, 클러스터·그리드 배치, 결합 길이, 열탈착 온도 등)는 여기에만 둔다.
+# 코드 수정 없이 supercell, N, 적층(base_case/layer_index)을 바꿔 재실행할 수 있다.
+
+study:
+  name: "mos2_6x6_4atp_track_a"          # 결과 저장 배치 이름 (data/results/<name>)
+  base_config_path: "config.yaml"         # 계산기·분자·D3 기본 설정 파일
+  output_dir: "data/results"              # 결과 루트 폴더
+
+substrate:
+  supercell_nx: 6                         # MoS2 슈퍼셀 x 반복 수 (언제든 변경 가능)
+  supercell_ny: 6                         # MoS2 슈퍼셀 y 반복 수 (언제든 변경 가능)
+  defect_type: "pristine"                 # 기판 결함 유형 ("pristine", "V_S", "V_S2")
+  vacuum_A: 26.0                          # 슬랩 수직 진공층 두께 (Å; 향후 다층 확장 여유 포함)
+  fix_bottom_layer: true                  # 하부 S 원자층 고정 여부
+
+adsorbate:
+  molecule_id: "4-ATP"                    # 흡착 분자 식별자
+  molecule_path: "data/molecules/4-ATP.xyz"  # 분자 구조 파일 경로
+  anchor_element: "S"                     # 앵커(고정) 기준 원소 (주축 방향 판별 및 디설파이드 결합용)
+  initial_height_A: 3.1                   # 기반 표면 최상단 원자 평면 기준 초기 배치 높이 (Å)
+  min_initial_distance_A: 1.6             # 기판/이웃 분자와의 최소 허용 초기 거리 (Å; config.yaml 기준과 동일)
+  interlayer_gap_A: 3.3                   # 기존 분자층(base_case) 위에 다음 층을 올릴 때의 초기 수직 간격 (Å)
+
+relaxation:
+  optimizer: "BFGS"                       # 구조 최적화 알고리즘 ("BFGS", "LBFGS", "FIRE")
+  fmax_eV_per_A: 0.03                     # 힘 수렴 판정 기준 (eV/Å)
+  max_steps: 250                          # 다분자 복합체 최대 최적화 스텝 수
+
+# 클러스터 배치 모티프: 각 행은 중심 대비 [dx_A, dy_A, azimuth_deg, tilt_deg]
+cluster_motifs:
+  dimer_head_to_tail:                     # 2분자 머리-꼬리 수소결합 (-NH2 ... HS-)
+    - [-4.75, 0.0, 0.0, 0.0]
+    - [4.75, 0.0, 0.0, 0.0]
+  dimer_head_to_head:                     # 2분자 머리-머리 대칭 배치 (-NH2 ... H2N- / -SH ... HS-)
+    - [-4.9, 0.0, 0.0, 0.0]
+    - [4.9, 0.0, 180.0, 0.0]
+  dimer_side_by_side:                     # 2분자 나란히 측면 인접 (반데르발스 측면 접촉)
+    - [0.0, -3.5, 0.0, 0.0]
+    - [0.0, 3.5, 0.0, 0.0]
+  trimer_triangle:                        # 3분자 삼각 고리형 수소결합 클러스터
+    - [-4.8, -2.8, 30.0, 0.0]
+    - [4.8, -2.8, 150.0, 0.0]
+    - [0.0, 5.6, 270.0, 0.0]
+  trimer_L_hbond:                         # 3분자 L자형(2열) 수소결합 클러스터 (18.96 Å 셀 내 주기 겹침 방지)
+    - [-4.6, -3.5, 0.0, 0.0]
+    - [4.6, -3.5, 0.0, 0.0]
+    - [0.0, 3.8, 180.0, 0.0]
+
+# 클러스터 케이스: base_case가 빈 문자열이면 MoS2 기판 직접 위(1층), 지정되면 해당 이완 층 위(다층)
+cluster_cases:
+  N2_dimer_head_to_tail:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_head_to_tail"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N2_dimer_head_to_head:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_head_to_head"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N2_dimer_side_by_side:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_side_by_side"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N3_trimer_triangle:
+    base_case: ""
+    layer_index: 1
+    motif: "trimer_triangle"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N3_trimer_L_hbond:
+    base_case: ""
+    layer_index: 1
+    motif: "trimer_L_hbond"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+
+# 주기 격자(grid) 케이스: 임의의 (grid_nx × grid_ny = N) 포화층/부분층을 슈퍼셀 비율로 배치
+grid_cases:
+  N1_monomer_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+  N4_monolayer_parallel:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_monolayer_antiparallel:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "antiparallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_monolayer_tilted:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "antiparallel"
+    tilt_deg: 28.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+vacancy_desorption:
+  # 연속 단층에서 분자 1개를 제거한(공석 생성) 뒤 이완하여 단일 분자 탈착 에너지 E_des,vac 계산
+  source_cases:
+    - "N4_monolayer_parallel"
+    - "N4_monolayer_antiparallel"
+  remove_mol_index: 0                     # 제거할 층 내 분자 인덱스 (0-based)
+  sequential_pairs:                       # 순차 탈착(N -> N-1) 비교 쌍 (자식케이스: 부모케이스)
+    N2_dimer_head_to_tail: "N1_monomer_flat"
+    N3_trimer_triangle: "N2_dimer_head_to_tail"
+    N4_monolayer_parallel: "N3_trimer_L_hbond"
+    N4_monolayer_antiparallel: "N3_trimer_triangle"
+
+disulfide_check:
+  # Step A2 가교 후보 확인: 2 Ar-SH -> Ar-S-S-Ar + H2 (또는 + 0.5 O2 -> Ar-S-S-Ar + H2O)
+  enabled: true
+  s_s_bond_A: 2.05                        # 디설파이드 S-S 결합 초기 길이 (Å)
+  c_s_s_angle_deg: 103.0                  # 디설파이드 C-S-S 결합각 초기값 (deg)
+  dihedral_deg: 85.0                      # C-S-S-C 이면각 초기값 (deg)
+  h_h_bond_A: 0.74                        # 참조 기체 H2 결합 길이 (Å)
+  o_o_bond_A: 1.21                        # 참조 기체 O2 결합 길이 (Å)
+  h2o_oh_bond_A: 0.96                     # 참조 기체 H2O O-H 결합 길이 (Å)
+  h2o_angle_deg: 104.5                    # 참조 기체 H2O H-O-H 각도 (deg)
+  initial_height_A: 3.1                   # MoS2 위 디설파이드 이합체 초기 배치 높이 (Å)
+  azimuth_deg: 0.0                        # 디설파이드 방위각 (deg)
+
+thermal_analysis:
+  # Polanyi-Wigner 1차 열탈착 반감기 비교 기준 (시뮬레이션 탈착 에너지 -> 온도별 생존 시간 환산)
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0               # 실험 어닐링 시간 (1 h = 3600 s)
+  min_intermol_hbond_cutoff_A: 3.5        # 이웃 분자 간 N/S 비수소 무거운 원자 근접 판정 컷오프 (Å)

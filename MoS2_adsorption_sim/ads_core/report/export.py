@@ -30,9 +30,10 @@ from ads_core.model import (
     SlabSpec,
     WarningRecord,
 )
-from ads_core.pipeline import BatchRun, PoseArtifact, ordered_groups, poses_frame, status_counts
+from ads_core.pipeline import BatchRun, PoseArtifact, md_results_table, ordered_groups, poses_frame, status_counts
 from ads_core.report.summary import molecule_summary
 from ads_core.review import ReviewState
+from ads_core.simulation.md import MdResult, MdStep
 from ads_core.simulation.reference import ReferenceResult
 from ads_core.simulation.relax import (
     BindingCurvePoint,
@@ -45,10 +46,12 @@ POSES_FILE = "poses_summary.csv"
 MOLECULES_FILE = "molecule_summary.csv"
 WARNINGS_FILE = "warnings.csv"
 BINDING_CURVES_SUMMARY_FILE = "binding_curves_summary.csv"
+MD_SUMMARY_FILE = "md_summary.csv"
 METADATA_FILE = "run_metadata.json"
 BATCH_STATE_FILE = "batch_state.json"
 RELAX_CURVES_DIR = "relaxation_curves"
 BINDING_CURVES_DIR = "binding_curves"
+MD_CURVES_DIR = "md_trajectories"
 STRUCTURES_DIR = "structures"
 TRAJECTORIES_DIR = "trajectories"
 _ENCODING = "utf-8-sig"
@@ -131,6 +134,24 @@ def relaxation_curve_table(artifact: PoseArtifact) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=columns)
 
 
+def md_curve_table(md: MdResult) -> pd.DataFrame:
+    columns = ["step", "time_fs", "potential_energy_eV", "kinetic_energy_eV", "temperature_K", "dz_com_A"]
+    if not md.trajectory_steps:
+        return pd.DataFrame(columns=columns)
+    rows = [
+        {
+            "step": s.step,
+            "time_fs": s.time_fs,
+            "potential_energy_eV": s.potential_energy_eV,
+            "kinetic_energy_eV": s.kinetic_energy_eV,
+            "temperature_K": s.temperature_K,
+            "dz_com_A": s.dz_com_A,
+        }
+        for s in md.trajectory_steps
+    ]
+    return pd.DataFrame(rows, columns=columns)
+
+
 def binding_curve_table(curve: BindingCurveResult) -> pd.DataFrame:
     columns = ["dz_A", "e_ads_total_eV", "e_ads_umlip_eV", "e_ads_d3_eV"]
     if not curve.points:
@@ -207,6 +228,7 @@ def run_metadata(run: BatchRun, review: ReviewState, frame: pd.DataFrame) -> dic
             "poses": int(len(frame)),
             "included_in_statistics": int(frame["included"].sum()) if not frame.empty else 0,
             "status": status_counts(frame),
+            "md_runs": len(run.md_results),
         },
         "references": [
             {
@@ -382,6 +404,39 @@ def _save_batch_state(run: BatchRun, out: Path) -> Path:
             }
             for bc in run.binding_curves
         ],
+        "md_results": [
+            {
+                "pose_id": m.pose_id,
+                "surface_id": m.surface_id,
+                "molecule_id": m.molecule_id,
+                "site_type": m.site_type,
+                "orientation": m.orientation,
+                "calculator_id": m.calculator_id,
+                "failed": m.failed,
+                "failure_message": m.failure_message,
+                "n_steps": m.n_steps,
+                "temperature_K": m.temperature_K,
+                "timestep_fs": m.timestep_fs,
+                "final_dz_com_A": m.final_dz_com_A,
+                "mean_dz_com_A": m.mean_dz_com_A,
+                "min_dz_com_A": m.min_dz_com_A,
+                "max_dz_com_A": m.max_dz_com_A,
+                "residence_fraction": m.residence_fraction,
+                "stayed_adsorbed": m.stayed_adsorbed,
+                "trajectory_steps": [
+                    {
+                        "step": s.step,
+                        "time_fs": s.time_fs,
+                        "potential_energy_eV": s.potential_energy_eV,
+                        "kinetic_energy_eV": s.kinetic_energy_eV,
+                        "temperature_K": s.temperature_K,
+                        "dz_com_A": s.dz_com_A,
+                    }
+                    for s in m.trajectory_steps
+                ],
+            }
+            for m in run.md_results
+        ],
     }
 
     struct_dir = out / STRUCTURES_DIR
@@ -399,6 +454,13 @@ def _save_batch_state(run: BatchRun, out: Path) -> Path:
         ase_write(struct_dir / f"{safe}_initial.xyz", art.initial_atoms, format="extxyz")
         if art.trajectory_frames:
             ase_write(traj_dir / f"{safe}_traj.xyz", list(art.trajectory_frames), format="extxyz")
+
+    for m in run.md_results:
+        safe = _safe_name(m.pose_id)
+        ase_write(struct_dir / f"{safe}_md_initial.xyz", m.initial_atoms, format="extxyz")
+        ase_write(struct_dir / f"{safe}_md_final.xyz", m.final_atoms, format="extxyz")
+        if m.trajectory_frames:
+            ase_write(traj_dir / f"{safe}_md_traj.xyz", list(m.trajectory_frames), format="extxyz")
 
     state_path = out / BATCH_STATE_FILE
     state_path.write_text(json.dumps(state_payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -550,6 +612,41 @@ def load_batch_run(batch_dir: Path | str) -> BatchRun:
             )
         )
 
+    md_results: list[MdResult] = []
+    for m in payload.get("md_results", []):
+        safe = _safe_name(m["pose_id"])
+        init_path = struct_dir / f"{safe}_md_initial.xyz"
+        final_path = struct_dir / f"{safe}_md_final.xyz"
+        traj_path = traj_dir / f"{safe}_md_traj.xyz"
+        init_atoms = ase_read(init_path, format="extxyz") if init_path.is_file() else slabs[m["surface_id"]].atoms.copy()
+        final_atoms = ase_read(final_path, format="extxyz") if final_path.is_file() else init_atoms.copy()
+        md_frames = tuple(ase_read(traj_path, index=":", format="extxyz")) if traj_path.is_file() else ()
+        md_results.append(
+            MdResult(
+                pose_id=m["pose_id"],
+                surface_id=m["surface_id"],
+                molecule_id=m["molecule_id"],
+                site_type=m["site_type"],
+                orientation=m["orientation"],
+                calculator_id=m["calculator_id"],
+                failed=bool(m["failed"]),
+                failure_message=m["failure_message"],
+                n_steps=int(m["n_steps"]),
+                temperature_K=float(m["temperature_K"]),
+                timestep_fs=float(m["timestep_fs"]),
+                final_dz_com_A=m["final_dz_com_A"],
+                mean_dz_com_A=m["mean_dz_com_A"],
+                min_dz_com_A=m["min_dz_com_A"],
+                max_dz_com_A=m["max_dz_com_A"],
+                residence_fraction=m["residence_fraction"],
+                stayed_adsorbed=bool(m["stayed_adsorbed"]),
+                initial_atoms=init_atoms,
+                final_atoms=final_atoms,
+                trajectory_steps=tuple(MdStep(**s) for s in m["trajectory_steps"]),
+                trajectory_frames=md_frames,
+            )
+        )
+
     return BatchRun(
         name=payload["name"],
         config=config,
@@ -564,6 +661,7 @@ def load_batch_run(batch_dir: Path | str) -> BatchRun:
         artifacts=artifacts,
         binding_curves=binding_curves,
         build_warnings=[WarningRecord(**w) for w in payload.get("build_warnings", [])],
+        md_results=md_results,
     )
 
 
@@ -602,6 +700,15 @@ def export_run(run: BatchRun, review: ReviewState | None, output_dir: Path | str
         write_csv(binding_curve_table(bc), bind_dir / f"{name}.csv")
     if run.binding_curves:
         write_csv(binding_curves_summary_table(run.binding_curves), out / BINDING_CURVES_SUMMARY_FILE)
+
+    md_dir = out / MD_CURVES_DIR
+    if md_dir.exists():
+        for old in md_dir.glob("*.csv"):
+            old.unlink()
+    if run.md_results:
+        write_csv(md_results_table(run.md_results), out / MD_SUMMARY_FILE)
+        for m in run.md_results:
+            write_csv(md_curve_table(m), md_dir / f"{_safe_name(m.pose_id)}.csv")
 
     struct_dir = out / STRUCTURES_DIR
     struct_dir.mkdir(parents=True, exist_ok=True)

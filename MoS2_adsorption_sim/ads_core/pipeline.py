@@ -19,6 +19,7 @@ from ads_core.builders.slab import build_mos2_slab
 from ads_core.calculators.factory import build_calculator_bundle
 from ads_core.config import Config
 from ads_core.model import (
+    MdSettings,
     MoleculeSettings,
     MoleculeSpec,
     PoseResult,
@@ -29,6 +30,7 @@ from ads_core.model import (
     WarningRecord,
 )
 from ads_core.review import ReviewState, make_group_key
+from ads_core.simulation.md import MdResult, run_pose_md
 from ads_core.simulation.quality import counts_in_summary, evaluate_pose
 from ads_core.simulation.reference import ReferenceCache, ReferenceResult
 from ads_core.simulation.relax import (
@@ -70,6 +72,7 @@ class BatchRun:
     artifacts: dict[str, PoseArtifact]
     binding_curves: list[BindingCurveResult] = field(default_factory=list)
     build_warnings: list[WarningRecord] = field(default_factory=list)
+    md_results: list[MdResult] = field(default_factory=list)
 
 
 def _resolve_molecule(item: str | Path, config: Config) -> MoleculeSpec:
@@ -123,10 +126,18 @@ def run_batch(
     scan_binding_curves: bool = False,
     scan_all_sites: bool = False,
     compare_no_d3: bool = False,
+    run_md: bool | None = None,
+    md_temperature_K: float | None = None,
+    md_steps: int | None = None,
+    md_timestep_fs: float | None = None,
+    md_seed: int | None = None,
+    skip_relax: bool = False,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> BatchRun:
     """Build slabs/molecules/poses, relax with uMLIP+D3 (or synth), and evaluate quality in memory."""
     slab_defaults = SlabSettings.from_config(config)
+    md_defaults = MdSettings.from_config(config)
+    do_md = md_defaults.enabled if run_md is None else bool(run_md)
     default_sc = supercell if supercell is not None else (slab_defaults.supercell_nx, slab_defaults.supercell_ny)
     surface_tokens = list(surfaces) if surfaces else [slab_defaults.defect_type]
     molecule_items = list(molecules) if molecules else [MoleculeSettings.from_config(config).presets[0]]
@@ -172,21 +183,23 @@ def run_batch(
     results: list[PoseResult] = []
     artifacts: dict[str, PoseArtifact] = {}
     binding_curves: list[BindingCurveResult] = []
+    md_results: list[MdResult] = []
 
     done_count = 0
     for active_bundle, id_suffix in bundles_to_run:
         for slab, mol, poses in pose_bundles:
-            ref_slab = ref_cache.get_slab(slab, active_bundle, config)
-            ref_mol = ref_cache.get_molecule(mol, active_bundle, config)
-            references_seen[("slab", slab.surface_id, active_bundle.calculator_id)] = ref_slab
-            references_seen[("molecule", mol.molecule_id, active_bundle.calculator_id)] = ref_mol
+            if not skip_relax:
+                ref_slab = ref_cache.get_slab(slab, active_bundle, config)
+                ref_mol = ref_cache.get_molecule(mol, active_bundle, config)
+                references_seen[("slab", slab.surface_id, active_bundle.calculator_id)] = ref_slab
+                references_seen[("molecule", mol.molecule_id, active_bundle.calculator_id)] = ref_mol
 
-            if scan_binding_curves and poses:
-                for curve_pose in _select_curve_poses(poses, scan_all_sites):
-                    tagged_curve_pose = (
-                        replace(curve_pose, pose_id=f"{curve_pose.pose_id}{id_suffix}") if id_suffix else curve_pose
-                    )
-                    binding_curves.append(scan_binding_curve(tagged_curve_pose, ref_slab, ref_mol, active_bundle, config))
+                if scan_binding_curves and poses:
+                    for curve_pose in _select_curve_poses(poses, scan_all_sites):
+                        tagged_curve_pose = (
+                            replace(curve_pose, pose_id=f"{curve_pose.pose_id}{id_suffix}") if id_suffix else curve_pose
+                        )
+                        binding_curves.append(scan_binding_curve(tagged_curve_pose, ref_slab, ref_mol, active_bundle, config))
 
             for pose in poses:
                 active_pose = replace(pose, pose_id=f"{pose.pose_id}{id_suffix}") if id_suffix else pose
@@ -194,19 +207,33 @@ def run_batch(
                 if progress_callback is not None:
                     progress_callback(done_count, total_poses, active_pose.pose_id)
 
-                relaxation = relax_pose(active_pose, active_bundle, config)
-                pose_result = evaluate_pose(active_pose, relaxation, ref_slab, ref_mol, mol, slab, active_bundle, config)
-                results.append(pose_result)
-                artifacts[active_pose.pose_id] = PoseArtifact(
-                    pose_id=active_pose.pose_id,
-                    slab_indices=active_pose.slab_indices,
-                    mol_indices=active_pose.mol_indices,
-                    site_xy_A=active_pose.site_xy_A,
-                    initial_atoms=relaxation.initial_atoms,
-                    relaxed_atoms=relaxation.relaxed_atoms,
-                    trajectory_steps=relaxation.trajectory_steps,
-                    trajectory_frames=relaxation.trajectory_frames,
-                )
+                if not skip_relax:
+                    relaxation = relax_pose(active_pose, active_bundle, config)
+                    pose_result = evaluate_pose(active_pose, relaxation, ref_slab, ref_mol, mol, slab, active_bundle, config)
+                    results.append(pose_result)
+                    artifacts[active_pose.pose_id] = PoseArtifact(
+                        pose_id=active_pose.pose_id,
+                        slab_indices=active_pose.slab_indices,
+                        mol_indices=active_pose.mol_indices,
+                        site_xy_A=active_pose.site_xy_A,
+                        initial_atoms=relaxation.initial_atoms,
+                        relaxed_atoms=relaxation.relaxed_atoms,
+                        trajectory_steps=relaxation.trajectory_steps,
+                        trajectory_frames=relaxation.trajectory_frames,
+                    )
+
+                if do_md:
+                    md_results.append(
+                        run_pose_md(
+                            active_pose,
+                            active_bundle,
+                            config,
+                            temperature_K=md_temperature_K,
+                            steps=md_steps,
+                            timestep_fs=md_timestep_fs,
+                            seed=md_seed,
+                        )
+                    )
 
     return BatchRun(
         name=batch_name,
@@ -222,7 +249,56 @@ def run_batch(
         artifacts=artifacts,
         binding_curves=binding_curves,
         build_warnings=build_warnings,
+        md_results=md_results,
     )
+
+
+def md_results_table(md_results: Sequence[MdResult]) -> pd.DataFrame:
+    """Convert ``MdResult`` records into a flat summary DataFrame."""
+    columns = [
+        "pose_id",
+        "surface_id",
+        "molecule_id",
+        "site_type",
+        "orientation",
+        "calculator_id",
+        "failed",
+        "failure_message",
+        "n_steps",
+        "temperature_K",
+        "timestep_fs",
+        "final_dz_com_A",
+        "mean_dz_com_A",
+        "min_dz_com_A",
+        "max_dz_com_A",
+        "residence_fraction",
+        "stayed_adsorbed",
+    ]
+    if not md_results:
+        return pd.DataFrame(columns=columns)
+    rows = [
+        {
+            "pose_id": m.pose_id,
+            "surface_id": m.surface_id,
+            "molecule_id": m.molecule_id,
+            "site_type": m.site_type,
+            "orientation": m.orientation,
+            "calculator_id": m.calculator_id,
+            "failed": m.failed,
+            "failure_message": m.failure_message,
+            "n_steps": m.n_steps,
+            "temperature_K": m.temperature_K,
+            "timestep_fs": m.timestep_fs,
+            "final_dz_com_A": m.final_dz_com_A,
+            "mean_dz_com_A": m.mean_dz_com_A,
+            "min_dz_com_A": m.min_dz_com_A,
+            "max_dz_com_A": m.max_dz_com_A,
+            "residence_fraction": m.residence_fraction,
+            "stayed_adsorbed": m.stayed_adsorbed,
+        }
+        for m in md_results
+    ]
+    return pd.DataFrame(rows, columns=columns)
 
 
 def results_table(results: Sequence[PoseResult]) -> pd.DataFrame:

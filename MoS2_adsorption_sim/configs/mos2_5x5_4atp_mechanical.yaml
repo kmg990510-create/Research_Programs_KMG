@@ -1,0 +1,27 @@
+# 5x5 MoS2 4-ATP 국소 안정성·응력 스캔·연속 공석 탈착(Step 1-2 심화 검증)
+
+source_study:
+  study_yaml: "configs/mos2_5x5_4atp_stability.yaml"
+  results_dir: "data/results/mos2_5x5_4atp_stability"
+
+perturbation_check:
+  target_cases:
+    - "N4_brick_flat"
+    - "N4_parallel_flat"
+    - "N4_antiparallel_brick_flat"
+  amplitudes_A: [0.05, 0.10]
+  seed: 42
+  basin_energy_tol_eV: 0.02
+  basin_rmsd_tol_A: 0.30
+
+sheet_strain_check:
+  target_cases:
+    - "N4_brick_flat"
+    - "N4_parallel_flat"
+  scale_factors: [0.95, 0.98, 1.00, 1.03, 1.06, 1.10]
+
+double_vacancy_check:
+  source_cases:
+    - "N4_brick_flat"
+    - "N4_parallel_flat"
+  second_remove_mol_indices: [0, 1, 2]

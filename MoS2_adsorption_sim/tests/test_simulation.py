@@ -22,6 +22,7 @@ from ads_core.model import (
     STATUS_INVALID,
     STATUS_VALID,
 )
+from ads_core.simulation.md import run_pose_md
 from ads_core.simulation.reference import ReferenceCache
 from ads_core.simulation.relax import RelaxationResult, relax_pose, scan_binding_curve
 from ads_core.simulation.quality import counts_in_summary, evaluate_pose
@@ -301,3 +302,33 @@ def test_quality_flags_not_converged_desorbed_overlap_and_failure() -> None:
     assert "calculator_failed" in res_fail.reasons
     assert res_fail.e_ads_eV is None
     assert res_fail.d_min_A is None
+
+
+def test_run_pose_md_keeps_bottom_layer_fixed_and_records_residence() -> None:
+    config = load_config()
+    h2o = build_preset_molecule("H2O", config)
+    slab = build_mos2_slab(config, supercell=(2, 2), defect_type=DEFECT_PRISTINE)
+    pose = build_poses(
+        slab, h2o, config, site_types=[SITE_HOLLOW], orientations=[ORIENTATION_FLAT], azimuth_angles_deg=[0.0]
+    ).poses[0]
+    bundle = build_calculator_bundle(config, backend="synth_morse", d3_enabled=True)
+
+    md1 = run_pose_md(pose, bundle, config, temperature_K=300.0, steps=40, timestep_fs=0.5, seed=7)
+    md2 = run_pose_md(pose, bundle, config, temperature_K=300.0, steps=40, timestep_fs=0.5, seed=7)
+
+    assert not md1.failed
+    assert md1.n_steps == 40
+    assert md1.temperature_K == 300.0
+    assert md1.timestep_fs == 0.5
+    assert len(md1.trajectory_steps) == len(md1.trajectory_frames) >= 2
+    assert md1.trajectory_steps[0].step == 0
+    assert md1.trajectory_steps[-1].step == 40
+    assert md1.residence_fraction is not None and 0.0 <= md1.residence_fraction <= 1.0
+    assert md1.final_dz_com_A is not None
+
+    # Bottom S layer FixAtoms constraint must hold during Langevin dynamics
+    bot_idx = [i for i in pose.slab_indices if pose.atoms.get_tags()[i] == 0]
+    assert np.allclose(md1.final_atoms.positions[bot_idx], pose.atoms.positions[bot_idx], atol=1e-12)
+
+    # Deterministic seed yields identical final height
+    assert md1.final_dz_com_A == pytest.approx(md2.final_dz_com_A, abs=1e-10)

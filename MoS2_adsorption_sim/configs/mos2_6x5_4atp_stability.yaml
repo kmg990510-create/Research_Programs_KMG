@@ -1,0 +1,150 @@
+# 6x5 MoS2 중간 밀도(64.86 Å²/mol) 4-ATP 단층 안정성·탈착 에너지 스터디
+# 5x5(54.05 Å²/mol) 대비 밀도 완화 시 정적 탈착 에너지 차이 및 패킹 비교용
+
+study:
+  name: "mos2_6x5_4atp_stability"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 6
+  supercell_ny: 5
+  defect_type: "pristine"
+  vacuum_A: 26.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.3
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+cluster_motifs:
+  dimer_h2t:
+    - [-4.75, 0.0, 0.0, 0.0]
+    - [4.75, 0.0, 0.0, 0.0]
+  trimer_brick:
+    - [-4.74, -3.42, 0.0, 0.0]
+    - [4.74, -3.42, 0.0, 0.0]
+    - [0.0, 3.42, 0.0, 0.0]
+  herringbone_T90:
+    - [-2.77, -3.42, 90.0, 0.0]
+    - [6.71, -3.42, 180.0, 0.0]
+    - [-6.71, 3.42, 180.0, 0.0]
+    - [2.77, 3.42, 90.0, 0.0]
+  disordered_flat:
+    - [-2.82, -3.06, 345.0, 0.0]
+    - [6.71, -3.55, 345.0, 0.0]
+    - [-6.34, 3.07, 210.0, 0.0]
+    - [2.99, 3.19, 180.0, 0.0]
+
+cluster_cases:
+  N2_dimer_h2t:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_h2t"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N3_trimer_brick:
+    base_case: ""
+    layer_index: 1
+    motif: "trimer_brick"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_herringbone_T90:
+    base_case: ""
+    layer_index: 1
+    motif: "herringbone_T90"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_disordered_flat:
+    base_case: ""
+    layer_index: 1
+    motif: "disordered_flat"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+
+grid_cases:
+  N1_monomer_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+  N4_parallel_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_brick_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_antiparallel_brick_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "antiparallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+vacancy_desorption:
+  source_cases:
+    - "N4_parallel_flat"
+    - "N4_brick_flat"
+    - "N4_antiparallel_brick_flat"
+    - "N4_herringbone_T90"
+    - "N4_disordered_flat"
+  remove_mol_index: 0
+  sequential_pairs:
+    N2_dimer_h2t: "N1_monomer_flat"
+    N3_trimer_brick: "N2_dimer_h2t"
+    N4_parallel_flat: "N3_trimer_brick"
+    N4_brick_flat: "N3_trimer_brick"
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

@@ -1,0 +1,101 @@
+# 6x6 MoS2 고밀도 단층 비교 스터디 (N=4 엇갈림 및 N=6 포화, 77.83 / 51.89 Å²/mol)
+
+study:
+  name: "cell_scan_6x6_dense"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 6
+  supercell_ny: 6
+  defect_type: "pristine"
+  vacuum_A: 26.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.3
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+cluster_motifs: {}
+cluster_cases: {}
+
+grid_cases:
+  N1_monomer_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+  N4_brick_canted_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 75.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 60.0
+    offset_frac: [0.25, 0.25]
+  N6_3x2_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 105.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.167, 0.25]
+  N6_2x3_tilt20:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 3
+    pattern: "parallel"
+    tilt_deg: 20.0
+    azimuth_deg: 165.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.167]
+
+vacancy_desorption:
+  source_cases:
+    - "N4_brick_canted_flat"
+    - "N6_3x2_flat"
+    - "N6_2x3_tilt20"
+  remove_mol_index: 0
+  sequential_pairs: {}
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

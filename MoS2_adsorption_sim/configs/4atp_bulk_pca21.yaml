@@ -1,0 +1,37 @@
+# Pca2_1 고체 4-ATP 벌크 결정 (Z=4, a=11.226, b=6.101, c=8.282 Å) 응집 에너지·양성이온·(001) 탈착 스터디
+# 중성(HS-C6H4-NH2) vs 양성이온(H3N+-C6H4-S-) 및 3L+ 비교용 벌크 기준선
+
+study:
+  name: "4atp_bulk_pca21"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+
+crystal:
+  space_group: "Pca2_1"
+  a_A: 11.226
+  b_A: 6.101
+  c_A: 8.282
+  min_intermol_dist_A: 1.75
+
+candidates:
+  tautomers: ["neutral", "zwitterion"]
+  n_rot_trials: 450
+  n_per_tautomer: 3
+  seed: 42
+
+relaxation:
+  relax_cell: true
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+  cell_max_steps: 200
+
+vacancy_and_surface:
+  bulk_supercell: [1, 2, 2]
+  slab_repeat_xy: [1, 2]
+  slab_vacuum_A: 18.0

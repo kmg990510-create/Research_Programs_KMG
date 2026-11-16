@@ -14,7 +14,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from ads_core.model import ReportSettings  # noqa: E402
-from ads_core.pipeline import ordered_groups  # noqa: E402
+from ads_core.pipeline import md_results_table, ordered_groups  # noqa: E402
 from ads_core.report.export import binding_curves_summary_table  # noqa: E402
 from ads_core.report.summary import METRICS, metric_label, molecule_summary  # noqa: E402
 from ads_gui.components.atoms2d import slab_sites_png  # noqa: E402
@@ -43,7 +43,8 @@ with sidebar_section("3) Figure size", expanded=False):
     figure_options_inputs()
     stats_size = figure_size_inputs("ads_stats", "Statistics: one quantity", 560, 400)
     wide_size = figure_size_inputs("ads_wide", "Energy / Binding / Site charts", 860, 460)
-stop_if_empty(shown)
+if shown.empty and not run.md_results:
+    stop_if_empty(shown)
 
 shown_groups = [g for g in groups if g in set(shown["group_display"])]
 colors = categorical_colors(groups)
@@ -55,28 +56,31 @@ tab_stats, tab_energy, tab_sites, tab_groups = st.tabs(
 )
 
 with tab_stats:
-    metrics = st.multiselect(
-        "Quantities",
-        list(METRICS),
-        default=[m for m in DEFAULT_METRICS if m in METRICS],
-        format_func=metric_label,
-        key="ads_compare_metrics",
-    )
-    if not metrics:
-        st.info("Select at least one quantity to plot.")
-    if stats_size.width_px is None:
-        places = [col for start in range(0, len(metrics), 2) for col in st.columns(2)]
+    if shown.empty:
+        st.info("No relaxation poses in this MD-only batch. Check **Energy & Binding Curves** for MD results.")
     else:
-        places = [st.container(horizontal=True)] * len(metrics)
-    for place, metric in zip(places, metrics):
-        with place:
-            show_figure(
-                metric_figure(shown, metric, shown_groups, colors, height=stats_size.height_px),
-                stats_size,
-                filename=f"{batch}_{metric}",
-                key=f"ads_compare_metric_{metric}",
-            )
-    st.caption("Filled points enter statistics; hollow points are invalid or rejected poses.")
+        metrics = st.multiselect(
+            "Quantities",
+            list(METRICS),
+            default=[m for m in DEFAULT_METRICS if m in METRICS],
+            format_func=metric_label,
+            key="ads_compare_metrics",
+        )
+        if not metrics:
+            st.info("Select at least one quantity to plot.")
+        if stats_size.width_px is None:
+            places = [col for start in range(0, len(metrics), 2) for col in st.columns(2)]
+        else:
+            places = [st.container(horizontal=True)] * len(metrics)
+        for place, metric in zip(places, metrics):
+            with place:
+                show_figure(
+                    metric_figure(shown, metric, shown_groups, colors, height=stats_size.height_px),
+                    stats_size,
+                    filename=f"{batch}_{metric}",
+                    key=f"ads_compare_metric_{metric}",
+                )
+        st.caption("Filled points enter statistics; hollow points are invalid or rejected poses.")
 
 with tab_energy:
     decomp_mode = st.radio(
@@ -113,21 +117,28 @@ with tab_energy:
     else:
         st.info("No 1D binding curves recorded in this batch. Enable 'Scan 1D E(z) binding curves' on Run.")
 
+    if run.md_results:
+        st.subheader("Finite-Temperature MD Summary")
+        st.dataframe(md_results_table(run.md_results), hide_index=True, width="stretch")
+
 with tab_sites:
     surface_choices = list(dict.fromkeys(shown["surface_id"].astype(str)))
-    chosen_surf = st.selectbox("Surface", surface_choices, key="ads_compare_site_surface")
-    left_map, right_map = st.columns([1.3, 1.0])
-    with left_map:
-        show_figure(
-            site_energy_map_figure(run, shown, chosen_surf, height=wide_size.height_px),
-            wide_size,
-            filename=f"{batch}_{chosen_surf}_site_map",
-            key="ads_compare_site_map_chart",
-        )
-    with right_map:
-        slab = run.slabs.get(chosen_surf)
-        if slab is not None:
-            st.image(slab_sites_png(slab, run.config), width="stretch", caption=f"pymatgen AdsorbateSiteFinder map — {chosen_surf}")
+    if not surface_choices:
+        st.info("No relaxation poses available to plot on the surface site map.")
+    else:
+        chosen_surf = st.selectbox("Surface", surface_choices, key="ads_compare_site_surface")
+        left_map, right_map = st.columns([1.3, 1.0])
+        with left_map:
+            show_figure(
+                site_energy_map_figure(run, shown, chosen_surf, height=wide_size.height_px),
+                wide_size,
+                filename=f"{batch}_{chosen_surf}_site_map",
+                key="ads_compare_site_map_chart",
+            )
+        with right_map:
+            slab = run.slabs.get(chosen_surf)
+            if slab is not None:
+                st.image(slab_sites_png(slab, run.config), width="stretch", caption=f"pymatgen AdsorbateSiteFinder map — {chosen_surf}")
 
 with tab_groups:
     st.subheader("Molecule & Surface Summary")
@@ -135,30 +146,33 @@ with tab_groups:
         st.dataframe(summary_df, hide_index=True, width="stretch")
 
     st.subheader("Group display names and order")
-    st.caption("Used across every plot and exported CSV. Changes are saved immediately to review.json.")
-    st.session_state.setdefault(GROUPS_NONCE_KEY, 0)
-    originals = list(dict.fromkeys(frame["group_key"].astype(str)))
-    table = pd.DataFrame(
-        {
-            "group key": originals,
-            "name": [review.display_group(g) for g in originals],
-            "order": [groups.index(review.display_group(g)) + 1 for g in originals],
-        }
-    )
-    edited = st.data_editor(
-        table,
-        hide_index=True,
-        width="stretch",
-        disabled=["group key"],
-        column_config={"order": st.column_config.NumberColumn("order", min_value=1, step=1, required=True)},
-        key=f"ads_compare_groups_{batch}_{st.session_state[GROUPS_NONCE_KEY]}",
-    )
-    names = {r["group key"]: (str(r["name"] or "").strip() or r["group key"]) for r in edited.to_dict("records")}
-    moved = edited["order"] != table["order"]
-    if moved.any() or names != dict(zip(table["group key"], table["name"])):
-        ranked = edited.assign(display=[names[g] for g in edited["group key"]], kept=~moved).sort_values(["order", "kept"], kind="stable")
-        review.group_names = {g: n for g, n in names.items() if n != g}
-        review.group_order = list(dict.fromkeys(ranked["display"]))
-        put_review(batch, review)
-        st.session_state[GROUPS_NONCE_KEY] += 1
-        st.rerun()
+    if frame.empty:
+        st.info("No relaxation groups in this MD-only batch.")
+    else:
+        st.caption("Used across every plot and exported CSV. Changes are saved immediately to review.json.")
+        st.session_state.setdefault(GROUPS_NONCE_KEY, 0)
+        originals = list(dict.fromkeys(frame["group_key"].astype(str)))
+        table = pd.DataFrame(
+            {
+                "group key": originals,
+                "name": [review.display_group(g) for g in originals],
+                "order": [groups.index(review.display_group(g)) + 1 for g in originals],
+            }
+        )
+        edited = st.data_editor(
+            table,
+            hide_index=True,
+            width="stretch",
+            disabled=["group key"],
+            column_config={"order": st.column_config.NumberColumn("order", min_value=1, step=1, required=True)},
+            key=f"ads_compare_groups_{batch}_{st.session_state[GROUPS_NONCE_KEY]}",
+        )
+        names = {r["group key"]: (str(r["name"] or "").strip() or r["group key"]) for r in edited.to_dict("records")}
+        moved = edited["order"] != table["order"]
+        if moved.any() or names != dict(zip(table["group key"], table["name"])):
+            ranked = edited.assign(display=[names[g] for g in edited["group key"]], kept=~moved).sort_values(["order", "kept"], kind="stable")
+            review.group_names = {g: n for g, n in names.items() if n != g}
+            review.group_order = list(dict.fromkeys(ranked["display"]))
+            put_review(batch, review)
+            st.session_state[GROUPS_NONCE_KEY] += 1
+            st.rerun()

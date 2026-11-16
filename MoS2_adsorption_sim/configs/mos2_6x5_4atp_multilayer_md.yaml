@@ -1,0 +1,49 @@
+# 6x5 MoS2 2층 및 3층 유한 온도(60 °C / 150 °C) 동적 안정성 비교 MD
+
+study:
+  study_yaml: "configs/mos2_6x5_4atp_multilayer.yaml"
+  output_dir: "data/results/mos2_6x5_4atp_multilayer_md"
+
+md:
+  mace_dtype: "float32"
+  quench_mace_dtype: "float64"
+  timestep_fs: 0.5
+  friction_per_fs: 0.01
+  trajectory_stride: 25
+  hbond_cutoff_A: 3.5
+  adsorption_cutoff_A: 2.5
+  seed: 42
+
+quench:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+runs:
+  2L_best_333K:
+    results_dir: "data/results/mos2_6x5_4atp_multilayer"
+    source_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    temperature_K: 333.15
+    steps: 6000
+    quench_after_md: true
+
+  2L_best_423K:
+    results_dir: "data/results/mos2_6x5_4atp_multilayer"
+    source_case: "best_of:L2_N4_AA_par,L2_N4_AA_anti,L2_N4_AB_x_anti,L2_N4_AB_y_anti,L2_N4_AB_diag_anti,L2_N4_AB_diag_par,L2_N4_brick_anti,L2_N4_cross90"
+    temperature_K: 423.15
+    steps: 6000
+    quench_after_md: true
+
+  3L_best_333K:
+    results_dir: "data/results/mos2_6x5_4atp_multilayer"
+    source_case: "best_of:L3_N4_ABA_par,L3_N4_ABA_anti,L3_N4_ABC_par,L3_N4_ABC_anti,L3_N4_B_par,L3_N4_brick_par,L3_N4_cross90"
+    temperature_K: 333.15
+    steps: 6000
+    quench_after_md: true
+
+  3L_best_423K:
+    results_dir: "data/results/mos2_6x5_4atp_multilayer"
+    source_case: "best_of:L3_N4_ABA_par,L3_N4_ABA_anti,L3_N4_ABC_par,L3_N4_ABC_anti,L3_N4_B_par,L3_N4_brick_par,L3_N4_cross90"
+    temperature_K: 423.15
+    steps: 6000
+    quench_after_md: true

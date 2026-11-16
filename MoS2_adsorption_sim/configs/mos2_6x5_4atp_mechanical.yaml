@@ -1,0 +1,26 @@
+# 6x5 MoS2 4-ATP 섭동 복귀 및 2차 공석 탈착(4 -> 3_vac -> 2_2vac)
+
+source_study:
+  study_yaml: "configs/mos2_6x5_4atp_stability.yaml"
+  results_dir: "data/results/mos2_6x5_4atp_stability"
+
+perturbation_check:
+  target_cases:
+    - "N4_parallel_flat"
+    - "N4_brick_flat"
+    - "N4_antiparallel_brick_flat"
+  amplitudes_A: [0.05]
+  seed: 42
+  basin_energy_tol_eV: 0.02
+  basin_rmsd_tol_A: 0.30
+
+sheet_strain_check:
+  target_cases: []
+  scale_factors: [1.00]
+
+double_vacancy_check:
+  source_cases:
+    - "N4_parallel_flat"
+    - "N4_brick_flat"
+    - "N4_antiparallel_brick_flat"
+  second_remove_mol_indices: [0, 1, 2]

@@ -1,0 +1,204 @@
+# 5x5 MoS2 조밀 4-ATP 단층 안정성 스터디 (Step 1 패킹 다형체 + Step 2 순차/공석 탈착)
+# 모든 과학적 수치는 YAML에 분리 저장한다.
+
+study:
+  name: "mos2_5x5_4atp_stability"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 5
+  supercell_ny: 5
+  defect_type: "pristine"
+  vacuum_A: 26.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.3
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+# 5x5 셀(a=15.80 Å, [1,1] 대각선=27.37 Å)에 맞춘 N=2, N=3 클러스터 모티프
+cluster_motifs:
+  dimer_diag_h2t:
+    - [-4.20, -2.42, 30.0, 0.0]
+    - [4.20, 2.42, 30.0, 0.0]
+  dimer_diag_h2h:
+    - [-4.30, -2.48, 30.0, 0.0]
+    - [4.30, 2.48, 210.0, 0.0]
+  dimer_side_by_side:
+    - [0.0, -3.50, 0.0, 0.0]
+    - [0.0, 3.50, 0.0, 0.0]
+  trimer_brick:
+    - [-3.95, -3.42, 30.0, 0.0]
+    - [3.95, -3.42, 30.0, 0.0]
+    - [0.0, 3.42, 30.0, 0.0]
+  trimer_brick_anti:
+    - [-3.95, -3.42, 30.0, 0.0]
+    - [3.95, -3.42, 30.0, 0.0]
+    - [0.0, 3.42, 210.0, 0.0]
+
+cluster_cases:
+  N2_dimer_diag_h2t:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_diag_h2t"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N2_dimer_diag_h2h:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_diag_h2h"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N2_dimer_side_by_side:
+    base_case: ""
+    layer_index: 1
+    motif: "dimer_side_by_side"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N3_trimer_brick:
+    base_case: ""
+    layer_index: 1
+    motif: "trimer_brick"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N3_trimer_brick_anti:
+    base_case: ""
+    layer_index: 1
+    motif: "trimer_brick_anti"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+
+grid_cases:
+  N1_monomer_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+  N4_parallel_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_brick_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_antiparallel_brick_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "antiparallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_checkerboard_hb_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "checkerboard"
+    tilt_deg: 0.0
+    azimuth_deg: 45.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 60.0
+    offset_frac: [0.25, 0.25]
+  N4_parallel_tilt15:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 15.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_antiparallel_tilt15:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "antiparallel"
+    tilt_deg: 15.0
+    azimuth_deg: 0.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+  N4_parallel_tilt30:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 30.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+vacancy_desorption:
+  source_cases:
+    - "N4_parallel_flat"
+    - "N4_brick_flat"
+    - "N4_antiparallel_brick_flat"
+    - "N4_checkerboard_hb_flat"
+    - "N4_parallel_tilt15"
+    - "N4_parallel_tilt30"
+  remove_mol_index: 0
+  sequential_pairs:
+    N2_dimer_diag_h2t: "N1_monomer_flat"
+    N2_dimer_side_by_side: "N1_monomer_flat"
+    N3_trimer_brick: "N2_dimer_diag_h2t"
+    N3_trimer_brick_anti: "N2_dimer_diag_h2h"
+    N4_brick_flat: "N3_trimer_brick"
+    N4_antiparallel_brick_flat: "N3_trimer_brick_anti"
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

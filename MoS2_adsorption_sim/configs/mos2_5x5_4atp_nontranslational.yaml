@@ -1,0 +1,149 @@
+# 5x5 MoS2 비-병진대칭 N=4 패킹 탐색 (핀휠·헤링본·비정질·3+1 혼합)
+# 기존 2x2 병진 대칭 결정(N4_brick_flat)과 에너지를 직접 정적 비교
+
+study:
+  name: "mos2_5x5_4atp_nontranslational"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 5
+  supercell_ny: 5
+  defect_type: "pristine"
+  vacuum_A: 26.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.3
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+cluster_motifs:
+  pinwheel_90cycle:
+    - [-1.98, -3.42, 90.0, 0.0]
+    - [5.93, -3.42, 180.0, 0.0]
+    - [-5.93, 3.42, 270.0, 0.0]
+    - [1.98, 3.42, 0.0, 0.0]
+  pinwheel_60hbond:
+    - [-1.98, -3.42, 165.0, 0.0]
+    - [5.93, -3.42, 225.0, 0.0]
+    - [-5.93, 3.42, 345.0, 0.0]
+    - [1.98, 3.42, 45.0, 0.0]
+  herringbone_T90:
+    - [-1.98, -3.42, 120.0, 0.0]
+    - [5.93, -3.42, 210.0, 0.0]
+    - [-5.93, 3.42, 210.0, 0.0]
+    - [1.98, 3.42, 120.0, 0.0]
+  brick_60cycle:
+    - [-1.98, -3.42, 165.0, 0.0]
+    - [5.93, -3.42, 225.0, 0.0]
+    - [-1.98, 3.42, 345.0, 0.0]
+    - [5.93, 3.42, 45.0, 0.0]
+  disordered_flat:
+    - [-2.83, -3.90, 15.0, 0.0]
+    - [5.92, -4.18, 120.0, 0.0]
+    - [-5.80, 3.30, 270.0, 0.0]
+    - [2.69, 2.94, 210.0, 0.0]
+  mixed_3plus1_tilt:
+    - [-1.21, -3.68, 105.0, 0.0]
+    - [6.06, -3.46, 30.0, 0.0]
+    - [-5.28, 3.50, 210.0, 0.0]
+    - [2.37, 2.81, 195.0, 35.0]
+
+cluster_cases:
+  N4_pinwheel_90cycle:
+    base_case: ""
+    layer_index: 1
+    motif: "pinwheel_90cycle"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_pinwheel_60hbond:
+    base_case: ""
+    layer_index: 1
+    motif: "pinwheel_60hbond"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_herringbone_T90:
+    base_case: ""
+    layer_index: 1
+    motif: "herringbone_T90"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_brick_60cycle:
+    base_case: ""
+    layer_index: 1
+    motif: "brick_60cycle"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_disordered_flat:
+    base_case: ""
+    layer_index: 1
+    motif: "disordered_flat"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+  N4_mixed_3plus1_tilt:
+    base_case: ""
+    layer_index: 1
+    motif: "mixed_3plus1_tilt"
+    center_frac: [0.50, 0.50]
+    rotation_deg: 0.0
+
+grid_cases:
+  N1_monomer_flat:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 1
+    grid_ny: 1
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.50, 0.50]
+  N4_brick_flat_ref:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 30.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+vacancy_desorption:
+  source_cases:
+    - "N4_pinwheel_60hbond"
+    - "N4_pinwheel_90cycle"
+    - "N4_herringbone_T90"
+    - "N4_disordered_flat"
+    - "N4_mixed_3plus1_tilt"
+  remove_mol_index: 0
+  sequential_pairs: {}
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

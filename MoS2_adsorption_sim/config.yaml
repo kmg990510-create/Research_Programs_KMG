@@ -74,6 +74,16 @@ relaxation:
   trajectory_stride: 1          # 3D 궤적 저장 간격 (스텝)
   scan_heights_A: [1.8, 2.2, 2.6, 3.0, 3.4, 3.8, 4.5, 5.5, 7.0]  # 1D 결합 곡선 E(z) 높이 목록 (Å)
 
+md:
+  enabled: false                # 배치 실행 시 유한온도 MD(Langevin) 추가 실행 여부
+  temperature_K: 300.0          # MD 목표 온도 (K)
+  timestep_fs: 0.5              # MD 적분 시간 간격 (fs; H 포함 분자는 0.5 fs 권장)
+  steps: 2000                   # MD 총 스텝 수 (0.5 fs × 2000 = 1.0 ps; 본 실행은 10000~20000 권장)
+  friction_per_fs: 0.01         # Langevin 마찰 계수 (fs^-1)
+  trajectory_stride: 10         # MD 궤적·지표 저장 간격 (스텝)
+  adsorption_cutoff_A: 5.0      # 체류(흡착) 판정 기준 높이 dz_com 상한 (Å)
+  seed: 42                      # 초기 속도 및 Langevin 난수 시드
+
 quality:
   min_allowed_distance_A: 1.1   # 이 거리 미만이면 원자 충돌(atomic_overlap -> invalid)
   max_adsorption_distance_A: 5.0 # 이 거리 초과면 진공 이탈(desorbed_to_vacuum -> attention)

@@ -16,7 +16,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from ads_core.model import ReportSettings  # noqa: E402
-from ads_core.pipeline import ordered_groups, status_counts  # noqa: E402
+from ads_core.pipeline import md_results_table, ordered_groups, status_counts  # noqa: E402
 from ads_core.report.export import export_run  # noqa: E402
 from ads_core.report.summary import molecule_summary  # noqa: E402
 from ads_gui.state import REVIEW_FILE, active, results_root  # noqa: E402
@@ -32,15 +32,15 @@ temp_K = ReportSettings.from_config(run.config).boltzmann_temp_K
 
 cols = st.columns(5)
 cols[0].metric("Poses", len(frame))
-cols[1].metric("In statistics", int(frame["included"].sum()))
-cols[2].metric("Rejected", int((frame["decision"] == "rejected").sum()))
+cols[1].metric("In statistics", 0 if frame.empty else int(frame["included"].sum()))
+cols[2].metric("Rejected", 0 if frame.empty else int((frame["decision"] == "rejected").sum()))
 cols[3].metric("Invalid", counts["invalid"])
-open_attention = int(((frame["status"] == "attention") & (frame["decision"] == "auto")).sum())
+open_attention = 0 if frame.empty else int(((frame["status"] == "attention") & (frame["decision"] == "auto")).sum())
 cols[4].metric("Still need attention", open_attention)
 
 if open_attention > 0:
     st.warning(f"{open_attention} pose(s) still need attention and have no explicit Approve/Reject decision yet.")
-else:
+elif not frame.empty:
     st.success("All attention poses have been reviewed.")
 
 st.subheader("Molecule & Surface Summary")
@@ -60,6 +60,10 @@ if not summary.empty:
         "d_min_at_best_A",
     ]
     st.dataframe(summary[display_cols], hide_index=True, width="stretch")
+
+if run.md_results:
+    st.subheader(f"Finite-temperature MD Summary ({len(run.md_results)})")
+    st.dataframe(md_results_table(run.md_results), hide_index=True, width="stretch")
 
 st.subheader("Result files")
 if st.button("Write result files", type="primary", key="finalize_export_btn"):

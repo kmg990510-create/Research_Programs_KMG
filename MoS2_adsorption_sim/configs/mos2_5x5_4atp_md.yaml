@@ -1,0 +1,47 @@
+# 5x5 MoS2 4-ATP 유한 온도 동역학(MD) 검증 설정 (Step 3)
+# 60 °C (333.15 K) vs 150 °C (423.15 K) 및 병진 대칭 유지/붕괴 여부 동적 확인
+
+study:
+  study_yaml: "configs/mos2_5x5_4atp_stability.yaml"
+  output_dir: "data/results/mos2_5x5_4atp_md"
+
+md:
+  mace_dtype: "float32"            # MD 고속 적분 정밀도 (ASE/MACE 권장)
+  quench_mace_dtype: "float64"     # MD 종료 후 0 K 냉각 비교용 고정밀
+  timestep_fs: 0.5                 # H 포함 분자 안전 적분 간격 (fs)
+  friction_per_fs: 0.01            # Langevin 마찰 계수 (fs^-1)
+  trajectory_stride: 25            # 12.5 fs 간격으로 궤적·지표 샘플링
+  hbond_cutoff_A: 3.5              # 분자 간 N/S 근접 수소결합 판정 컷오프 (Å)
+  adsorption_cutoff_A: 5.0         # 표면 체류 판정 수직 높이 상한 (Å)
+  seed: 42
+
+quench:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+runs:
+  N1_monomer_423K:
+    results_dir: "data/results/mos2_5x5_4atp_stability"
+    source_case: "N1_monomer_flat"
+    temperature_K: 423.15          # 150 °C
+    steps: 6000                    # 3.0 ps
+    quench_after_md: false
+  N4_brick_333K:
+    results_dir: "data/results/mos2_5x5_4atp_stability"
+    source_case: "N4_brick_flat"
+    temperature_K: 333.15          # 60 °C
+    steps: 6000                    # 3.0 ps
+    quench_after_md: true
+  N4_brick_423K:
+    results_dir: "data/results/mos2_5x5_4atp_stability"
+    source_case: "N4_brick_flat"
+    temperature_K: 423.15          # 150 °C
+    steps: 8000                    # 4.0 ps
+    quench_after_md: true
+  N4_disordered_423K:
+    results_dir: "data/results/mos2_5x5_4atp_nontranslational"
+    source_case: "N4_disordered_flat"
+    temperature_K: 423.15          # 150 °C (비정질 -> 어닐링 거동 비교)
+    steps: 6000                    # 3.0 ps
+    quench_after_md: true

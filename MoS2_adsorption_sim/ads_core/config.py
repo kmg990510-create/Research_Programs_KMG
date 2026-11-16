@@ -114,6 +114,32 @@ class Config:
             raise self._wrong_type(path, "a mapping of text", value)
         return {str(key): self.text(f"{path}.{key}") for key in value}
 
+    def section_keys(self, path: str) -> list[str]:
+        """Return ordered child keys of a mapping without marking leaf values read."""
+        value = self._lookup(path)
+        if not isinstance(value, Mapping):
+            raise self._wrong_type(path, "a mapping", value)
+        if not value:
+            self._read.add(path)
+        return [str(key) for key in value]
+
+    def number_rows(self, path: str) -> list[list[float]]:
+        """Read a non-empty list of numeric lists (e.g. motif coordinate rows)."""
+        value = self._lookup(path)
+        if not isinstance(value, list) or not value:
+            raise self._wrong_type(path, "a non-empty list of number lists", value)
+        rows: list[list[float]] = []
+        for row in value:
+            if (
+                not isinstance(row, list)
+                or not row
+                or any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in row)
+            ):
+                raise self._wrong_type(path, "a non-empty list of number lists", value)
+            rows.append([float(item) for item in row])
+        self._read.add(path)
+        return rows
+
     def leaf_keys(self) -> set[str]:
         return set(_leaf_paths(self._data, ""))
 

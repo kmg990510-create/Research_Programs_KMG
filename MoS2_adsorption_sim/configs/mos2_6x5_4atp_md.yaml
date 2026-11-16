@@ -1,0 +1,40 @@
+# 6x5 MoS2 (64.86 Å²/mol) 유한 온도 150 °C (423.15 K) 동역학 비교
+
+study:
+  study_yaml: "configs/mos2_6x5_4atp_stability.yaml"
+  output_dir: "data/results/mos2_6x5_4atp_md"
+
+md:
+  mace_dtype: "float32"
+  quench_mace_dtype: "float64"
+  timestep_fs: 0.5
+  friction_per_fs: 0.01
+  trajectory_stride: 25
+  hbond_cutoff_A: 3.5
+  adsorption_cutoff_A: 5.0
+  seed: 42
+
+quench:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+runs:
+  6x5_N4_parallel_423K:
+    results_dir: "data/results/mos2_6x5_4atp_stability"
+    source_case: "N4_parallel_flat"
+    temperature_K: 423.15
+    steps: 6000
+    quench_after_md: true
+  6x5_N4_brick_423K:
+    results_dir: "data/results/mos2_6x5_4atp_stability"
+    source_case: "N4_brick_flat"
+    temperature_K: 423.15
+    steps: 6000
+    quench_after_md: true
+  6x5_N4_disordered_423K:
+    results_dir: "data/results/mos2_6x5_4atp_stability"
+    source_case: "N4_disordered_flat"
+    temperature_K: 423.15
+    steps: 6000
+    quench_after_md: true

@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 
 from ads_core.pipeline import BatchRun
 from ads_core.report.summary import metric_label
+from ads_core.simulation.md import MdStep
 from ads_core.simulation.relax import BindingCurveResult, TrajectoryStep
 from labkit.plot_theme import (
     AUX,
@@ -481,4 +482,174 @@ def site_energy_map_figure(
     fig.update_xaxes(title_text="x (Å)")
     fig.update_yaxes(title_text="y (Å)", scaleanchor="x", scaleratio=1)
     fig.update_layout(title_text=f"Adsorption COM Map — {surface_id}", legend={"orientation": "h", "y": 1.02, "yanchor": "bottom", "x": 0.0})
+    return fig
+
+
+def md_trajectory_figure(
+    steps: Sequence[MdStep],
+    target_temp_K: float | None = None,
+    cutoff_A: float | None = None,
+    height: int = 440,
+) -> go.Figure:
+    """Two-row MD time-series figure: adsorbate COM height dz_com (A) and temperature (K)."""
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.10, row_heights=[0.54, 0.46])
+
+    if steps:
+        t_vals = [float(s.time_fs) for s in steps]
+        dz_points = [(float(s.time_fs), float(s.dz_com_A)) for s in steps if s.dz_com_A is not None]
+        if dz_points:
+            fig.add_trace(
+                go.Scatter(
+                    x=[pt[0] for pt in dz_points],
+                    y=[pt[1] for pt in dz_points],
+                    mode="lines+markers",
+                    name="dz_com (Å)",
+                    line={"color": DATA, "width": LINE_DATA},
+                    marker={"size": MARKER_ON_LINE, "color": DATA},
+                ),
+                row=1,
+                col=1,
+            )
+        if cutoff_A is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[t_vals[0], t_vals[-1]],
+                    y=[float(cutoff_A), float(cutoff_A)],
+                    mode="lines",
+                    name=f"Adsorption cutoff ({cutoff_A:g} Å)",
+                    line={"color": FIT, "width": LINE_FIT, "dash": "dash"},
+                ),
+                row=1,
+                col=1,
+            )
+        fig.add_trace(
+            go.Scatter(
+                x=t_vals,
+                y=[float(s.temperature_K) for s in steps],
+                mode="lines",
+                name="Temperature (K)",
+                line={"color": AUX, "width": LINE_DATA},
+            ),
+            row=2,
+            col=1,
+        )
+        if target_temp_K is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[t_vals[0], t_vals[-1]],
+                    y=[float(target_temp_K), float(target_temp_K)],
+                    mode="lines",
+                    name=f"Target T ({target_temp_K:g} K)",
+                    line={"color": MARK, "width": LINE_FIT, "dash": "dash"},
+                ),
+                row=2,
+                col=1,
+            )
+
+    apply_paper_layout(fig, height=height)
+    fig.update_yaxes(title_text="dz_com (Å)", row=1, col=1)
+    fig.update_yaxes(title_text="T (K)", row=2, col=1)
+    fig.update_xaxes(title_text="Time (fs)", row=2, col=1)
+    fig.update_layout(title_text="MD trajectory (height & temperature)", legend=LEGEND_INSIDE)
+    return fig
+
+
+def coverage_distance_summary_figure(overview_df: pd.DataFrame, height: int = 440) -> go.Figure:
+    """Two-panel Plotly overview: shortest intermolecular contacts (top) and E_ads/mol split (bottom)."""
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12, row_heights=[0.52, 0.48])
+    if overview_df.empty:
+        apply_paper_layout(fig, height=height)
+        return fig
+
+    x_labels = overview_df["case_id"].astype(str).tolist()
+    contact_specs = [
+        ("min_S_S_A", "min d(S···S)", "#d62728", "circle"),
+        ("min_N_S_A", "min d(N···S)", "#1f77b4", "square"),
+        ("min_heavy_A", "min d(Heavy···Heavy)", DATA, "diamond"),
+        ("min_COM_A", "min d(COM···COM)", "#2ca02c", "triangle-up"),
+    ]
+    for col, label, color, symbol in contact_specs:
+        if col in overview_df.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=x_labels,
+                    y=overview_df[col],
+                    mode="lines+markers",
+                    name=label,
+                    line={"color": color, "width": LINE_DATA},
+                    marker={"size": MARKER_ON_LINE + 2, "color": color, "symbol": symbol},
+                ),
+                row=1,
+                col=1,
+            )
+
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=overview_df["e_sub_per_mol_eV"],
+            name="E_sub / mol (eV)",
+            marker={"color": "#4c78a8"},
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=x_labels,
+            y=overview_df["e_lat_per_mol_eV"],
+            name="E_lat / mol (eV)",
+            marker={"color": "#f58518"},
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_labels,
+            y=overview_df["e_ads_per_mol_eV"],
+            mode="lines+markers",
+            name="Total E_ads / mol (eV)",
+            line={"color": DATA, "width": LINE_FIT},
+            marker={"size": MARKER_ON_LINE + 1, "color": DATA},
+        ),
+        row=2,
+        col=1,
+    )
+
+    apply_paper_layout(fig, height=height)
+    fig.update_yaxes(title_text="Min distance (Å)", row=1, col=1)
+    fig.update_yaxes(title_text="Energy / mol (eV)", row=2, col=1)
+    fig.update_xaxes(tickangle=-25, row=2, col=1)
+    fig.update_layout(
+        title_text="N=1–4 Intermolecular Distances & Substrate/Lateral Decomposition",
+        barmode="relative",
+        legend=LEGEND_RIGHT,
+    )
+    return fig
+
+
+def pair_distance_heatmap_figure(
+    matrix: np.ndarray,
+    mol_labels: Sequence[str],
+    title: str,
+    height: int = 340,
+) -> go.Figure:
+    """Annotated N x N molecule-to-molecule MIC distance heatmap (Å)."""
+    text_vals = [[("" if np.isnan(v) or i == j else f"{v:.2f}") for j, v in enumerate(row)] for i, row in enumerate(matrix)]
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=matrix,
+            x=list(mol_labels),
+            y=list(mol_labels),
+            colorscale=SEQUENTIAL,
+            reversescale=True,
+            text=text_vals,
+            texttemplate="%{text} Å",
+            colorbar={"title": {"text": "d (Å)"}},
+            hovertemplate="%{y} ↔ %{x}: %{z:.2f} Å<extra></extra>",
+        )
+    )
+    apply_paper_layout(fig, height=height)
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(title_text=title)
     return fig

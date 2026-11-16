@@ -1,0 +1,192 @@
+# 6x5 MoS2 (1L flat) 위 고체 4-ATP 유사 틸트·고밀도 3D 패킹(2L/3L) 비교 스터디
+# 평평한 1L 위에 올라간 2·3층이 벌크 결정(Pca2_1)처럼 기울고 고밀도화(N=6, 43.24 Å²/mol)할 때의 에너지·템플릿 변형 확인
+
+study:
+  name: "mos2_6x5_4atp_tilted_multilayer"
+  base_config_path: "config.yaml"
+  output_dir: "data/results"
+
+substrate:
+  supercell_nx: 6
+  supercell_ny: 5
+  defect_type: "pristine"
+  vacuum_A: 38.0
+  fix_bottom_layer: true
+
+adsorbate:
+  molecule_id: "4-ATP"
+  molecule_path: "data/molecules/4-ATP.xyz"
+  anchor_element: "S"
+  initial_height_A: 3.1
+  min_initial_distance_A: 1.6
+  interlayer_gap_A: 3.0
+
+relaxation:
+  optimizer: "BFGS"
+  fmax_eV_per_A: 0.03
+  max_steps: 250
+
+cluster_motifs:
+  herringbone_t45:
+    - [-2.77, -3.42, 150.0, 45.0]
+    - [6.71, -3.42, 240.0, -45.0]
+    - [-6.71, 3.42, 240.0, -45.0]
+    - [2.77, 3.42, 150.0, 45.0]
+
+cluster_cases:
+  L2_N4_herringbone_t45:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    motif: "herringbone_t45"
+    center_frac: [0.55, 0.55]
+    rotation_deg: 0.0
+
+grid_cases:
+  L1_N4_parallel:
+    base_case: ""
+    layer_index: 1
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 0.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.25, 0.25]
+
+  # --- Layer 2 tilted N=4 (64.86 A2/mol) ---
+  L2_N4_tilt45_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 45.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L2_N4_tilt45_par:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 45.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  L2_N4_tilt65_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 65.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.52, 0.55]
+
+  # --- Layer 2 high-density tilted N=6 (3x2 = 43.24 A2/mol, closer to bulk Pca2_1 footprint) ---
+  L2_N6_tilt45_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 45.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.16, 0.25]
+
+  L2_N6_tilt65_anti:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 65.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.16, 0.25]
+
+  L2_N6_tilt65_checker:
+    base_case: "L1_N4_parallel"
+    layer_index: 2
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "checkerboard"
+    tilt_deg: 65.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.16, 0.25]
+
+  # --- Layer 3 tilted / dense on best Layer 2 ---
+  L3_N4_tilt45_par:
+    base_case: "best_of:L2_N4_herringbone_t45,L2_N4_tilt45_anti,L2_N4_tilt45_par,L2_N4_tilt65_anti,L2_N6_tilt45_anti,L2_N6_tilt65_anti,L2_N6_tilt65_checker"
+    layer_index: 3
+    grid_nx: 2
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 45.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.0
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.27, 0.30]
+
+  L3_N6_tilt45_par:
+    base_case: "best_of:L2_N4_herringbone_t45,L2_N4_tilt45_anti,L2_N4_tilt45_par,L2_N4_tilt65_anti,L2_N6_tilt45_anti,L2_N6_tilt65_anti,L2_N6_tilt65_checker"
+    layer_index: 3
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 45.0
+    azimuth_deg: 150.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.16, 0.25]
+
+  L3_N6_tilt65_anti:
+    base_case: "best_of:L2_N4_herringbone_t45,L2_N4_tilt45_anti,L2_N4_tilt45_par,L2_N4_tilt65_anti,L2_N6_tilt45_anti,L2_N6_tilt65_anti,L2_N6_tilt65_checker"
+    layer_index: 3
+    grid_nx: 3
+    grid_ny: 2
+    pattern: "parallel"
+    tilt_deg: 65.0
+    azimuth_deg: 330.0
+    stagger_frac: 0.5
+    row_azimuth_step_deg: 0.0
+    offset_frac: [0.16, 0.25]
+
+vacancy_desorption:
+  source_cases:
+    - "L1_N4_parallel"
+    - "best_of:L2_N4_herringbone_t45,L2_N4_tilt45_anti,L2_N4_tilt45_par,L2_N4_tilt65_anti,L2_N6_tilt45_anti,L2_N6_tilt65_anti,L2_N6_tilt65_checker"
+    - "best_of:L3_N4_tilt45_par,L3_N6_tilt45_par,L3_N6_tilt65_anti"
+  remove_mol_index: 0
+  sequential_pairs: {}
+
+disulfide_check:
+  enabled: false
+  s_s_bond_A: 2.05
+  c_s_s_angle_deg: 103.0
+  dihedral_deg: 85.0
+  h_h_bond_A: 0.74
+  o_o_bond_A: 1.21
+  h2o_oh_bond_A: 0.96
+  h2o_angle_deg: 104.5
+  initial_height_A: 3.1
+  azimuth_deg: 0.0
+
+thermal_analysis:
+  temperatures_C: [40.0, 60.0, 100.0, 150.0]
+  prefactors_hz: [1.0e+12, 1.0e+13, 1.0e+14]
+  anneal_duration_s: 3600.0
+  min_intermol_hbond_cutoff_A: 3.5

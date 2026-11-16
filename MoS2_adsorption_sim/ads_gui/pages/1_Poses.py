@@ -15,13 +15,14 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 
-from ads_core.model import RelaxationSettings  # noqa: E402
+from ads_core.model import MdSettings, RelaxationSettings  # noqa: E402
 from ads_core.pipeline import ordered_groups  # noqa: E402
+from ads_core.simulation.md import MdResult  # noqa: E402
 from ads_core.simulation.quality import REASONS, REASON_MESSAGES  # noqa: E402
 from ads_gui.components.atoms2d import pose_top_side_png  # noqa: E402
-from ads_gui.components.figures import convergence_figure, gallery_figure, gallery_size  # noqa: E402
+from ads_gui.components.figures import convergence_figure, gallery_figure, gallery_size, md_trajectory_figure  # noqa: E402
 from ads_gui.components.values import pose_values_table  # noqa: E402
-from ads_gui.components.viewer3d import pose_3d_html  # noqa: E402
+from ads_gui.components.viewer3d import md_3d_html, pose_3d_html  # noqa: E402
 from ads_gui.state import active, filters, get_review, put_review, stop_if_empty  # noqa: E402
 from labkit.figure_size import FigureSize, figure_options_inputs, figure_size_inputs, show_figure  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402
@@ -47,7 +48,50 @@ with sidebar_section("3) Figure size", expanded=False):
     panel_size = figure_size_inputs("ads_gallery_panel", "Gallery: one panel", 240, 200)
     st.session_state.setdefault(GALLERY_COLUMNS_KEY, 4)
     gallery_columns = int(st.number_input("Gallery: panels per row", 1, 8, step=1, key=GALLERY_COLUMNS_KEY))
-stop_if_empty(shown)
+if shown.empty and not run.md_results:
+    stop_if_empty(shown)
+
+md_cutoff = MdSettings.from_config(run.config).adsorption_cutoff_A
+
+
+def _render_md_inspector(md_list: list[MdResult], default_pose_id: str | None = None) -> None:
+    md_ids = [m.pose_id for m in md_list]
+    if default_pose_id in md_ids:
+        default_idx = md_ids.index(default_pose_id)
+    else:
+        default_idx = 0
+    if st.session_state.get("poses_md_select") not in md_ids:
+        st.session_state["poses_md_select"] = md_ids[default_idx]
+    chosen_md_id = st.selectbox("MD trajectory pose", md_ids, index=default_idx, key="poses_md_select")
+    md_res = next(m for m in md_list if m.pose_id == chosen_md_id)
+    mc = st.columns(4)
+    mc[0].metric("Stayed adsorbed", "Yes" if md_res.stayed_adsorbed else "No")
+    mc[1].metric("Residence", "-" if md_res.residence_fraction is None else f"{100.0 * md_res.residence_fraction:.1f}%")
+    mc[2].metric("Final dz_com (Å)", "-" if md_res.final_dz_com_A is None else f"{md_res.final_dz_com_A:.2f}")
+    mc[3].metric("Mean dz_com (Å)", "-" if md_res.mean_dz_com_A is None else f"{md_res.mean_dz_com_A:.2f}")
+    if md_res.failed and md_res.failure_message:
+        st.error(f"MD failed: {md_res.failure_message}")
+    l_md, r_md = st.columns(2) if detail_size.width_px is None else (st.container(horizontal=True),) * 2
+    with l_md:
+        components.html(md_3d_html(md_res, height=detail_size.height_px), height=detail_size.height_px + 12)
+    with r_md:
+        show_figure(
+            md_trajectory_figure(
+                md_res.trajectory_steps,
+                target_temp_K=md_res.temperature_K,
+                cutoff_A=md_cutoff,
+                height=detail_size.height_px,
+            ),
+            detail_size,
+            filename=f"{batch}_{md_res.pose_id}_md",
+            key=f"poses_md_chart_{md_res.pose_id}",
+        )
+
+
+if shown.empty:
+    st.info("This batch has MD trajectories without relaxation poses.")
+    _render_md_inspector(run.md_results)
+    st.stop()
 
 shown = shown.assign(_rank=shown["status"].map(STATUS_RANK), _group=shown["group_display"].map(groups.index))
 shown = shown.sort_values(["_rank", "_group", "pose_id"], kind="stable").reset_index(drop=True)
@@ -241,3 +285,9 @@ with detail_box:
             hide_index=True,
             width="stretch",
         )
+    if run.md_results:
+        with st.expander(
+            f"Finite-temperature MD trajectory ({len(run.md_results)})",
+            expanded=any(m.pose_id == selected for m in run.md_results),
+        ):
+            _render_md_inspector(run.md_results, default_pose_id=selected)

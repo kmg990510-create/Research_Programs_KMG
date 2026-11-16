@@ -320,6 +320,49 @@ class RelaxationSettings:
 
 
 @dataclass(frozen=True)
+class MdSettings:
+    """Settings read from ``config.yaml`` under ``md``."""
+
+    enabled: bool
+    temperature_K: float
+    timestep_fs: float
+    steps: int
+    friction_per_fs: float
+    trajectory_stride: int
+    adsorption_cutoff_A: float
+    seed: int
+
+    def __post_init__(self) -> None:
+        if not self.temperature_K > 0:
+            raise ValueError("md.temperature_K must be positive")
+        if not self.timestep_fs > 0:
+            raise ValueError("md.timestep_fs must be positive")
+        if self.steps < 1:
+            raise ValueError("md.steps must be >= 1")
+        if not self.friction_per_fs > 0:
+            raise ValueError("md.friction_per_fs must be positive")
+        if self.trajectory_stride < 1:
+            raise ValueError("md.trajectory_stride must be >= 1")
+        if not self.adsorption_cutoff_A > 0:
+            raise ValueError("md.adsorption_cutoff_A must be positive")
+        if self.seed < 0:
+            raise ValueError("md.seed must be >= 0")
+
+    @classmethod
+    def from_config(cls, config: Config) -> "MdSettings":
+        return cls(
+            enabled=config.boolean("md.enabled"),
+            temperature_K=config.number("md.temperature_K"),
+            timestep_fs=config.number("md.timestep_fs"),
+            steps=config.integer("md.steps"),
+            friction_per_fs=config.number("md.friction_per_fs"),
+            trajectory_stride=config.integer("md.trajectory_stride"),
+            adsorption_cutoff_A=config.number("md.adsorption_cutoff_A"),
+            seed=config.integer("md.seed"),
+        )
+
+
+@dataclass(frozen=True)
 class QualitySettings:
     """Settings read from ``config.yaml`` under ``quality``."""
 
