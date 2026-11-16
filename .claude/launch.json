@@ -1,0 +1,39 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mos2-gui",
+      "runtimeExecutable": "C:/Users/kmg99/Desktop/Research_Programs_KMG/MoS2_optical_analysis/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "streamlit",
+        "run",
+        "C:/Users/kmg99/Desktop/Research_Programs_KMG/MoS2_optical_analysis/mos2_gui/Main.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8765",
+        "--browser.gatherUsageStats",
+        "false"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "fet-gui",
+      "runtimeExecutable": "C:/Users/kmg99/Desktop/Research_Programs_KMG/FET_analysis/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "streamlit",
+        "run",
+        "C:/Users/kmg99/Desktop/Research_Programs_KMG/FET_analysis/fet_gui/Run.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8766",
+        "--browser.gatherUsageStats",
+        "false"
+      ],
+      "port": 8766
+    }
+  ]
+}
