@@ -98,6 +98,7 @@ def test_pc_cod7111361_yaml_and_monoclinic_packing() -> None:
     assert cfg.unread_keys() == set()
     assert settings.space_group == "Pc"
     assert settings.cell_beta_deg == pytest.approx(107.364)
+    assert settings.cif_path is not None and settings.cif_path.is_file()
 
     base_cfg = load_config(settings.base_config_path)
     mol_spec = load_molecule_file(settings.molecule_path, base_cfg, molecule_id=settings.molecule_id)
