@@ -193,6 +193,21 @@ def test_run_coverage_study_end_to_end_synth(tmp_path: Path) -> None:
     assert (out_dir / "thermal_lifetimes.csv").exists()
     assert (out_dir / "study_metadata.json").exists()
 
+    import csv
+    import json
+
+    with (out_dir / "disulfide_summary.csv").open("r", encoding="utf-8-sig") as fh:
+        dis_rows = list(csv.DictReader(fh))
+    assert dis_rows and "o2_spin_warning" in dis_rows[0]
+    assert "e_des_dimer_note" in dis_rows[0]
+
+    with (out_dir / "thermal_lifetimes.csv").open("r", encoding="utf-8-sig") as fh:
+        th_rows = list(csv.DictReader(fh))
+    assert th_rows and th_rows[0]["prefactor_basis"] == "assumed_constant_not_partition_function"
+
+    meta = json.loads((out_dir / "study_metadata.json").read_text(encoding="utf-8"))
+    assert len(meta["method_warnings"]) >= 2
+
 
 def test_multilayer_yaml_all_keys_read() -> None:
     ml_yaml = PROJECT_ROOT / "configs" / "mos2_6x5_4atp_multilayer.yaml"

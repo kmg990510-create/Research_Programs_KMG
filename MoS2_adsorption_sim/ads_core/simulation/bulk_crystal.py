@@ -1,4 +1,4 @@
-"""Bulk 4-ATP Pca2_1 molecular crystal cohesive energy, zwitterion check, and (001) cleavage study."""
+"""Bulk molecular crystal cohesive energy, zwitterion check, and (001) cleavage study."""
 
 from __future__ import annotations
 
@@ -12,9 +12,10 @@ from typing import Any
 import numpy as np
 from ase import Atoms
 from ase.build import make_supercell
+from ase.data import covalent_radii
 from ase.filters import FrechetCellFilter
-from ase.geometry import get_distances
-from ase.io import write as ase_write
+from ase.geometry import cellpar_to_cell, find_mic, get_distances
+from ase.io import read as ase_read, write as ase_write
 from ase.optimize import BFGS, FIRE, LBFGS
 from pymatgen.symmetry.groups import SpaceGroup
 
@@ -32,11 +33,13 @@ _OPTIMIZERS = {
 
 # 1 amu / A^3 -> g/cm^3
 _AMU_A3_TO_G_CM3 = 1.66053906660
+# 1 eV / A^3 -> GPa
+_EV_A3_TO_GPA = 160.2176634
 
 
 @dataclass(frozen=True)
 class BulkCrystalSettings:
-    """YAML-backed settings for bulk Pca2_1 4-ATP crystal & (001) cleavage calculations."""
+    """YAML-backed settings for bulk molecular crystal & (001) cleavage calculations."""
 
     study_name: str
     base_config_path: Path
@@ -48,6 +51,11 @@ class BulkCrystalSettings:
     cell_a_A: float
     cell_b_A: float
     cell_c_A: float
+    cell_alpha_deg: float
+    cell_beta_deg: float
+    cell_gamma_deg: float
+    crystal_source: str
+    cif_path: Path | None
     min_intermol_dist_A: float
     n_rot_trials: int
     n_candidates_per_tautomer: int
@@ -76,6 +84,9 @@ class BulkCrystalSettings:
         if len(sc_vac) != 3 or len(slab_rep) != 2:
             raise ValueError("bulk_supercell must have 3 ints and slab_repeat_xy must have 2 ints")
 
+        cif_raw = cfg.text("crystal.cif_path").strip()
+        cif_path = _res(cif_raw) if cif_raw else None
+
         return cls(
             study_name=cfg.text("study.name"),
             base_config_path=_res(cfg.text("study.base_config_path")),
@@ -87,6 +98,11 @@ class BulkCrystalSettings:
             cell_a_A=cfg.number("crystal.a_A"),
             cell_b_A=cfg.number("crystal.b_A"),
             cell_c_A=cfg.number("crystal.c_A"),
+            cell_alpha_deg=cfg.number("crystal.alpha_deg"),
+            cell_beta_deg=cfg.number("crystal.beta_deg"),
+            cell_gamma_deg=cfg.number("crystal.gamma_deg"),
+            crystal_source=cfg.text("crystal.source"),
+            cif_path=cif_path,
             min_intermol_dist_A=cfg.number("crystal.min_intermol_dist_A"),
             n_rot_trials=cfg.integer("candidates.n_rot_trials"),
             n_candidates_per_tautomer=cfg.integer("candidates.n_per_tautomer"),
@@ -210,6 +226,7 @@ def generate_spacegroup_candidates(
     cell_abc: tuple[float, float, float],
     space_group: str = "Pca2_1",
     *,
+    cell_angles_deg: tuple[float, float, float] = (90.0, 90.0, 90.0),
     min_intermol_dist_A: float = 1.75,
     n_rot_trials: int = 360,
     n_candidates: int = 3,
@@ -218,7 +235,19 @@ def generate_spacegroup_candidates(
     """Sample valid low-overlap molecular crystal packings matching ``space_group``."""
     sg = SpaceGroup(space_group)
     ops = sg.symmetry_ops
-    cell = np.diag(np.array(cell_abc, dtype=float))
+    cell = np.array(
+        cellpar_to_cell(
+            [
+                cell_abc[0],
+                cell_abc[1],
+                cell_abc[2],
+                cell_angles_deg[0],
+                cell_angles_deg[1],
+                cell_angles_deg[2],
+            ]
+        ),
+        dtype=float,
+    )
     inv_cell = np.linalg.inv(cell)
 
     centered = mol_atoms.positions - np.mean(mol_atoms.positions, axis=0)
@@ -272,6 +301,46 @@ def generate_spacegroup_candidates(
     return chosen
 
 
+def _group_atoms_by_molecule(atoms: Atoms, mol_n: int, z_mols: int) -> Atoms:
+    """Reorder crystal atoms into contiguous whole molecules using MIC covalent connectivity."""
+    n_tot = len(atoms)
+    if n_tot != z_mols * mol_n or n_tot == 0:
+        raise ValueError(f"Expected {z_mols * mol_n} atoms for Z={z_mols}, got {n_tot}")
+    nums = atoms.get_atomic_numbers()
+    pos = atoms.get_positions()
+    _, dmat = get_distances(pos, pos, cell=atoms.cell, pbc=atoms.pbc)
+    radii = np.array([covalent_radii[int(z)] for z in nums], dtype=float)
+    cutoffs = 1.30 * (radii[:, None] + radii[None, :])
+    adj = (dmat <= cutoffs) & (np.eye(n_tot) == 0)
+
+    visited = [False] * n_tot
+    comps: list[list[int]] = []
+    for start in range(n_tot):
+        if visited[start]:
+            continue
+        stack = [start]
+        visited[start] = True
+        comp: list[int] = []
+        while stack:
+            cur = stack.pop()
+            comp.append(cur)
+            for nb in np.where(adj[cur])[0]:
+                nb_i = int(nb)
+                if not visited[nb_i]:
+                    visited[nb_i] = True
+                    stack.append(nb_i)
+        comps.append(sorted(comp))
+
+    if len(comps) == z_mols and all(len(c) == mol_n for c in comps):
+        order = [idx for comp in comps for idx in comp]
+        reordered = atoms[order].copy()
+        reordered.pbc = (True, True, True)
+        return reordered
+    out = atoms.copy()
+    out.pbc = (True, True, True)
+    return out
+
+
 def _relax_atomic_or_cell(
     atoms: Atoms,
     calc_bundle: CalculatorBundle,
@@ -303,6 +372,74 @@ def _density_g_cm3(atoms: Atoms) -> float:
     return float((mass_amu / vol_A3) * _AMU_A3_TO_G_CM3)
 
 
+def _try_stress_gpa(atoms: Atoms) -> tuple[float | None, float | None, float | None, float | None]:
+    """Return compressive diagonal stress (xx, yy, zz) and hydrostatic pressure in GPa if supported."""
+    try:
+        voigt = atoms.get_stress(voigt=True)
+    except Exception:
+        return None, None, None, None
+    s_xx = -float(voigt[0]) * _EV_A3_TO_GPA
+    s_yy = -float(voigt[1]) * _EV_A3_TO_GPA
+    s_zz = -float(voigt[2]) * _EV_A3_TO_GPA
+    p_gpa = (s_xx + s_yy + s_zz) / 3.0
+    return s_xx, s_yy, s_zz, p_gpa
+
+
+def _build_crystal_row(
+    case_id: str,
+    tautomer_init: str,
+    mode: str,
+    atoms: Atoms,
+    *,
+    z_mols: int,
+    mol_n: int,
+    converged: bool,
+    n_steps: int,
+    fmax_eV_per_A: float,
+    calc_bundle: CalculatorBundle,
+    e_mol_gas: float,
+    e_mol_gas_u: float,
+    e_mol_gas_d3: float | None,
+) -> dict[str, Any]:
+    """Compute energy, lattice cellpar, stress, density, and H-bond metrics for one relaxed crystal."""
+    et, eu, ed = single_point_components(atoms, calc_bundle)
+    d_inter, d_ns, ns_pairs, sh_cnt, nh_cnt = _pca21_contact_metrics(atoms, z_mols, mol_n)
+    a_len, b_len, c_len, alpha_deg, beta_deg, gamma_deg = [float(x) for x in atoms.cell.cellpar()]
+    s_xx, s_yy, s_zz, p_gpa = _try_stress_gpa(atoms)
+    return {
+        "case_id": case_id,
+        "tautomer_init": tautomer_init,
+        "mode": mode,
+        "z_mols": z_mols,
+        "converged": converged,
+        "n_steps": n_steps,
+        "fmax_eV_per_A": fmax_eV_per_A,
+        "a_A": a_len,
+        "b_A": b_len,
+        "c_A": c_len,
+        "alpha_deg": alpha_deg,
+        "beta_deg": beta_deg,
+        "gamma_deg": gamma_deg,
+        "volume_A3": float(atoms.get_volume()),
+        "density_g_cm3": _density_g_cm3(atoms),
+        "stress_xx_GPa": s_xx,
+        "stress_yy_GPa": s_yy,
+        "stress_zz_GPa": s_zz,
+        "pressure_GPa": p_gpa,
+        "e_coh_per_mol_eV": (et - z_mols * e_mol_gas) / z_mols,
+        "e_coh_umlip_per_mol_eV": (eu - z_mols * e_mol_gas_u) / z_mols,
+        "e_coh_d3_per_mol_eV": (
+            None if (ed is None or e_mol_gas_d3 is None) else (ed - z_mols * e_mol_gas_d3) / z_mols
+        ),
+        "min_intermol_A": d_inter,
+        "min_N_S_A": d_ns,
+        "ns_hbond_pairs": ns_pairs,
+        "sh_bonds_count": sh_cnt,
+        "nh_bonds_count": nh_cnt,
+        "energy_total_eV": et,
+    }
+
+
 def run_bulk_crystal_study(
     yaml_path: Path | str,
     *,
@@ -310,7 +447,7 @@ def run_bulk_crystal_study(
     device_override: str | None = None,
     output_dir_override: Path | None = None,
 ) -> dict[str, Any]:
-    """Run fixed-cell and variable-cell Pca2_1 bulk crystal + (001) cleavage calculations."""
+    """Run fixed-cell and variable-cell molecular crystal + (001) cleavage calculations."""
     cfg = load_config(yaml_path)
     settings = BulkCrystalSettings.from_config(cfg)
     base_cfg = load_config(settings.base_config_path)
@@ -334,109 +471,98 @@ def run_bulk_crystal_study(
     ase_write(struct_dir / "ref_zwitterion_initial.xyz", zwit_mol)
 
     mol_n = len(neutral_mol)
-    z_mols = len(SpaceGroup(settings.space_group).symmetry_ops)
     cell_abc = (settings.cell_a_A, settings.cell_b_A, settings.cell_c_A)
+    cell_angles = (settings.cell_alpha_deg, settings.cell_beta_deg, settings.cell_gamma_deg)
 
     crystal_rows: list[dict[str, Any]] = []
     relaxed_crystals: dict[str, Atoms] = {}
 
-    for tautomer in settings.tautomers:
-        unit_mol = neutral_mol if tautomer == "neutral" else zwit_mol
-        cands = generate_spacegroup_candidates(
-            unit_mol,
-            cell_abc,
-            space_group=settings.space_group,
-            min_intermol_dist_A=settings.min_intermol_dist_A,
-            n_rot_trials=settings.n_rot_trials,
-            n_candidates=settings.n_candidates_per_tautomer,
-            seed=settings.seed + (0 if tautomer == "neutral" else 101),
+    def _run_candidate(cid_prefix: str, tautomer_label: str, init_atoms: Atoms, z_count: int) -> None:
+        cid_fixed = f"{cid_prefix}_fixed"
+        ase_write(struct_dir / f"{cid_fixed}_initial.xyz", init_atoms)
+        rel_fixed, conv_f, steps_f, fmax_f = _relax_atomic_or_cell(
+            init_atoms, calc_bundle, settings.optimizer, settings.fmax_eV_per_A, settings.max_steps, relax_cell=False
         )
-        for cname, init_atoms, _, _ in cands:
-            cid_fixed = f"{tautomer}_{cname}_fixed"
-            ase_write(struct_dir / f"{cid_fixed}_initial.xyz", init_atoms)
-
-            rel_fixed, conv_f, steps_f, fmax_f = _relax_atomic_or_cell(
-                init_atoms, calc_bundle, settings.optimizer, settings.fmax_eV_per_A, settings.max_steps, relax_cell=False
+        ase_write(struct_dir / f"{cid_fixed}_relaxed.xyz", rel_fixed)
+        crystal_rows.append(
+            _build_crystal_row(
+                cid_fixed,
+                tautomer_label,
+                "fixed_exp_cell",
+                rel_fixed,
+                z_mols=z_count,
+                mol_n=mol_n,
+                converged=conv_f,
+                n_steps=steps_f,
+                fmax_eV_per_A=fmax_f,
+                calc_bundle=calc_bundle,
+                e_mol_gas=e_mol_gas,
+                e_mol_gas_u=e_mol_gas_u,
+                e_mol_gas_d3=e_mol_gas_d3,
             )
-            ase_write(struct_dir / f"{cid_fixed}_relaxed.xyz", rel_fixed)
-            et, eu, ed = single_point_components(rel_fixed, calc_bundle)
-            d_inter, d_ns, ns_pairs, sh_cnt, nh_cnt = _pca21_contact_metrics(rel_fixed, z_mols, mol_n)
-            crystal_rows.append(
-                {
-                    "case_id": cid_fixed,
-                    "tautomer_init": tautomer,
-                    "mode": "fixed_exp_cell",
-                    "z_mols": z_mols,
-                    "converged": conv_f,
-                    "n_steps": steps_f,
-                    "fmax_eV_per_A": fmax_f,
-                    "a_A": float(np.linalg.norm(rel_fixed.cell[0])),
-                    "b_A": float(np.linalg.norm(rel_fixed.cell[1])),
-                    "c_A": float(np.linalg.norm(rel_fixed.cell[2])),
-                    "volume_A3": float(rel_fixed.get_volume()),
-                    "density_g_cm3": _density_g_cm3(rel_fixed),
-                    "e_coh_per_mol_eV": (et - z_mols * e_mol_gas) / z_mols,
-                    "e_coh_umlip_per_mol_eV": (eu - z_mols * e_mol_gas_u) / z_mols,
-                    "e_coh_d3_per_mol_eV": (
-                        None if (ed is None or e_mol_gas_d3 is None) else (ed - z_mols * e_mol_gas_d3) / z_mols
-                    ),
-                    "min_intermol_A": d_inter,
-                    "min_N_S_A": d_ns,
-                    "ns_hbond_pairs": ns_pairs,
-                    "sh_bonds_count": sh_cnt,
-                    "nh_bonds_count": nh_cnt,
-                    "energy_total_eV": et,
-                }
-            )
-            relaxed_crystals[cid_fixed] = rel_fixed
+        )
+        relaxed_crystals[cid_fixed] = rel_fixed
 
-            if settings.relax_cell:
-                cid_cell = f"{tautomer}_{cname}_cellopt"
-                try:
-                    rel_cell, conv_c, steps_c, fmax_c = _relax_atomic_or_cell(
-                        rel_fixed,
-                        calc_bundle,
-                        settings.optimizer,
-                        settings.fmax_eV_per_A,
-                        settings.cell_max_steps,
-                        relax_cell=True,
+        if settings.relax_cell:
+            cid_cell = f"{cid_prefix}_cellopt"
+            try:
+                rel_cell, conv_c, steps_c, fmax_c = _relax_atomic_or_cell(
+                    rel_fixed,
+                    calc_bundle,
+                    settings.optimizer,
+                    settings.fmax_eV_per_A,
+                    settings.cell_max_steps,
+                    relax_cell=True,
+                )
+                ase_write(struct_dir / f"{cid_cell}_relaxed.xyz", rel_cell)
+                crystal_rows.append(
+                    _build_crystal_row(
+                        cid_cell,
+                        tautomer_label,
+                        "var_cell_opt",
+                        rel_cell,
+                        z_mols=z_count,
+                        mol_n=mol_n,
+                        converged=conv_c,
+                        n_steps=steps_c,
+                        fmax_eV_per_A=fmax_c,
+                        calc_bundle=calc_bundle,
+                        e_mol_gas=e_mol_gas,
+                        e_mol_gas_u=e_mol_gas_u,
+                        e_mol_gas_d3=e_mol_gas_d3,
                     )
-                    ase_write(struct_dir / f"{cid_cell}_relaxed.xyz", rel_cell)
-                    et_c, eu_c, ed_c = single_point_components(rel_cell, calc_bundle)
-                    d_inter_c, d_ns_c, ns_pairs_c, sh_c, nh_c = _pca21_contact_metrics(rel_cell, z_mols, mol_n)
-                    crystal_rows.append(
-                        {
-                            "case_id": cid_cell,
-                            "tautomer_init": tautomer,
-                            "mode": "var_cell_opt",
-                            "z_mols": z_mols,
-                            "converged": conv_c,
-                            "n_steps": steps_c,
-                            "fmax_eV_per_A": fmax_c,
-                            "a_A": float(np.linalg.norm(rel_cell.cell[0])),
-                            "b_A": float(np.linalg.norm(rel_cell.cell[1])),
-                            "c_A": float(np.linalg.norm(rel_cell.cell[2])),
-                            "volume_A3": float(rel_cell.get_volume()),
-                            "density_g_cm3": _density_g_cm3(rel_cell),
-                            "e_coh_per_mol_eV": (et_c - z_mols * e_mol_gas) / z_mols,
-                            "e_coh_umlip_per_mol_eV": (eu_c - z_mols * e_mol_gas_u) / z_mols,
-                            "e_coh_d3_per_mol_eV": (
-                                None
-                                if (ed_c is None or e_mol_gas_d3 is None)
-                                else (ed_c - z_mols * e_mol_gas_d3) / z_mols
-                            ),
-                            "min_intermol_A": d_inter_c,
-                            "min_N_S_A": d_ns_c,
-                            "ns_hbond_pairs": ns_pairs_c,
-                            "sh_bonds_count": sh_c,
-                            "nh_bonds_count": nh_c,
-                            "energy_total_eV": et_c,
-                        }
-                    )
-                    relaxed_crystals[cid_cell] = rel_cell
-                except Exception as exc:  # e.g. synth_morse without stress property
-                    if "stress" not in str(exc).lower():
-                        raise
+                )
+                relaxed_crystals[cid_cell] = rel_cell
+            except Exception as exc:  # e.g. synth_morse without stress property
+                if "stress" not in str(exc).lower():
+                    raise
+
+    if settings.cif_path is not None:
+        cif_raw = ase_read(settings.cif_path)
+        cif_raw.pbc = (True, True, True)
+        if len(cif_raw) % mol_n != 0 or len(cif_raw) == 0:
+            raise ValueError(
+                f"CIF atom count {len(cif_raw)} is not a positive multiple of molecule size {mol_n}: {settings.cif_path}"
+            )
+        z_mols = len(cif_raw) // mol_n
+        cif_atoms = _group_atoms_by_molecule(cif_raw, mol_n, z_mols)
+        _run_candidate("cif_exp", "cif_input", cif_atoms, z_mols)
+    else:
+        z_mols = len(SpaceGroup(settings.space_group).symmetry_ops)
+        for tautomer in settings.tautomers:
+            unit_mol = neutral_mol if tautomer == "neutral" else zwit_mol
+            cands = generate_spacegroup_candidates(
+                unit_mol,
+                cell_abc,
+                space_group=settings.space_group,
+                cell_angles_deg=cell_angles,
+                min_intermol_dist_A=settings.min_intermol_dist_A,
+                n_rot_trials=settings.n_rot_trials,
+                n_candidates=settings.n_candidates_per_tautomer,
+                seed=settings.seed + (0 if tautomer == "neutral" else 101),
+            )
+            for cname, init_atoms, _, _ in cands:
+                _run_candidate(f"{tautomer}_{cname}", tautomer, init_atoms, z_mols)
 
     # 2. Bulk vacancy & (001) surface cleavage detachment from best converged crystal
     best_row = min(crystal_rows, key=lambda r: float(r["e_coh_per_mol_eV"]))
@@ -476,7 +602,6 @@ def run_bulk_crystal_study(
     # Unwrap each molecule around its first atom so (001) surface does not sever molecules
     n_slab_mols = len(slab_raw) // mol_n
     slab_pos = slab_raw.get_positions().copy()
-    from ase.geometry import find_mic
 
     mol_coms_z: list[float] = []
     for k in range(n_slab_mols):
@@ -485,9 +610,8 @@ def run_bulk_crystal_study(
         slab_pos[s] = slab_pos[s.start] + rel
         mol_coms_z.append(float(np.mean(slab_pos[s, 2])))
     slab_raw.set_positions(slab_pos)
-    c_len = float(np.linalg.norm(slab_raw.cell[2]))
     new_cell = slab_raw.cell.copy()
-    new_cell[2, 2] = c_len + settings.slab_vacuum_A
+    new_cell[2, 2] = float(slab_raw.cell[2, 2]) + settings.slab_vacuum_A
     slab_raw.set_cell(new_cell, scale_atoms=False)
     slab_raw.center(axis=2)
     ase_write(struct_dir / f"{best_id}_001slab_initial.xyz", slab_raw)
@@ -528,11 +652,24 @@ def run_bulk_crystal_study(
     if surface_rows:
         _write_csv(out_root / "crystal_surface_desorption.csv", list(surface_rows[0].keys()), surface_rows)
 
+    method_warnings: list[str] = []
+    if "DEPRECATED" in settings.crystal_source.upper():
+        method_warnings.append(settings.crystal_source)
+    if settings.cif_path is None:
+        method_warnings.append(
+            "Random rigid-body packing in a fixed space group is not a global crystal structure search; "
+            "provide crystal.cif_path and verify with DFT cell relaxation."
+        )
+
     meta = {
         "study_name": settings.study_name,
         "calculator_id": calc_bundle.calculator_id,
         "space_group": settings.space_group,
+        "crystal_source": settings.crystal_source,
         "exp_cell_abc_A": list(cell_abc),
+        "cell_angles_deg": list(cell_angles),
+        "cif_path": str(settings.cif_path) if settings.cif_path is not None else "",
+        "method_warnings": method_warnings,
         "ref_mol_gas_eV": e_mol_gas,
         "best_crystal_case": best_id,
     }
@@ -540,6 +677,7 @@ def run_bulk_crystal_study(
 
     return {
         "output_dir": str(out_root),
+        "space_group": settings.space_group,
         "best_crystal_case": best_id,
         "crystals": crystal_rows,
         "surface_desorption": surface_rows,

@@ -1,11 +1,14 @@
-"""Tests for Pca2_1 bulk 4-ATP crystal builder, zwitterion proton transfer, and (001) cleavage smoke run."""
+"""Tests for bulk molecular crystal builder, monoclinic Pc packing, CIF load, and (001) cleavage."""
 
 from __future__ import annotations
 
+import csv
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
+from ase.io import write as ase_write
 
 from ads_core.builders.molecule import load_molecule_file
 from ads_core.config import load_config
@@ -18,6 +21,7 @@ from ads_core.simulation.bulk_crystal import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BULK_YAML = PROJECT_ROOT / "configs" / "4atp_bulk_pca21.yaml"
+PC_BULK_YAML = PROJECT_ROOT / "configs" / "4atp_bulk_pc_cod7111361.yaml"
 
 
 def test_bulk_crystal_yaml_all_keys_read() -> None:
@@ -84,3 +88,89 @@ def test_bulk_crystal_study_smoke_synth(tmp_path: Path) -> None:
     assert (out_dir / "crystal_surface_desorption.csv").exists()
     assert len(out["crystals"]) == 2
     assert len(out["surface_desorption"]) == 2
+    meta = json.loads((out_dir / "study_metadata.json").read_text(encoding="utf-8"))
+    assert any("DEPRECATED" in w.upper() for w in meta["method_warnings"])
+
+
+def test_pc_cod7111361_yaml_and_monoclinic_packing() -> None:
+    cfg = load_config(PC_BULK_YAML)
+    settings = BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
+    assert cfg.unread_keys() == set()
+    assert settings.space_group == "Pc"
+    assert settings.cell_beta_deg == pytest.approx(107.364)
+
+    base_cfg = load_config(settings.base_config_path)
+    mol_spec = load_molecule_file(settings.molecule_path, base_cfg, molecule_id=settings.molecule_id)
+
+    cands = generate_spacegroup_candidates(
+        mol_spec.atoms,
+        (settings.cell_a_A, settings.cell_b_A, settings.cell_c_A),
+        space_group=settings.space_group,
+        cell_angles_deg=(settings.cell_alpha_deg, settings.cell_beta_deg, settings.cell_gamma_deg),
+        min_intermol_dist_A=1.70,
+        n_rot_trials=250,
+        n_candidates=2,
+        seed=42,
+    )
+    assert len(cands) >= 1
+    _, atoms, d_inter, _ = cands[0]
+    assert len(atoms) == 2 * len(mol_spec.atoms)
+    assert d_inter >= 1.70
+    assert atoms.get_volume() == pytest.approx(313.15, rel=0.01)
+
+
+def test_bulk_crystal_cif_direct_load_smoke(tmp_path: Path) -> None:
+    import yaml
+
+    cfg = load_config(PC_BULK_YAML)
+    settings = BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
+    base_cfg = load_config(settings.base_config_path)
+    mol_spec = load_molecule_file(settings.molecule_path, base_cfg, molecule_id=settings.molecule_id)
+    _, pc_atoms, _, _ = generate_spacegroup_candidates(
+        mol_spec.atoms,
+        (settings.cell_a_A, settings.cell_b_A, settings.cell_c_A),
+        space_group=settings.space_group,
+        cell_angles_deg=(settings.cell_alpha_deg, settings.cell_beta_deg, settings.cell_gamma_deg),
+        min_intermol_dist_A=1.70,
+        n_rot_trials=250,
+        n_candidates=1,
+        seed=42,
+    )[0]
+
+    cif_file = tmp_path / "pc_mock.cif"
+    ase_write(cif_file, pc_atoms, format="cif")
+
+    raw = cfg.as_dict()
+    raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
+    raw["adsorbate"]["molecule_path"] = str(PROJECT_ROOT / "data" / "molecules" / "4-ATP.xyz")
+    raw["crystal"]["cif_path"] = str(cif_file)
+    raw["relaxation"]["relax_cell"] = False
+    raw["relaxation"]["max_steps"] = 3
+    raw["relaxation"]["fmax_eV_per_A"] = 0.5
+    raw["vacancy_and_surface"]["bulk_supercell"] = [1, 1, 1]
+    raw["vacancy_and_surface"]["slab_repeat_xy"] = [1, 1]
+
+    yaml_path = tmp_path / "pc_cif_smoke.yaml"
+    yaml_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    out = run_bulk_crystal_study(
+        yaml_path,
+        backend_override="synth_morse",
+        device_override="cpu",
+        output_dir_override=tmp_path / "pc_out",
+    )
+    out_dir = Path(out["output_dir"])
+    assert len(out["crystals"]) == 1
+    assert out["crystals"][0]["case_id"] == "cif_exp_fixed"
+
+    with (out_dir / "crystal_summary.csv").open("r", encoding="utf-8-sig") as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 1
+    assert "beta_deg" in rows[0]
+    assert "pressure_GPa" in rows[0]
+    assert float(rows[0]["beta_deg"]) == pytest.approx(107.364, abs=0.2)
+
+    meta = json.loads((out_dir / "study_metadata.json").read_text(encoding="utf-8"))
+    assert "COD 7111361" in meta["crystal_source"]
+    assert isinstance(meta["method_warnings"], list)
+    assert meta["cif_path"] == str(cif_file)

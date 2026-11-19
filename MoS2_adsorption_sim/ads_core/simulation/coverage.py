@@ -571,6 +571,13 @@ def run_coverage_study(
             else (e_dads + gas_energies["H2O"] - (n2_h2t.energy_total_eV + 0.5 * gas_energies["O2"]))
         )
 
+        LOGGER.warning(
+            "Oxidative disulfide reaction energy (rxn_oxidative_H2O_*) uses a non-spin-polarized "
+            "uMLIP O2 reference (%s), which can err by hundreds of meV; verify with spin-polarized DFT. "
+            "Do not use reaction energy as a molecular desorption barrier (use e_des_dimer_eV = %.3f eV).",
+            calc_bundle.calculator_id,
+            -e_ads_dimer,
+        )
         disulfide_rows.append(
             {
                 "species": f"{study.molecule_id}-S-S-{study.molecule_id}",
@@ -578,6 +585,8 @@ def run_coverage_study(
                 "e_ads_umlip_eV": e_ads_dimer_u,
                 "e_ads_d3_eV": e_ads_dimer_d3,
                 "e_des_dimer_eV": -e_ads_dimer,
+                "e_des_dimer_note": "molecular_physisorption_desorption_only_NOT_oxidative_rxn_energy",
+                "o2_spin_warning": "non_spin_polarized_uMLIP_O2_reference_unreliable_requires_spin_DFT",
                 "rxn_2RSH_to_RSSR_H2_gas_eV": de_gas_h2,
                 "rxn_2RSH_to_RSSR_H2_ads_eV": de_ads_h2,
                 "rxn_oxidative_H2O_gas_eV": de_gas_ox,
@@ -613,6 +622,7 @@ def run_coverage_study(
                         "temp_C": temp_C,
                         "temp_K": temp_C + _KELVIN_OFFSET,
                         "prefactor_hz": nu,
+                        "prefactor_basis": "assumed_constant_not_partition_function",
                         "tau_half_s": tau,
                         "survives_anneal": tau >= study.thermal.anneal_duration_s,
                     }
@@ -629,6 +639,18 @@ def run_coverage_study(
     if thermal_rows:
         _write_csv(out_root / "thermal_lifetimes.csv", list(thermal_rows[0].keys()), thermal_rows)
 
+    method_warnings: list[str] = []
+    if study.disulfide.enabled:
+        method_warnings.append(
+            "Oxidative disulfide reaction energies rely on a non-spin-polarized uMLIP O2 reference and require "
+            "spin-polarized DFT verification; do not substitute oxidative reaction energy for disulfide desorption."
+        )
+    if thermal_rows:
+        method_warnings.append(
+            "Polanyi-Wigner lifetimes use assumed constant prefactors (prefactors_hz) rather than partition-function "
+            "entropic prefactors and exclude ZPE/finite-temperature free-energy corrections."
+        )
+
     metadata = {
         "study_name": study.study_name,
         "calculator_id": calc_bundle.calculator_id,
@@ -638,6 +660,7 @@ def run_coverage_study(
         "slab_area_A2": slab_area_A2,
         "ref_slab_eV": ref_slab.energy_total_eV,
         "ref_mol_eV": ref_mol.energy_total_eV,
+        "method_warnings": method_warnings,
         "study_config": study_cfg.as_dict(),
     }
     (out_root / "study_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
