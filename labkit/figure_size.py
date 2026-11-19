@@ -10,7 +10,9 @@ camera button to save a figure-quality image of the same size.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -90,6 +92,27 @@ def stored_figure_size(kind: str, default_width_px: int, default_height_px: int)
     width = st.session_state.get(f"labkit_size_width_{kind}", width)
     height = st.session_state.get(f"labkit_size_height_{kind}", height)
     return FigureSize(None if fit else int(width), int(height))
+
+
+def figure_settings_popover(
+    specs: Sequence[tuple[str, str, int, int]],
+    *,
+    label: str = "Figure settings",
+    extra: Callable[[], None] | None = None,
+    container: Any | None = None,
+) -> dict[str, FigureSize]:
+    """Result-area popover for global Grid / Image format and per-view figure sizes."""
+    host = container if container is not None else st
+    sizes: dict[str, FigureSize] = {}
+    with host.popover(label, width="stretch"):
+        figure_options_inputs()
+        st.caption("Grid and image format apply to every figure.")
+        for kind, kind_label, default_w, default_h in specs:
+            sizes[kind] = figure_size_inputs(kind, kind_label, default_w, default_h)
+        if extra is not None:
+            st.divider()
+            extra()
+    return sizes
 
 
 def show_figure(fig: go.Figure, size: FigureSize, filename: str = "figure", **chart_arguments):

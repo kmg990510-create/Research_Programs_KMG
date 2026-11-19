@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import os
 from pathlib import Path
 import sys
 
@@ -18,205 +20,190 @@ for _path_entry in (
     if _path_str not in sys.path:
         sys.path.insert(0, _path_str)
 
+from labkit.chrome import (  # noqa: E402
+    ACTIVE_PROGRAM_KEY,
+    HUB_PAGE_MAP_KEY,
+    UNIFIED_MODE_KEY,
+    panel_title,
+    render_masthead,
+    render_program_switcher,
+)
+
 st.set_page_config(page_title="Research Programs KMG", layout="wide")
 
 
-_ACTIVE_PROGRAM_KEY = "hub_active_program"
-_SWITCH_TO_KEY = "hub_switch_to"
+def _optical_inventory() -> str:
+    results_dir = ROOT / "MoS2_optical_analysis" / "data" / "results"
+    reports: list[Path] = []
+    for modality in ("raman", "pl"):
+        rep_dir = results_dir / modality / "reports"
+        if rep_dir.is_dir():
+            reports.extend(rep_dir.rglob("*_fit_report.json"))
+    if not reports:
+        return "Reports: 0 on disk<br>Run Raman/PL pipeline to begin"
+    latest = max(reports, key=lambda p: p.stat().st_mtime).stem.removesuffix("_fit_report")
+    return f"Reports: <strong>{len(reports)}</strong> on disk<br>Latest: {html.escape(latest)}"
 
 
-def _select_program(program_id: str) -> None:
-    st.session_state[_ACTIVE_PROGRAM_KEY] = program_id
-    st.session_state[_SWITCH_TO_KEY] = program_id
-    st.rerun()
+def _fet_inventory() -> str:
+    raw_dir = Path(os.environ.get("FET_DATA_ROOT", ROOT / "FET_analysis" / "data")) / "raw"
+    batches = (
+        sorted(p.name for p in raw_dir.iterdir() if p.is_dir() and any(f.is_file() for f in p.iterdir()))
+        if raw_dir.is_dir()
+        else []
+    )
+    if not batches:
+        return "Batches: 0 in data/raw<br>Add B1500/4200A files in Run"
+    return f"Batches: <strong>{len(batches)}</strong> in data/raw<br>Latest: {html.escape(batches[-1])}"
+
+
+def _ads_inventory() -> str:
+    results_dir = Path(os.environ.get("ADS_DATA_ROOT", ROOT / "MoS2_adsorption_sim" / "data")) / "results"
+    if not results_dir.is_dir():
+        return "Batches: 0 in data/results<br>Run MLIP screening in Run"
+    batches = sorted(p.name for p in results_dir.iterdir() if p.is_dir() and (p / "batch_state.json").is_file())
+    studies = sorted(p.name for p in results_dir.iterdir() if p.is_dir() and (p / "coverage_summary.csv").is_file())
+    if not batches and not studies:
+        return "Batches: 0 in data/results<br>Run MLIP screening in Run"
+    latest = (batches or studies)[-1]
+    return f"Batches: <strong>{len(batches)}</strong> · Studies: <strong>{len(studies)}</strong><br>Latest: {html.escape(latest)}"
+
+
+def _masthead_status(active_program: str) -> str:
+    labels = {
+        "hub": "Unified Workspace · 3 Lab Programs",
+        "mos2": "MoS₂ Optical Analysis · Raman / PL",
+        "fet": "FET Analysis · Transfer Review",
+        "ads": "MoS₂ Adsorption Sim · uMLIP + DFT-D3",
+    }
+    return labels.get(active_program, labels["hub"])
 
 
 def _hub_page() -> None:
-    """Render the unified landing hub to switch between lab programs."""
-    if st.session_state.get(_ACTIVE_PROGRAM_KEY) is not None:
-        st.session_state[_ACTIVE_PROGRAM_KEY] = None
-        st.rerun()
+    """Render the unified Program Hub without synthetic demo numbers."""
+    st.title("Program Hub")
+    st.caption("Select a program to open its workspace.")
 
-    st.title("Research Programs KMG")
-    st.caption(
-        "Select a research program below. Only the selected program's pages will appear in the sidebar."
+    cards_specs = (
+        (
+            "mos2",
+            "MoS₂ Optical Analysis",
+            "Raman and PL spectrum peak fitting, automated/manual review, spatial maps, and strain/doping comparison.",
+            _optical_inventory(),
+            "hub_open_mos2",
+        ),
+        (
+            "fet",
+            "FET Analysis",
+            "Transfer curve characterization, automated quality checks, device review, and reproducible CSV export.",
+            _fet_inventory(),
+            "hub_open_fet",
+        ),
+        (
+            "ads",
+            "MoS₂ Adsorption Sim",
+            "MLIP + DFT-D3 adsorption relaxation, 3D pose review, binding/energy decomposition, and coverage studies.",
+            _ads_inventory(),
+            "hub_open_ads",
+        ),
     )
 
-    col_mos2, col_fet, col_ads = st.columns(3)
+    with st.container(key="kmg_hub_cards"):
+        columns = st.columns(3, gap="medium")
+        for col, (prog_id, title, hint, meta_html, btn_key) in zip(columns, cards_specs):
+            with col, st.container(border=True):
+                panel_title(title)
+                st.html(
+                    f'<p class="kmg-card-hint">{html.escape(hint)}</p>'
+                    f'<div class="kmg-card-meta">{meta_html}</div>'
+                )
+                if st.button(
+                    "Open",
+                    icon=":material/arrow_forward:",
+                    width="stretch",
+                    key=btn_key,
+                ):
+                    st.switch_page(_ENTRY_BY_PROGRAM[prog_id])
 
-    with col_mos2.container(border=True):
-        st.subheader("MoS2 Optical Analysis")
-        st.write(
-            "Raman and PL spectrum peak fitting, automated/manual review, "
-            "spatial map inspection, and strain/doping sample comparison."
+    with st.container(border=True):
+        panel_title("Data Sources")
+        st.table(
+            [
+                {"Program": "MoS₂ Optical Analysis", "Formats": "TXT, ASC, Mapping CSV", "Contents": "Raman & PL spectra, spatial map coordinates"},
+                {"Program": "FET Analysis", "Formats": "B1500 CSV, Clarius XLS", "Contents": "Transfer Vg-Id-Ig sweeps & measurement settings"},
+                {"Program": "MoS₂ Adsorption Sim", "Formats": "XYZ, MOL, SDF, YAML", "Contents": "2H-MoS₂ slabs, adsorbate poses, MD & coverage trajectories"},
+            ]
         )
-        if st.button(
-            "Open MoS2 Optical Analysis",
-            key="hub_open_mos2",
-            type="primary",
-            use_container_width=True,
-        ):
-            _select_program("mos2")
-
-    with col_fet.container(border=True):
-        st.subheader("FET Analysis")
-        st.write(
-            "Transfer and output characterization, quality flag review, "
-            "device/group comparison, and reproducible export."
-        )
-        if st.button(
-            "Open FET Analysis",
-            key="hub_open_fet",
-            type="primary",
-            use_container_width=True,
-        ):
-            _select_program("fet")
-
-    with col_ads.container(border=True):
-        st.subheader("MoS2 Adsorption Sim")
-        st.write(
-            "MLIP adsorption relaxation, pose inspection, energy decomposition "
-            "and site comparisons, and structure export."
-        )
-        if st.button(
-            "Open MoS2 Adsorption Sim",
-            key="hub_open_ads",
-            type="primary",
-            use_container_width=True,
-        ):
-            _select_program("ads")
 
 
 _MOS2_GUI_DIR = ROOT / "MoS2_optical_analysis" / "mos2_gui"
 _FET_GUI_DIR = ROOT / "FET_analysis" / "fet_gui"
 _ADS_GUI_DIR = ROOT / "MoS2_adsorption_sim" / "ads_gui"
 
-_MOS2_ENTRY = st.Page(
-    str(_MOS2_GUI_DIR / "Main.py"),
-    title="Overview",
-    url_path="mos2_overview",
-)
-_FET_ENTRY = st.Page(
-    str(_FET_GUI_DIR / "Run.py"),
-    title="Run",
-    url_path="fet_run",
-)
-_ADS_ENTRY = st.Page(
-    str(_ADS_GUI_DIR / "Run.py"),
-    title="Run",
-    url_path="ads_run",
-)
+_HUB_ENTRY = st.Page(_hub_page, title="Program Hub", url_path="hub", default=True)
 
-_PROGRAM_SECTIONS: dict[str, tuple[str, st.Page, list[st.Page]]] = {
-    "mos2": (
-        "MoS2 Optical Analysis",
-        _MOS2_ENTRY,
-        [
-            _MOS2_ENTRY,
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "1_Run_Analysis.py"),
-                title="1 Run Analysis",
-                url_path="mos2_run",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "2_Flagged_Spectra.py"),
-                title="2 Flagged Spectra",
-                url_path="mos2_flagged",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "3_All_Spectra_Viewer.py"),
-                title="3 All Spectra Viewer",
-                url_path="mos2_spectra",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "4_Map_Viewer.py"),
-                title="4 Map Viewer",
-                url_path="mos2_map",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "5_Model_Comparison.py"),
-                title="5 Model Comparison",
-                url_path="mos2_models",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "6_Sample_Comparison.py"),
-                title="6 Sample Comparison",
-                url_path="mos2_samples",
-            ),
-            st.Page(
-                str(_MOS2_GUI_DIR / "pages" / "7_Finalize.py"),
-                title="7 Finalize",
-                url_path="mos2_finalize",
-            ),
-        ],
-    ),
-    "fet": (
-        "FET Analysis",
-        _FET_ENTRY,
-        [
-            _FET_ENTRY,
-            st.Page(
-                str(_FET_GUI_DIR / "pages" / "1_Devices.py"),
-                title="1 Devices",
-                url_path="fet_devices",
-            ),
-            st.Page(
-                str(_FET_GUI_DIR / "pages" / "2_Compare.py"),
-                title="2 Compare",
-                url_path="fet_compare",
-            ),
-            st.Page(
-                str(_FET_GUI_DIR / "pages" / "3_Finalize.py"),
-                title="3 Finalize",
-                url_path="fet_finalize",
-            ),
-        ],
-    ),
-    "ads": (
-        "MoS2 Adsorption Sim",
-        _ADS_ENTRY,
-        [
-            _ADS_ENTRY,
-            st.Page(
-                str(_ADS_GUI_DIR / "pages" / "1_Poses.py"),
-                title="1 Poses",
-                url_path="ads_poses",
-            ),
-            st.Page(
-                str(_ADS_GUI_DIR / "pages" / "2_Compare.py"),
-                title="2 Compare",
-                url_path="ads_compare",
-            ),
-            st.Page(
-                str(_ADS_GUI_DIR / "pages" / "3_Finalize.py"),
-                title="3 Finalize",
-                url_path="ads_finalize",
-            ),
-        ],
-    ),
+_MOS2_PAGES = {
+    "overview": st.Page(str(_MOS2_GUI_DIR / "Main.py"), title="Overview", url_path="mos2_overview"),
+    "run": st.Page(str(_MOS2_GUI_DIR / "pages" / "1_Run_Analysis.py"), title="Run Analysis", url_path="mos2_run"),
+    "flagged": st.Page(str(_MOS2_GUI_DIR / "pages" / "2_Flagged_Spectra.py"), title="Flagged Spectra", url_path="mos2_flagged"),
+    "spectra": st.Page(str(_MOS2_GUI_DIR / "pages" / "3_All_Spectra_Viewer.py"), title="Spectra Viewer", url_path="mos2_spectra"),
+    "map": st.Page(str(_MOS2_GUI_DIR / "pages" / "4_Map_Viewer.py"), title="Map Viewer", url_path="mos2_map"),
+    "models": st.Page(str(_MOS2_GUI_DIR / "pages" / "5_Model_Comparison.py"), title="Model Comparison", url_path="mos2_models"),
+    "samples": st.Page(str(_MOS2_GUI_DIR / "pages" / "6_Sample_Comparison.py"), title="Sample Comparison", url_path="mos2_samples"),
+    "finalize": st.Page(str(_MOS2_GUI_DIR / "pages" / "7_Finalize.py"), title="Finalize", url_path="mos2_finalize"),
 }
 
-_active_program = st.session_state.get(_ACTIVE_PROGRAM_KEY)
-_hub_entry = st.Page(
-    _hub_page,
-    title="Program Hub",
-    url_path="hub",
-    default=_active_program not in _PROGRAM_SECTIONS,
+_FET_PAGES = {
+    "run": st.Page(str(_FET_GUI_DIR / "Run.py"), title="Run", url_path="fet_run"),
+    "devices": st.Page(str(_FET_GUI_DIR / "pages" / "1_Devices.py"), title="Devices", url_path="fet_devices"),
+    "compare": st.Page(str(_FET_GUI_DIR / "pages" / "2_Compare.py"), title="Compare", url_path="fet_compare"),
+    "finalize": st.Page(str(_FET_GUI_DIR / "pages" / "3_Finalize.py"), title="Finalize", url_path="fet_finalize"),
+}
+
+_ADS_PAGES = {
+    "run": st.Page(str(_ADS_GUI_DIR / "Run.py"), title="Run", url_path="ads_run"),
+    "poses": st.Page(str(_ADS_GUI_DIR / "pages" / "1_Poses.py"), title="Poses", url_path="ads_poses"),
+    "coverage": st.Page(str(_ADS_GUI_DIR / "pages" / "4_Coverage_Dimer.py"), title="Coverage & Dimer", url_path="ads_coverage"),
+    "compare": st.Page(str(_ADS_GUI_DIR / "pages" / "2_Compare.py"), title="Compare", url_path="ads_compare"),
+    "finalize": st.Page(str(_ADS_GUI_DIR / "pages" / "3_Finalize.py"), title="Finalize", url_path="ads_finalize"),
+}
+
+_ENTRY_BY_PROGRAM: dict[str, st.Page] = {
+    "hub": _HUB_ENTRY,
+    "mos2": _MOS2_PAGES["overview"],
+    "fet": _FET_PAGES["run"],
+    "ads": _ADS_PAGES["run"],
+}
+
+_PAGE_MAP: dict[tuple[str, str], st.Page] = {
+    ("hub", "hub"): _HUB_ENTRY,
+    **{("mos2", key): page for key, page in _MOS2_PAGES.items()},
+    **{("fet", key): page for key, page in _FET_PAGES.items()},
+    **{("ads", key): page for key, page in _ADS_PAGES.items()},
+}
+
+st.session_state[UNIFIED_MODE_KEY] = True
+st.session_state[HUB_PAGE_MAP_KEY] = _PAGE_MAP
+
+pg = st.navigation(
+    [_HUB_ENTRY, *_MOS2_PAGES.values(), *_FET_PAGES.values(), *_ADS_PAGES.values()],
+    position="hidden",
 )
 
-if _active_program in _PROGRAM_SECTIONS:
-    _section_title, _entry_page, _section_pages = _PROGRAM_SECTIONS[_active_program]
-    _nav_pages = {
-        "Program Hub": [_hub_entry],
-        _section_title: _section_pages,
-    }
+_url = str(getattr(pg, "url_path", "") or "")
+if _url.startswith("mos2_"):
+    _active_program = "mos2"
+elif _url.startswith("fet_"):
+    _active_program = "fet"
+elif _url.startswith("ads_"):
+    _active_program = "ads"
 else:
-    _nav_pages = {
-        "Program Hub": [_hub_entry],
-    }
+    _active_program = "hub"
 
-pg = st.navigation(_nav_pages)
-_pending = st.session_state.pop(_SWITCH_TO_KEY, None)
-if _pending in _PROGRAM_SECTIONS:
-    st.switch_page(_PROGRAM_SECTIONS[_pending][1])
+st.session_state[ACTIVE_PROGRAM_KEY] = _active_program
+render_masthead(_masthead_status(_active_program))
+_picked_program = render_program_switcher(_active_program)
+if _picked_program is not None and _picked_program != _active_program:
+    st.switch_page(_ENTRY_BY_PROGRAM[_picked_program])
+
 pg.run()

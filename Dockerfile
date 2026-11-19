@@ -11,6 +11,7 @@ COPY --chown=user:user requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
+COPY --chown=user:user .streamlit/ $HOME/app/.streamlit/
 COPY --chown=user:user app.py $HOME/app/app.py
 COPY --chown=user:user MoS2_optical_analysis/ $HOME/app/MoS2_optical_analysis/
 COPY --chown=user:user FET_analysis/ $HOME/app/FET_analysis/
