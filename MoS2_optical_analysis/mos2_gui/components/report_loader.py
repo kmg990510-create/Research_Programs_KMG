@@ -17,6 +17,7 @@ import sys
 import pandas as pd
 import streamlit as st
 
+from labkit.chrome import sidebar_section_label
 from labkit.sidebar import sidebar_section  # shared sidebar rule; pages import it from here
 
 _BOOTSTRAP_ROOT = Path(__file__).resolve().parents[2]
@@ -258,6 +259,64 @@ def filter_store() -> dict[str, Any]:
     )
 
 
+def render_status_rejected_filters(
+    work_df: pd.DataFrame,
+    *,
+    key_prefix: str,
+    include_enable_toggle: bool = False,
+    default_statuses: list[str] | None = None,
+    enabled_default: bool = True,
+) -> tuple[bool, list[str], bool]:
+    """Body filter row for fit_status and rejected spectra, shared across pages via ``filter_store``."""
+    f_store = filter_store()
+    has_status = "fit_status" in work_df.columns
+    has_decision = "review_decision" in work_df.columns
+    base_statuses = list(default_statuses) if default_statuses else list(STATUS_OPTIONS)
+
+    status_key = f"{key_prefix}_status_filter"
+    rej_key = f"{key_prefix}_hide_rejected"
+    enable_key = f"{key_prefix}_status_enable"
+
+    if status_key not in st.session_state:
+        stored = [s for s in STATUS_OPTIONS if s in f_store.get("statuses", base_statuses)]
+        st.session_state[status_key] = stored if "statuses" in f_store else base_statuses
+    if rej_key not in st.session_state:
+        st.session_state[rej_key] = bool(f_store.get("hide_rejected", False))
+    if include_enable_toggle and enable_key not in st.session_state:
+        st.session_state[enable_key] = bool(f_store.get("status_filter_on", enabled_default))
+
+    if include_enable_toggle:
+        c_en, c_st, c_rej = st.columns([1.2, 2.4, 1.3], vertical_alignment="bottom")
+        status_filter_on = c_en.checkbox("Filter by fit_status", key=enable_key, disabled=not has_status)
+        selected_statuses = c_st.multiselect(
+            "Allowed fit_status values",
+            options=list(STATUS_OPTIONS),
+            key=status_key,
+            disabled=(not has_status) or (not status_filter_on),
+            placeholder="All hidden if empty",
+        )
+        hide_rejected = c_rej.checkbox("Exclude rejected spectra", key=rej_key, disabled=not has_decision)
+    else:
+        status_filter_on = True
+        c_st, c_rej = st.columns([2.8, 1.4], vertical_alignment="bottom")
+        selected_statuses = c_st.multiselect(
+            "Allowed fit_status values",
+            options=list(STATUS_OPTIONS),
+            key=status_key,
+            disabled=not has_status,
+            placeholder="All hidden if empty",
+        )
+        hide_rejected = c_rej.checkbox("Exclude rejected spectra", key=rej_key, disabled=not has_decision)
+
+    if has_status:
+        f_store["statuses"] = list(selected_statuses)
+    if include_enable_toggle:
+        f_store["status_filter_on"] = bool(status_filter_on)
+    if has_decision:
+        f_store["hide_rejected"] = bool(hide_rejected)
+    return bool(status_filter_on), list(selected_statuses), bool(hide_rejected)
+
+
 def _render_report_upload(key_prefix: str, expanded: bool) -> None:
     with st.expander("Upload Report JSON / CSV", expanded=expanded):
         uploaded = st.file_uploader(
@@ -291,7 +350,7 @@ def choose_report_sidebar(key_prefix: str = "global") -> tuple[Path | None, dict
     files = list_report_json_files()
     cloud_mode = is_cloud_runtime()
 
-    with sidebar_section(REPORT_SECTION):
+    with sidebar_section(sidebar_section_label(1, "Report"), expanded=True):
         if not files:
             st.warning("No report JSON found in data/results/{raman,pl}/reports.")
             _render_report_upload(key_prefix, expanded=True)

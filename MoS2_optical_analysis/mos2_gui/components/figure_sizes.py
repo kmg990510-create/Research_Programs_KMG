@@ -1,18 +1,29 @@
-"""Size, grid and image format of every figure of this program, set by the user in the sidebar.
+"""Size, grid and image format of every figure of this program, set by the user in Figure settings.
 
-Pages call ``figure_size_section`` once; code that draws a figure calls
-``show(fig, kind)``. No page or component calls ``st.plotly_chart`` directly,
-so every figure gets the same look (``labkit.plot_theme.finish_figure``).
+Pages offer figure size inputs via ``figure_settings_popover`` (or
+``figure_size_section``); code that draws a figure calls ``show(fig, kind)``.
+No page or component calls ``st.plotly_chart`` directly, so every figure gets
+the same look (``labkit.plot_theme.finish_figure``).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import plotly.graph_objects as go
 
-from labkit.figure_size import FigureSize, figure_options_inputs, figure_size_inputs, show_figure, stored_figure_size
+from labkit.figure_size import (
+    FigureSize,
+    figure_options_inputs,
+    figure_settings_popover as _labkit_figure_settings_popover,
+    figure_size_inputs,
+    show_figure,
+    stored_figure_size,
+)
 from labkit.sidebar import sidebar_section
 
-# kind -> (label in the sidebar, width in px when "fit to the page" is off, height in px)
+# kind -> (label in Figure settings, width in px when "fit to the page" is off, height in px)
 KINDS: dict[str, tuple[str, int, int]] = {
     "spectrum": ("Spectrum", 1000, 450),
     "map_editor": ("Map", 800, 620),
@@ -31,6 +42,18 @@ def figure_size_section(title: str, kinds: list[str]) -> None:
         figure_options_inputs()
         for kind in kinds:
             figure_size_inputs(kind, *KINDS[kind])
+
+
+def figure_settings_popover(
+    kinds: list[str],
+    *,
+    label: str = "Figure settings",
+    extra: Callable[[], None] | None = None,
+    container: Any | None = None,
+) -> dict[str, FigureSize]:
+    """Result-area popover holding global Grid / Image format and the sizes for ``kinds``."""
+    specs = [(kind, *KINDS[kind]) for kind in kinds]
+    return _labkit_figure_settings_popover(specs, label=label, extra=extra, container=container)
 
 
 def size_of(kind: str) -> FigureSize:

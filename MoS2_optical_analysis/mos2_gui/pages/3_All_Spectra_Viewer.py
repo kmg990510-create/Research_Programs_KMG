@@ -37,7 +37,9 @@ from fitting.mos2_core.review.refit_api import (  # noqa: E402
 from fitting.mos2_core.review.manual_overrides import (  # noqa: E402
     upsert_manual_override,
 )
+from labkit.chrome import panel_title  # noqa: E402
 from mos2_gui.components import report_loader as _report_loader  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
 from mos2_gui.components.science_settings import fwhm_warn_limits  # noqa: E402
 from mos2_gui.components.manual_refit_contract import (  # noqa: E402
     build_editor_request,
@@ -46,7 +48,7 @@ from mos2_gui.components.manual_refit_contract import (  # noqa: E402
 )
 from mos2_gui.desktop_editor.controller import ManualEditorController  # noqa: E402
 from mos2_gui.desktop_editor.models import EditorRequest  # noqa: E402
-from mos2_gui.components.figure_sizes import figure_size_section  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_settings_popover  # noqa: E402
 from mos2_gui.components.spectrum_view import default_view_range, si_check_range, to_plot_axis, view_window  # noqa: E402
 from mos2_gui.components.spectrum_viewer import (  # noqa: E402
     load_raw_xy,
@@ -57,8 +59,6 @@ from mos2_gui.components.spectrum_viewer import (  # noqa: E402
 
 choose_report_sidebar = _report_loader.choose_report_sidebar
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
-sidebar_filters_section = _report_loader.sidebar_filters_section
-sidebar_section = _report_loader.sidebar_section
 
 _POINT_TOKEN_RE = re.compile(r"Y(?P<y>\d+)-X(?P<x>\d+)", re.IGNORECASE)
 
@@ -99,6 +99,27 @@ def _set_linear_index(index: int) -> None:
     st.session_state["all_spectra_index_value"] = index
     st.session_state["all_spectra_index_slider"] = index
     st.session_state["all_spectra_index_number"] = index
+
+
+def _step_linear_index(delta: int, max_index: int) -> None:
+    if max_index <= 0:
+        return
+    current = int(st.session_state.get("all_spectra_index_value", 0))
+    _set_linear_index((current + delta) % (max_index + 1))
+
+
+def _sync_grid_from_step(delta: int, work_df: pd.DataFrame) -> None:
+    if work_df.empty:
+        return
+    current = int(st.session_state.get("all_spectra_index_value", 0))
+    new_idx = (current + delta) % len(work_df)
+    _set_linear_index(new_idx)
+    row_y = work_df.iloc[new_idx].get("_nav_y")
+    row_x = work_df.iloc[new_idx].get("_nav_x")
+    if pd.notna(row_y):
+        st.session_state["all_spectra_nav_y"] = int(row_y)
+    if pd.notna(row_x):
+        st.session_state["all_spectra_nav_x"] = int(row_x)
 
 
 def _derive_navigation_axes(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
@@ -237,13 +258,14 @@ def _manual_cache_key(report_path: Path, spectrum_id: str) -> str:
     return f"{report_path.resolve()}::{spectrum_id}"
 
 
-st.title("All Spectra Viewer")
-st.caption("Inspect any spectrum with raw data and fitted curve overlay.")
-
+render_mos2_chrome("Viewer", "Spectra Viewer · MoS2 Optical Analysis", viewer_sub="Spectra")
 report_path, payload, df = choose_report_sidebar("all_spectra")
+
 if report_path is None or payload is None:
+    st.header("Spectra Viewer")
     st.stop()
 if df.empty:
+    st.header("Spectra Viewer")
     st.warning("This report has no spectra rows.")
     st.stop()
 
@@ -255,22 +277,31 @@ fwhm_warn_cfg = fwhm_warn_limits(graph_cfg)
 window = view_window(graph_cfg)
 
 work_df = df.copy()
-filters_box = sidebar_filters_section()
+f_cols = st.columns([1.4, 1.4, 1.8], vertical_alignment="bottom")
 if "map_id" in work_df.columns:
     map_options = ["ALL"] + sorted(work_df["map_id"].dropna().astype(str).unique().tolist())
-    selected_map = filters_box.selectbox("Map filter", map_options, key="all_spectra_map_filter")
+    selected_map = f_cols[0].selectbox("Map filter", map_options, key="all_spectra_map_filter")
     if selected_map != "ALL":
         work_df = work_df[work_df["map_id"].astype(str) == selected_map]
+else:
+    f_cols[0].selectbox("Map filter", ["ALL"], key="all_spectra_map_filter_none", disabled=True)
 
 if "selected_model" in work_df.columns:
     model_options = ["ALL"] + sorted(work_df["selected_model"].dropna().astype(str).unique().tolist())
-    selected_model = filters_box.selectbox("Model filter", model_options, key="all_spectra_model_filter")
+    selected_model = f_cols[1].selectbox("Model filter", model_options, key="all_spectra_model_filter")
     if selected_model != "ALL":
         work_df = work_df[work_df["selected_model"].astype(str) == selected_model]
+else:
+    f_cols[1].selectbox("Model filter", ["ALL"], key="all_spectra_model_filter_none", disabled=True)
 
-search_text = filters_box.text_input("Spectrum ID contains", value="", key="all_spectra_search")
+search_text = f_cols[2].text_input("Spectrum ID contains", value="", key="all_spectra_search")
 if search_text.strip():
     work_df = work_df[work_df["spectrum_id"].astype(str).str.contains(search_text.strip(), case=False, regex=False)]
+
+h_left, h_right = st.columns([4, 1], vertical_alignment="bottom")
+h_left.header("Spectra Viewer")
+h_left.caption("Inspect any spectrum with raw data, fitted components, and manual refit tools.")
+figure_settings_popover(["spectrum"], container=h_right)
 
 if work_df.empty:
     st.warning("No spectra left after filters.")
@@ -301,95 +332,106 @@ else:
 
 grid_mask = work_df["_nav_y"].notna() & work_df["_nav_x"].notna()
 has_grid_navigation = bool(grid_mask.any())
-nav_box = sidebar_section("3) Navigation")
-figure_size_section("4) Figure size", ["spectrum"])
 
-if max_index == 0:
-    _set_linear_index(0)
-    if has_grid_navigation:
-        only_row = work_df.loc[0]
-        if pd.notna(only_row.get("_nav_y")):
-            st.session_state["all_spectra_nav_y"] = int(only_row["_nav_y"])
-        if pd.notna(only_row.get("_nav_x")):
-            st.session_state["all_spectra_nav_x"] = int(only_row["_nav_x"])
-    nav_box.caption("Only one spectrum matches current filters.")
-    index = 0
-elif has_grid_navigation:
-    nav_df = work_df.loc[grid_mask, ["_nav_y", "_nav_x"]].copy()
-    nav_df["_nav_y"] = nav_df["_nav_y"].astype(int)
-    nav_df["_nav_x"] = nav_df["_nav_x"].astype(int)
+with st.container(border=True):
+    panel_title("Navigation")
+    if max_index == 0:
+        _set_linear_index(0)
+        if has_grid_navigation:
+            only_row = work_df.loc[0]
+            if pd.notna(only_row.get("_nav_y")):
+                st.session_state["all_spectra_nav_y"] = int(only_row["_nav_y"])
+            if pd.notna(only_row.get("_nav_x")):
+                st.session_state["all_spectra_nav_x"] = int(only_row["_nav_x"])
+        st.caption("Only one spectrum matches current filters.")
+        index = 0
+    elif has_grid_navigation:
+        nav_df = work_df.loc[grid_mask, ["_nav_y", "_nav_x"]].copy()
+        nav_df["_nav_y"] = nav_df["_nav_y"].astype(int)
+        nav_df["_nav_x"] = nav_df["_nav_x"].astype(int)
 
-    y_options = sorted(nav_df["_nav_y"].unique().tolist())
-    current_index = int(st.session_state["all_spectra_index_value"])
-    current_row = work_df.iloc[current_index]
-    current_y = int(current_row["_nav_y"]) if pd.notna(current_row["_nav_y"]) else y_options[0]
-    current_x = int(current_row["_nav_x"]) if pd.notna(current_row["_nav_x"]) else None
+        y_options = sorted(nav_df["_nav_y"].unique().tolist())
+        current_index = int(st.session_state["all_spectra_index_value"])
+        current_row = work_df.iloc[current_index]
+        current_y = int(current_row["_nav_y"]) if pd.notna(current_row["_nav_y"]) else y_options[0]
+        current_x = int(current_row["_nav_x"]) if pd.notna(current_row["_nav_x"]) else None
 
-    selected_y_state = st.session_state.get("all_spectra_nav_y")
-    if selected_y_state is None or int(selected_y_state) not in y_options:
-        st.session_state["all_spectra_nav_y"] = current_y
-    selected_y = int(
-        nav_box.select_slider(
-            "Row index (Y)",
-            options=y_options,
-            value=int(st.session_state["all_spectra_nav_y"]),
-            key="all_spectra_nav_y",
+        n_y, n_x, n_prev, n_next = st.columns([2.2, 2.2, 0.8, 0.8], vertical_alignment="bottom")
+        selected_y_state = st.session_state.get("all_spectra_nav_y")
+        if selected_y_state is None or int(selected_y_state) not in y_options:
+            st.session_state["all_spectra_nav_y"] = current_y
+        if "all_spectra_nav_y" in st.session_state and int(st.session_state["all_spectra_nav_y"]) in y_options:
+            selected_y = int(
+                n_y.select_slider(
+                    "Row index (Y)",
+                    options=y_options,
+                    key="all_spectra_nav_y",
+                )
+            )
+        else:
+            selected_y = int(
+                n_y.select_slider(
+                    "Row index (Y)",
+                    options=y_options,
+                    value=current_y,
+                    key="all_spectra_nav_y",
+                )
+            )
+
+        x_options = sorted(nav_df.loc[nav_df["_nav_y"] == selected_y, "_nav_x"].unique().tolist())
+        if not x_options:
+            x_options = sorted(nav_df["_nav_x"].unique().tolist())
+
+        selected_x_state = st.session_state.get("all_spectra_nav_x")
+        if selected_x_state is not None and int(selected_x_state) in x_options:
+            default_x = int(selected_x_state)
+        elif current_x is not None and current_x in x_options:
+            default_x = current_x
+        else:
+            default_x = x_options[0]
+        st.session_state["all_spectra_nav_x"] = default_x
+
+        selected_x = int(
+            n_x.select_slider(
+                "Spectrum index (X)",
+                options=x_options,
+                key="all_spectra_nav_x",
+            )
         )
-    )
+        n_prev.button("Previous", on_click=_sync_grid_from_step, args=(-1, work_df), width="stretch", key="all_spectra_grid_prev")
+        n_next.button("Next", on_click=_sync_grid_from_step, args=(1, work_df), width="stretch", key="all_spectra_grid_next")
 
-    x_options = sorted(nav_df.loc[nav_df["_nav_y"] == selected_y, "_nav_x"].unique().tolist())
-    if not x_options:
-        x_options = sorted(nav_df["_nav_x"].unique().tolist())
+        match_mask = ((work_df["_nav_y"] == selected_y) & (work_df["_nav_x"] == selected_x)).fillna(False)
+        matched_indexes = work_df.index[match_mask].tolist()
+        if matched_indexes:
+            index = int(matched_indexes[0])
+        else:
+            same_y_mask = (work_df["_nav_y"] == selected_y).fillna(False)
+            same_y_indexes = work_df.index[same_y_mask].tolist()
+            index = int(same_y_indexes[0]) if same_y_indexes else int(st.session_state["all_spectra_index_value"])
 
-    selected_x_state = st.session_state.get("all_spectra_nav_x")
-    if selected_x_state is not None and int(selected_x_state) in x_options:
-        default_x = int(selected_x_state)
-    elif current_x is not None and current_x in x_options:
-        default_x = current_x
+        _set_linear_index(index)
     else:
-        default_x = x_options[0]
-    st.session_state["all_spectra_nav_x"] = default_x
-
-    selected_x = int(
-        nav_box.select_slider(
-            "Spectrum index (X)",
-            options=x_options,
-            value=int(st.session_state["all_spectra_nav_x"]),
-            key="all_spectra_nav_x",
+        n_sl, n_num, n_prev, n_next = st.columns([3.0, 1.4, 0.8, 0.8], vertical_alignment="bottom")
+        _ = n_sl.slider(
+            "Spectrum index",
+            0,
+            max_index,
+            key="all_spectra_index_slider",
+            on_change=_sync_index_from_slider,
         )
-    )
-    nav_box.caption("Coordinate navigation keeps X/Y control in one place.")
-
-    match_mask = ((work_df["_nav_y"] == selected_y) & (work_df["_nav_x"] == selected_x)).fillna(False)
-    matched_indexes = work_df.index[match_mask].tolist()
-    if matched_indexes:
-        index = int(matched_indexes[0])
-    else:
-        same_y_mask = (work_df["_nav_y"] == selected_y).fillna(False)
-        same_y_indexes = work_df.index[same_y_mask].tolist()
-        index = int(same_y_indexes[0]) if same_y_indexes else int(st.session_state["all_spectra_index_value"])
-
-    _set_linear_index(index)
-else:
-    _ = nav_box.slider(
-        "Spectrum index",
-        0,
-        max_index,
-        int(st.session_state["all_spectra_index_slider"]),
-        key="all_spectra_index_slider",
-        on_change=_sync_index_from_slider,
-    )
-    _ = nav_box.number_input(
-        "Spectrum index (number)",
-        min_value=0,
-        max_value=max_index,
-        value=int(st.session_state["all_spectra_index_number"]),
-        step=1,
-        key="all_spectra_index_number",
-        on_change=_sync_index_from_number,
-        args=(max_index,),
-    )
-    index = int(st.session_state["all_spectra_index_value"])
+        _ = n_num.number_input(
+            "Spectrum index (number)",
+            min_value=0,
+            max_value=max_index,
+            step=1,
+            key="all_spectra_index_number",
+            on_change=_sync_index_from_number,
+            args=(max_index,),
+        )
+        n_prev.button("Previous", on_click=_step_linear_index, args=(-1, max_index), width="stretch", key="all_spectra_lin_prev")
+        n_next.button("Next", on_click=_step_linear_index, args=(1, max_index), width="stretch", key="all_spectra_lin_next")
+        index = int(st.session_state["all_spectra_index_value"])
 row = work_df.iloc[index].to_dict()
 spectrum_id = str(row.get("spectrum_id", f"row_{index}"))
 
@@ -515,22 +557,26 @@ elif show_full:
     x_min = min(x_for_plot)
     x_max = max(x_for_plot)
 
-render_spectrum_overlay(
-    spectrum_id=spectrum_id,
-    row=display_row,
-    x_raw=x_for_plot,
-    y_raw=y_raw,
-    x_view_min=float(x_min),
-    x_view_max=float(x_max),
-    style_cfg=overlay_style_cfg if isinstance(overlay_style_cfg, dict) else None,
-    fit_curve_cfg=fit_curve_cfg if isinstance(fit_curve_cfg, dict) else None,
-)
+with st.container(border=True):
+    panel_title("Spectrum Overlay")
+    render_spectrum_overlay(
+        spectrum_id=spectrum_id,
+        row=display_row,
+        x_raw=x_for_plot,
+        y_raw=y_raw,
+        x_view_min=float(x_min),
+        x_view_max=float(x_max),
+        style_cfg=overlay_style_cfg if isinstance(overlay_style_cfg, dict) else None,
+        fit_curve_cfg=fit_curve_cfg if isinstance(fit_curve_cfg, dict) else None,
+    )
 
-render_fit_summary(
-    display_row,
-    download_key=f"download_current_row_{_sanitize_filename(spectrum_id)}",
-    fwhm_warn_cfg=fwhm_warn_cfg,
-)
+with st.container(border=True):
+    panel_title("Fit Summary")
+    render_fit_summary(
+        display_row,
+        download_key=f"download_current_row_{_sanitize_filename(spectrum_id)}",
+        fwhm_warn_cfg=fwhm_warn_cfg,
+    )
 
 if "manual_refit_cache" not in st.session_state or not isinstance(st.session_state["manual_refit_cache"], dict):
     st.session_state["manual_refit_cache"] = {}

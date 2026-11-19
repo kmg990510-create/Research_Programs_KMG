@@ -1,11 +1,10 @@
-"""Main entry point for Streamlit review application."""
+"""Overview (Overview stage / entry page) for MoS2 Optical Analysis."""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import importlib
+from pathlib import Path
+import sys
 
 import pandas as pd
 import streamlit as st
@@ -27,7 +26,9 @@ ROOT = runtime_project_root(__file__, 1)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from labkit.chrome import panel_title, resolve_page  # noqa: E402
 from mos2_gui.components import report_loader as _report_loader_mod  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
 
 if not hasattr(_report_loader_mod, "build_projected_csv_bytes"):
     importlib.reload(_report_loader_mod)
@@ -39,18 +40,13 @@ from mos2_gui.components.report_loader import (  # noqa: E402
     paired_csv_path,
 )
 
+render_mos2_chrome("Overview", "MoS2 Optical Analysis · Overview")
+report_path, payload, spectra_df = choose_report_sidebar("home")
 
-st.set_page_config(
-    page_title="MoS2 Raman Review",
-    page_icon=":microscope:",
-    layout="wide",
-)
-
-st.title("MoS2 Raman/PL Analysis Viewer")
-st.caption("Pipeline output browser for fit results, model quality, and map-wise summaries.")
+st.header("Overview")
+st.caption("Pipeline output browser for Raman and PL fit results, model quality, and map summaries.")
 st.caption(format_build_label(load_build_info()))
 
-report_path, payload, spectra_df = choose_report_sidebar("home")
 if report_path is None or payload is None:
     st.stop()
 
@@ -63,71 +59,77 @@ metric_cols[3].metric("Maps", int(counts.get("maps", 0)))
 metric_cols[4].metric("Fit Failures", int(payload.get("fit_failure_count", 0)))
 metric_cols[5].metric("Rows", int(len(spectra_df)))
 
-left, right = st.columns([2, 1])
+left, right = st.columns([2, 1], gap="medium")
 with left:
-    st.subheader("Map Summary")
-    map_summary = payload.get("map_summary", [])
-    st.dataframe(pd.DataFrame(map_summary), width="stretch", height=240)
+    with st.container(border=True):
+        panel_title("Map Summary")
+        map_summary = payload.get("map_summary", [])
+        st.dataframe(pd.DataFrame(map_summary), width="stretch", height=240)
 
-    st.subheader("Preview: Spectra Fit Results")
-    preview_cols = [
-        c
-        for c in [
-            "spectrum_id",
-            "selected_model",
-            "pl_position",
-            "pl_fwhm",
-            "pl_height",
-            "temperature_k",
-            "treatment_label",
-            "a_minus_position",
-            "a0_position",
-            "a_minus_a0_area_ratio",
-            "a0_fraction_of_a_total",
-            "e2g_position",
-            "a1g_position",
-            "delta_e2g_a1g",
-            "rmse",
-            "r2",
-            "aic",
-            "bic",
+    with st.container(border=True):
+        panel_title("Preview: Spectra Fit Results")
+        preview_cols = [
+            c
+            for c in [
+                "spectrum_id",
+                "selected_model",
+                "pl_position",
+                "pl_fwhm",
+                "pl_height",
+                "temperature_k",
+                "treatment_label",
+                "a_minus_position",
+                "a0_position",
+                "a_minus_a0_area_ratio",
+                "a0_fraction_of_a_total",
+                "e2g_position",
+                "a1g_position",
+                "delta_e2g_a1g",
+                "rmse",
+                "r2",
+                "aic",
+                "bic",
+            ]
+            if c in spectra_df.columns
         ]
-        if c in spectra_df.columns
-    ]
-    st.dataframe(spectra_df[preview_cols].head(30), width="stretch", height=360)
+        st.dataframe(spectra_df[preview_cols].head(30), width="stretch", height=360)
 
 with right:
-    st.subheader("Active Artifacts")
-    st.caption("A single selected run is represented by a JSON report and its paired CSV.")
-    st.markdown("`JSON report`")
-    st.code(str(report_path), language="text")
-    st.download_button(
-        "Download Report JSON (with Raw & Edits)",
-        data=build_projected_report_json_bytes(payload),
-        file_name=report_path.name,
-        mime="application/json",
-        width="stretch",
-    )
-    csv_path = paired_csv_path(report_path)
-    st.markdown("`Paired CSV`")
-    st.code(str(csv_path), language="text")
-    st.download_button(
-        "Download Parameters CSV",
-        data=build_projected_csv_bytes(payload, csv_path),
-        file_name=csv_path.name,
-        mime="text/csv",
-        width="stretch",
-    )
+    with st.container(border=True):
+        panel_title("Active Artifacts")
+        st.caption("A single selected run is represented by a JSON report and its paired CSV.")
+        st.markdown("`JSON report`")
+        st.code(str(report_path), language="text")
+        st.download_button(
+            "Download Report JSON (with Raw & Edits)",
+            data=build_projected_report_json_bytes(payload),
+            file_name=report_path.name,
+            mime="application/json",
+            width="stretch",
+        )
+        csv_path = paired_csv_path(report_path)
+        st.markdown("`Paired CSV`")
+        st.code(str(csv_path), language="text")
+        st.download_button(
+            "Download Parameters CSV",
+            data=build_projected_csv_bytes(payload, csv_path),
+            file_name=csv_path.name,
+            mime="text/csv",
+            width="stretch",
+        )
 
     with st.expander("Configuration Snapshot (advanced)", expanded=False):
         st.json(payload.get("config", {}))
 
-_PAGES_DIR = Path(__file__).resolve().parent / "pages"
-st.subheader("Next Steps")
-nav_cols = st.columns(4)
-nav_cols[0].page_link(str(_PAGES_DIR / "1_Run_Analysis.py"), label="Run Analysis")
-nav_cols[1].page_link(str(_PAGES_DIR / "2_Flagged_Spectra.py"), label="Flagged")
-nav_cols[2].page_link(str(_PAGES_DIR / "3_All_Spectra_Viewer.py"), label="All Spectra")
-nav_cols[3].page_link(str(_PAGES_DIR / "7_Finalize.py"), label="Finalize")
-
-
+with st.container(border=True):
+    panel_title("Next Steps")
+    nav_cols = st.columns(4)
+    nav_targets = (
+        ("Run Analysis", "run", "pages/1_Run_Analysis.py", "mos2_go_run"),
+        ("Review Flagged", "flagged", "pages/2_Flagged_Spectra.py", "mos2_go_flagged"),
+        ("All Spectra Viewer", "spectra", "pages/3_All_Spectra_Viewer.py", "mos2_go_spectra"),
+        ("Finalize & Export", "finalize", "pages/7_Finalize.py", "mos2_go_finalize"),
+    )
+    for col, (label, stage_key, standalone_rel, btn_key) in zip(nav_cols, nav_targets):
+        if col.button(label, key=btn_key, width="stretch"):
+            st.switch_page(resolve_page("mos2", stage_key, standalone_rel))

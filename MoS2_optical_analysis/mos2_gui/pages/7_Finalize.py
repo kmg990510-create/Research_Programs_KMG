@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import importlib
 import json
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
+import sys
 
 import streamlit as st
 
@@ -20,7 +20,9 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from labkit.chrome import panel_title  # noqa: E402
 from mos2_gui.components import report_loader as _report_loader_mod  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
 
 if not hasattr(_report_loader_mod, "build_projected_csv_bytes"):
     importlib.reload(_report_loader_mod)
@@ -32,12 +34,12 @@ from mos2_gui.components.report_loader import (  # noqa: E402
     paired_csv_path,
 )
 
-
-st.title("Finalize")
-st.caption("Freeze review decisions and export final artifacts.")
-st.info("Use this page as the final handoff step after review is complete.")
-
+render_mos2_chrome("Finalize", "Finalize · MoS2 Optical Analysis")
 report_path, payload, df = choose_report_sidebar("finalize")
+
+st.header("Finalize")
+st.caption("Freeze review decisions and export final artifacts.")
+
 if report_path is None or payload is None:
     st.stop()
 
@@ -47,60 +49,61 @@ col1.metric("Accepted", int(counts.get("accepted", 0)))
 col2.metric("Flagged", int(counts.get("flagged", 0)))
 col3.metric("Fit Failures", int(payload.get("fit_failure_count", 0)))
 
-st.subheader("Export")
-json_bytes = build_projected_report_json_bytes(payload)
-csv_path = paired_csv_path(report_path)
-csv_bytes = build_projected_csv_bytes(payload, csv_path)
+with st.container(border=True):
+    panel_title("Export")
+    json_bytes = build_projected_report_json_bytes(payload)
+    csv_path = paired_csv_path(report_path)
+    csv_bytes = build_projected_csv_bytes(payload, csv_path)
 
-st.download_button(
-    "Download Final JSON Report",
-    data=json_bytes,
-    file_name=report_path.name,
-    mime="application/json",
-    width="stretch",
-)
-
-if csv_bytes:
-    st.download_button(
-        "Download Final CSV Parameters",
-        data=csv_bytes,
-        file_name=csv_path.name,
-        mime="text/csv",
-        width="stretch",
-    )
-else:
-    st.info("Paired CSV file not found.")
-
-st.subheader("Finalize Manifest")
-reviewer = st.text_input("Reviewer ID", value="reviewer_1")
-notes = st.text_area("Finalize notes", value="")
-check_cols = st.columns(3)
-check_cols[0].checkbox("Report selected", value=(report_path is not None), disabled=True)
-check_cols[1].checkbox("Rows available", value=(df is not None and not df.empty), disabled=True)
-check_cols[2].checkbox("Counts loaded", value=bool(counts), disabled=True)
-
-if st.button("Write finalize manifest", type="primary"):
-    manifest = {
-        "run_id": payload.get("run_id"),
-        "reviewer_id": reviewer,
-        "notes": notes,
-        "accepted_count": counts.get("accepted"),
-        "flagged_count": counts.get("flagged"),
-        "fit_failure_count": payload.get("fit_failure_count", 0),
-        "report_json": str(report_path),
-        "report_csv": str(csv_path) if csv_path.exists() else None,
-        "finalized_at_utc": datetime.now(timezone.utc).isoformat(),
-    }
-    out_path = report_path.with_name(f"{payload.get('run_id', 'run')}_finalized.json")
-    out_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    st.success(f"Manifest written: {out_path}")
-    st.code(str(out_path), language="text")
-    st.download_button(
-        "Download Finalize Manifest",
-        data=out_path.read_bytes(),
-        file_name=out_path.name,
+    e1, e2 = st.columns(2)
+    e1.download_button(
+        "Download Final JSON Report",
+        data=json_bytes,
+        file_name=report_path.name,
         mime="application/json",
         width="stretch",
     )
 
+    if csv_bytes:
+        e2.download_button(
+            "Download Final CSV Parameters",
+            data=csv_bytes,
+            file_name=csv_path.name,
+            mime="text/csv",
+            width="stretch",
+        )
+    else:
+        e2.info("Paired CSV file not found.")
 
+with st.container(border=True):
+    panel_title("Finalize Manifest")
+    reviewer = st.text_input("Reviewer ID", value="reviewer_1")
+    notes = st.text_area("Finalize notes", value="")
+    check_cols = st.columns(3)
+    check_cols[0].checkbox("Report selected", value=(report_path is not None), disabled=True)
+    check_cols[1].checkbox("Rows available", value=(df is not None and not df.empty), disabled=True)
+    check_cols[2].checkbox("Counts loaded", value=bool(counts), disabled=True)
+
+    if st.button("Write finalize manifest", type="primary"):
+        manifest = {
+            "run_id": payload.get("run_id"),
+            "reviewer_id": reviewer,
+            "notes": notes,
+            "accepted_count": counts.get("accepted"),
+            "flagged_count": counts.get("flagged"),
+            "fit_failure_count": payload.get("fit_failure_count", 0),
+            "report_json": str(report_path),
+            "report_csv": str(csv_path) if csv_path.exists() else None,
+            "finalized_at_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        out_path = report_path.with_name(f"{payload.get('run_id', 'run')}_finalized.json")
+        out_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        st.success(f"Manifest written: {out_path}")
+        st.code(str(out_path), language="text")
+        st.download_button(
+            "Download Finalize Manifest",
+            data=out_path.read_bytes(),
+            file_name=out_path.name,
+            mime="application/json",
+            width="stretch",
+        )

@@ -23,8 +23,10 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from labkit.chrome import panel_title  # noqa: E402
 from mos2_gui.components import report_loader as _report_loader  # noqa: E402
-from mos2_gui.components.figure_sizes import figure_size_section, show  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_settings_popover, show  # noqa: E402
 from mos2_gui.components.map_figure import default_colorbar_title  # noqa: E402
 from labkit.plot_theme import (  # noqa: E402
     AUX,
@@ -53,9 +55,7 @@ from mos2_gui.components.science_settings import strain_doping_settings  # noqa:
 list_report_json_files = _report_loader.list_report_json_files
 load_spectra_dataframe = _report_loader.load_spectra_dataframe
 load_graph_config = getattr(_report_loader, "load_graph_config", lambda: {})
-sidebar_section = _report_loader.sidebar_section
-sidebar_filters_section = _report_loader.sidebar_filters_section
-filter_store = _report_loader.filter_store
+render_status_rejected_filters = _report_loader.render_status_rejected_filters
 
 DOPING_N_AXIS_LABEL = "Doping n (10^13 cm^-2)"
 
@@ -871,7 +871,8 @@ def _auto_axis_range(values: np.ndarray, pad_ratio: float = 0.12, min_span: floa
     return [center - half - pad, center + half + pad]
 
 
-st.title("Sample Comparison")
+render_mos2_chrome("Compare", "Sample Comparison · MoS2 Optical Analysis", compare_sub="Samples")
+st.header("Sample Comparison")
 st.caption("Cross-sample comparison plots derived from fit report outputs.")
 
 graph_cfg = load_graph_config()
@@ -911,20 +912,28 @@ else:
     status_default = ["valid", "attention"]
 if not status_default:
     status_default = ["valid", "attention"]
-with sidebar_section("1) Reports"):
+
+report_store = st.session_state.setdefault("sample_cmp_report_store", {})
+with st.container(border=True):
+    panel_title("Reports to compare")
     if len(available_modalities) > 1:
         mod_options = ["raman", "pl", "all"]
-        mod_idx = mod_options.index(default_modality) if default_modality in mod_options else 0
-        modality_choice = st.radio(
+        mod_key = "sample_cmp_modality_filter"
+        if mod_key not in st.session_state or st.session_state[mod_key] not in mod_options:
+            stored_mod = report_store.get("modality", default_modality)
+            st.session_state[mod_key] = stored_mod if stored_mod in mod_options else mod_options[0]
+        r_mod_col, r_sel_col = st.columns([1.4, 3.6], vertical_alignment="bottom")
+        modality_choice = r_mod_col.radio(
             "Report modality",
             options=mod_options,
-            index=mod_idx,
             horizontal=True,
             format_func=lambda m: m.upper() if m in {"pl"} else m.capitalize(),
-            key="sample_cmp_modality_filter",
+            key=mod_key,
         )
+        report_store["modality"] = modality_choice
     else:
         modality_choice = available_modalities[0] if available_modalities else "all"
+        r_sel_col = st.container()
 
     candidate_labels = [
         lbl
@@ -933,35 +942,35 @@ with sidebar_section("1) Reports"):
     ]
     if not candidate_labels:
         candidate_labels = list(file_labels.keys())
-    default_Mod = modality_by_label.get(candidate_labels[0], default_modality)
-    default_labels = [lbl for lbl in candidate_labels if modality_by_label.get(lbl) == default_Mod]
+    default_mod = modality_by_label.get(candidate_labels[0], default_modality)
+    default_labels = [lbl for lbl in candidate_labels if modality_by_label.get(lbl) == default_mod]
     default_count = min(max(int(sample_cfg.get("default_report_count", 4)), 1), len(default_labels))
-    selected_file_labels = st.multiselect(
+    sel_key = "sample_cmp_selected_reports"
+    prev_mod = report_store.get("applied_modality")
+    if (
+        sel_key not in st.session_state
+        or prev_mod != modality_choice
+        or any(lbl not in candidate_labels for lbl in st.session_state.get(sel_key, []))
+    ):
+        stored_sel = [lbl for lbl in report_store.get("selected", []) if lbl in candidate_labels]
+        st.session_state[sel_key] = stored_sel if (stored_sel and prev_mod == modality_choice) else default_labels[:default_count]
+    selected_file_labels = r_sel_col.multiselect(
         "Reports to compare",
         options=candidate_labels,
-        default=default_labels[:default_count],
+        key=sel_key,
     )
-f_store = filter_store()
-with sidebar_filters_section(expanded=False):
-    status_filter_on = st.checkbox(
-        "Filter by fit_status",
-        value=bool(status_cfg.get("enabled_default", True)),
-    )
-    stored_statuses = [s for s in status_options if s in f_store.get("statuses", status_default)] or status_default
-    status_selected = st.multiselect(
-        "Allowed fit_status values",
-        options=status_options,
-        default=stored_statuses,
-        disabled=not status_filter_on,
-    )
-    hide_rejected = st.checkbox(
-        "Exclude rejected spectra",
-        value=bool(f_store.get("hide_rejected", False)),
-        key="sample_cmp_hide_rejected",
-    )
-    f_store.update(statuses=list(status_selected), hide_rejected=bool(hide_rejected))
+    report_store["applied_modality"] = modality_choice
+    report_store["selected"] = list(selected_file_labels)
+
+status_filter_on, status_selected, hide_rejected = render_status_rejected_filters(
+    pd.DataFrame(columns=["fit_status", "review_decision"]),
+    key_prefix="sample_cmp",
+    include_enable_toggle=True,
+    default_statuses=status_default,
+    enabled_default=bool(status_cfg.get("enabled_default", True)),
+)
 if not selected_file_labels:
-    st.info("Select at least one report in the sidebar.")
+    st.info("Select at least one report above to compare.")
     st.stop()
 
 raw_sample_frames: dict[str, pd.DataFrame] = {}
@@ -1000,40 +1009,43 @@ for lbl in selected_file_labels:
 if not raw_sample_frames:
     st.warning("No rows left after filtering. Try changing selected reports or fit_status filter.")
     st.stop()
-if invalid_excluded_for_analysis > 0 or rejected_excluded_for_analysis > 0:
-    st.caption(
-        f"Excluded from analysis: invalid={invalid_excluded_for_analysis}, rejected={rejected_excluded_for_analysis}"
-    )
+
+status_summary = ", ".join(status_selected) if (status_filter_on and status_selected) else ("all (filter off)" if not status_filter_on else "none")
+st.caption(
+    f"Active filter: fit_status={status_summary} | Exclude rejected={hide_rejected} | "
+    f"Reports={len(raw_sample_frames)} | Excluded: invalid={invalid_excluded_for_analysis}, rejected={rejected_excluded_for_analysis}"
+)
 
 default_colors_by_id = categorical_colors(raw_sample_frames.keys())
+ctrl_seg, ctrl_samples, ctrl_analysis, ctrl_fig = st.columns([3.4, 1.0, 1.05, 1.0], vertical_alignment="center")
 
 display_name_by_id: dict[str, str] = {}
 display_color_by_id: dict[str, str] = {}
-samples_box = sidebar_section("3) Samples")
-with samples_box:
+duplicate_name_resolved = False
+with ctrl_samples.popover("Manage samples", width="stretch"):
     st.caption("Display name and colour for each report.")
     for sample_id in raw_sample_frames:
         default_name = raw_sample_default_names[sample_id]
         path = raw_sample_paths[sample_id]
+        name_key = f"sample_cmp_name::{path.as_posix()}"
+        color_key = f"sample_cmp_color::{path.as_posix()}"
+        if name_key not in st.session_state:
+            st.session_state[name_key] = default_name
+        if color_key not in st.session_state:
+            st.session_state[color_key] = default_colors_by_id[sample_id]
         name_col, color_col = st.columns([5, 1], vertical_alignment="bottom")
-        display_name = name_col.text_input(
-            default_name,
-            value=default_name,
-            key=f"sample_cmp_name::{path.as_posix()}",
-        )
+        display_name = name_col.text_input(default_name, key=name_key)
         display_color = color_col.color_picker(
             f"Color: {default_name}",
-            value=default_colors_by_id[sample_id],
-            key=f"sample_cmp_color::{path.as_posix()}",
+            key=color_key,
             label_visibility="collapsed",
         )
-        display_name_by_id[sample_id] = display_name.strip() or default_name
-        display_color_by_id[sample_id] = display_color
+        display_name_by_id[sample_id] = str(display_name).strip() or default_name
+        display_color_by_id[sample_id] = str(display_color)
 
 sample_frames: dict[str, pd.DataFrame] = {}
 color_map: dict[str, str] = {}
 used_display_names: set[str] = set()
-duplicate_name_resolved = False
 for sample_id, frame in raw_sample_frames.items():
     requested_name = display_name_by_id[sample_id]
     final_name = _unique_label(requested_name, used_display_names)
@@ -1043,7 +1055,7 @@ for sample_id, frame in raw_sample_frames.items():
     color_map[final_name] = display_color_by_id[sample_id]
 
 if duplicate_name_resolved:
-    samples_box.caption("Duplicate display names were auto-suffixed (e.g., '(2)').")
+    ctrl_samples.caption("Duplicate names auto-suffixed.")
 
 pl_flags = [_is_pl_frame(frame) for frame in sample_frames.values()]
 if any(pl_flags) and not all(pl_flags):
@@ -1051,109 +1063,183 @@ if any(pl_flags) and not all(pl_flags):
     st.stop()
 is_pl_mode = all(pl_flags)
 
-with sidebar_section("4) Analysis", expanded=False):
+with ctrl_analysis.popover("Analysis settings", width="stretch"):
+    sample_opts = list(sample_frames.keys())
+    ref_key = "sample_cmp_ref_sample"
+    if ref_key not in st.session_state or st.session_state[ref_key] not in sample_opts:
+        st.session_state[ref_key] = sample_opts[0]
     ref_sample = st.selectbox(
         "Reference sample",
-        options=list(sample_frames.keys()),
-        index=0,
+        options=sample_opts,
+        key=ref_key,
         disabled=is_pl_mode,
         help="Its mean E2g / A1g positions are the zero point for strain and doping.",
     )
     m1, m2 = st.columns(2)
     center_options = ["median", "mean"]
     center_default = str(sample_cfg.get("center_metric_default", "median")).strip().lower()
-    center_index = center_options.index(center_default) if center_default in center_options else 0
-    center_metric = m1.selectbox("Center metric", options=center_options, index=center_index)
+    c_key = "sample_cmp_center_metric"
+    if c_key not in st.session_state or st.session_state[c_key] not in center_options:
+        st.session_state[c_key] = center_default if center_default in center_options else "median"
+    center_metric = m1.selectbox("Center metric", options=center_options, key=c_key)
 
     error_options = ["std", "sem", "mad", "iqr"]
     error_default = str(sample_cfg.get("error_metric_default", "std")).strip().lower()
-    error_index = error_options.index(error_default) if error_default in error_options else 0
-    error_metric = m2.selectbox("Error metric", options=error_options, index=error_index)
+    e_key = "sample_cmp_error_metric"
+    if e_key not in st.session_state or st.session_state[e_key] not in error_options:
+        st.session_state[e_key] = error_default if error_default in error_options else "std"
+    error_metric = m2.selectbox("Error metric", options=error_options, key=e_key)
 
     st.markdown("**Strain / doping coefficients**")
     st.caption("Defaults are placeholders. Use calibrated values when available.")
     k1, k2 = st.columns(2)
+    for k_name, default_val in (
+        ("se", float(coefficients["s_e"])),
+        ("sa", float(coefficients["s_a"])),
+        ("de", float(coefficients["d_e"])),
+        ("da", float(coefficients["d_a"])),
+    ):
+        state_k = f"sample_cmp_coeff_{k_name}"
+        if state_k not in st.session_state:
+            st.session_state[state_k] = default_val
     s_e = k1.number_input(
         "S_E",
-        value=coefficients["s_e"],
         format="%.4f",
+        key="sample_cmp_coeff_se",
         disabled=is_pl_mode,
         help="E2g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     s_a = k2.number_input(
         "S_A",
-        value=coefficients["s_a"],
         format="%.4f",
+        key="sample_cmp_coeff_sa",
         disabled=is_pl_mode,
         help="A1g shift sensitivity to strain (unit: cm^-1 per % strain).",
     )
     d_e = k1.number_input(
         "D_E",
-        value=coefficients["d_e"],
         format="%.4f",
+        key="sample_cmp_coeff_de",
         disabled=is_pl_mode,
         help="E2g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
     d_a = k2.number_input(
         "D_A",
-        value=coefficients["d_a"],
         format="%.4f",
+        key="sample_cmp_coeff_da",
         disabled=is_pl_mode,
         help="A1g shift sensitivity to doping (unit: cm^-1 per 1e13 cm^-2).",
     )
 
-with sidebar_section("5) Figure", expanded=False):
-    overlay_scatter = st.checkbox(
-        "Overlay point clouds on errorbars",
-        value=bool(sample_cfg.get("overlay_scatter_default", True)),
-    )
-    show_absolute_isolines = st.checkbox(
-        "Show absolute isolines",
-        value=bool(isoline_cfg.get("show_default", True)),
-        disabled=is_pl_mode,
-    )
+fig_opts: dict[str, object] = {}
+
+
+def _render_sample_figure_extra() -> None:
+    st.divider()
+    st.caption("Sample Comparison scatter & isoline options")
+    if "sample_cmp_overlay_scatter" not in st.session_state:
+        st.session_state["sample_cmp_overlay_scatter"] = bool(sample_cfg.get("overlay_scatter_default", True))
+    if "sample_cmp_show_isolines" not in st.session_state:
+        st.session_state["sample_cmp_show_isolines"] = bool(isoline_cfg.get("show_default", True))
     isoline_density_options = ["light", "normal"]
     isoline_density_default = str(isoline_cfg.get("density_default", "light")).strip().lower()
     if isoline_density_default not in isoline_density_options:
         isoline_density_default = "light"
-    isoline_density = st.selectbox(
+    if (
+        "sample_cmp_isoline_density" not in st.session_state
+        or st.session_state["sample_cmp_isoline_density"] not in isoline_density_options
+    ):
+        st.session_state["sample_cmp_isoline_density"] = isoline_density_default
+
+    overlay_val = st.checkbox("Overlay point clouds on errorbars", key="sample_cmp_overlay_scatter")
+    isolines_val = st.checkbox("Show absolute isolines", key="sample_cmp_show_isolines", disabled=is_pl_mode)
+    density_val = st.selectbox(
         "Isoline density",
         options=isoline_density_options,
-        index=isoline_density_options.index(isoline_density_default),
-        disabled=is_pl_mode or (not show_absolute_isolines),
+        key="sample_cmp_isoline_density",
+        disabled=is_pl_mode or (not isolines_val),
     )
-
-    st.markdown("**Style**")
-    use_paper_style = st.checkbox("Adjust style", value=True, key="sample_cmp_style_enabled", help="Off: the common look without the adjustments below.")
-    style_off = not use_paper_style
+    st.markdown("**Scatter Style**")
+    if "sample_cmp_style_enabled" not in st.session_state:
+        st.session_state["sample_cmp_style_enabled"] = True
+    style_on = st.checkbox(
+        "Adjust style",
+        key="sample_cmp_style_enabled",
+        help="Off: the common look without the adjustments below.",
+    )
+    style_off = not style_on
+    style_defaults = {
+        "sample_cmp_style_font": int(ScatterStyle.font_size),
+        "sample_cmp_style_point": int(ScatterStyle.point_size),
+        "sample_cmp_style_center": int(ScatterStyle.center_size),
+        "sample_cmp_style_errorbar": float(ScatterStyle.errorbar_width),
+        "sample_cmp_style_opacity": float(ScatterStyle.point_opacity),
+        "sample_cmp_style_legend": ScatterStyle.legend_position,
+        "sample_cmp_style_ticks": ScatterStyle.tick_direction,
+        "sample_cmp_style_outline": bool(ScatterStyle.point_outline),
+    }
+    for s_key, s_val in style_defaults.items():
+        if s_key not in st.session_state:
+            st.session_state[s_key] = s_val
     fs1, fs2 = st.columns(2)
-    scatter_style = ScatterStyle(
-        font_size=fs1.number_input(
-            "Font size", 8, 28, ScatterStyle.font_size, 1, key="sample_cmp_style_font", disabled=style_off
+    style_obj = ScatterStyle(
+        font_size=int(fs1.number_input("Font size", 8, 28, step=1, key="sample_cmp_style_font", disabled=style_off)),
+        point_size=int(fs2.number_input("Point size", 2, 24, step=1, key="sample_cmp_style_point", disabled=style_off)),
+        center_size=int(fs1.number_input("Center size", 4, 30, step=1, key="sample_cmp_style_center", disabled=style_off)),
+        errorbar_width=float(
+            fs2.number_input("Error bar width", 0.5, 5.0, step=0.1, key="sample_cmp_style_errorbar", disabled=style_off)
         ),
-        point_size=fs2.number_input(
-            "Point size", 2, 24, ScatterStyle.point_size, 1, key="sample_cmp_style_point", disabled=style_off
+        point_opacity=float(
+            fs1.slider("Point opacity", 0.1, 1.0, step=0.05, key="sample_cmp_style_opacity", disabled=style_off)
         ),
-        center_size=fs1.number_input(
-            "Center size", 4, 30, ScatterStyle.center_size, 1, key="sample_cmp_style_center", disabled=style_off
+        legend_position=str(st.selectbox("Legend", LEGEND_POSITIONS, key="sample_cmp_style_legend", disabled=style_off)),
+        tick_direction=str(
+            st.radio("Tick direction", TICK_DIRECTIONS, horizontal=True, key="sample_cmp_style_ticks", disabled=style_off)
         ),
-        errorbar_width=fs2.number_input(
-            "Error bar width", 0.5, 5.0, ScatterStyle.errorbar_width, 0.1, key="sample_cmp_style_errorbar", disabled=style_off
-        ),
-        point_opacity=fs1.slider(
-            "Point opacity", 0.1, 1.0, ScatterStyle.point_opacity, 0.05, key="sample_cmp_style_opacity", disabled=style_off
-        ),
-        legend_position=st.selectbox("Legend", LEGEND_POSITIONS, key="sample_cmp_style_legend", disabled=style_off),
-        tick_direction=st.radio(
-            "Tick direction", TICK_DIRECTIONS, horizontal=True, key="sample_cmp_style_ticks", disabled=style_off
-        ),
-        point_outline=st.checkbox(
-            "White outline on points", value=ScatterStyle.point_outline, key="sample_cmp_style_outline", disabled=style_off
-        ),
+        point_outline=bool(st.checkbox("White outline on points", key="sample_cmp_style_outline", disabled=style_off)),
     )
-    st.caption("Grid and image format: sidebar section 6) Figure size.")
+    fig_opts.update(
+        {
+            "overlay_scatter": bool(overlay_val),
+            "show_absolute_isolines": bool(isolines_val),
+            "isoline_density": str(density_val),
+            "use_paper_style": bool(style_on),
+            "scatter_style": style_obj,
+        }
+    )
 
-figure_size_section("6) Figure size", ["sample_scatter", "sample_square", "sample_heatmap", "sample_pl"])
+
+figure_settings_popover(
+    ["sample_scatter", "sample_square", "sample_heatmap", "sample_pl"],
+    extra=_render_sample_figure_extra,
+    container=ctrl_fig,
+)
+
+overlay_scatter = bool(fig_opts["overlay_scatter"])
+show_absolute_isolines = bool(fig_opts["show_absolute_isolines"])
+isoline_density = str(fig_opts["isoline_density"])
+use_paper_style = bool(fig_opts["use_paper_style"])
+scatter_style = fig_opts["scatter_style"]
+
+with ctrl_seg:
+    if not is_pl_mode:
+        plot_groups = ("eps-n", "Absolute Positions", "n vs FWHM", "FWHM Pair", "LO Ratio")
+        plot_store = st.session_state.setdefault("sample_cmp_plot_group_store", {"group": "eps-n"})
+        plot_key = "sample_cmp_plot_group"
+        if plot_key not in st.session_state or st.session_state[plot_key] not in plot_groups:
+            st.session_state[plot_key] = plot_store["group"] if plot_store.get("group") in plot_groups else "eps-n"
+        active_plot_group = (
+            st.segmented_control(
+                "Comparison plot",
+                options=plot_groups,
+                key=plot_key,
+                label_visibility="collapsed",
+            )
+            or "eps-n"
+        )
+        plot_store["group"] = active_plot_group
+    else:
+        st.caption("PL cross-sample & temperature mode")
 
 if is_pl_mode:
     _render_pl_comparison(
@@ -1295,26 +1381,17 @@ if not any(
     st.stop()
 
 def _show_styled(fig: go.Figure, kind: str = "sample_scatter") -> None:
-    """Render a comparison figure with the sidebar figure style and size."""
+    """Render a comparison figure with Figure settings and Scatter style."""
     if use_paper_style:
         apply_scatter_style(fig, scatter_style)
     show(fig, kind, filename="sample_comparison")
 
 
-tab_epsn, tab_absolute, tab_nfwhm, tab_fwhm, tab_lo = st.tabs(
-    [
-        "eps-n",
-        "Absolute Positions",
-        "n vs FWHM",
-        "FWHM Pair",
-        "LO Ratio",
-    ]
-)
-
-with tab_epsn:
+if active_plot_group == "eps-n":
     if epsn_maps:
-        c1, c2 = st.columns(2)
-        with c1:
+        c1, c2 = st.columns(2, gap="medium")
+        with c1, st.container(border=True):
+            panel_title("ε-n Scatter")
             fig = _build_scatter_figure(
                 data=epsn_maps,
                 colors=color_map,
@@ -1324,7 +1401,8 @@ with tab_epsn:
                 add_zero_lines=True,
             )
             _show_styled(fig)
-        with c2:
+        with c2, st.container(border=True):
+            panel_title(f"ε-n Summary ({center_metric} +/- {error_metric})")
             fig = _build_errorbar_figure(
                 data=epsn_maps,
                 colors=color_map,
@@ -1340,132 +1418,136 @@ with tab_epsn:
     else:
         st.info("No valid eps-n data in the selected reports.")
 
-with tab_nfwhm:
-    left, right = st.columns(2)
+elif active_plot_group == "n vs FWHM":
+    left, right = st.columns(2, gap="medium")
     with left:
         if n_a1g_maps:
-            fig = _build_scatter_figure(
-                data=n_a1g_maps,
-                colors=color_map,
-                title="n vs A1g FWHM scatter",
-                x_label=DOPING_N_AXIS_LABEL,
-                y_label="A1g FWHM (cm^-1)",
-                add_zero_lines=True,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("n vs A1g FWHM Scatter")
+                fig = _build_scatter_figure(
+                    data=n_a1g_maps,
+                    colors=color_map,
+                    title="n vs A1g FWHM scatter",
+                    x_label=DOPING_N_AXIS_LABEL,
+                    y_label="A1g FWHM (cm^-1)",
+                    add_zero_lines=True,
+                )
+                _show_styled(fig)
 
-            fig = _build_errorbar_figure(
-                data=n_a1g_maps,
-                colors=color_map,
-                title=f"n vs A1g FWHM errorbars ({center_metric} +/- {error_metric})",
-                x_label=DOPING_N_AXIS_LABEL,
-                y_label="A1g FWHM (cm^-1)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=True,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("n vs A1g FWHM Errorbars")
+                fig = _build_errorbar_figure(
+                    data=n_a1g_maps,
+                    colors=color_map,
+                    title=f"n vs A1g FWHM errorbars ({center_metric} +/- {error_metric})",
+                    x_label=DOPING_N_AXIS_LABEL,
+                    y_label="A1g FWHM (cm^-1)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=True,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid n vs A1g FWHM data.")
     with right:
         if n_e2g_maps:
-            fig = _build_errorbar_figure(
-                data=n_e2g_maps,
-                colors=color_map,
-                title=f"n vs E2g FWHM errorbars ({center_metric} +/- {error_metric})",
-                x_label=DOPING_N_AXIS_LABEL,
-                y_label="E2g FWHM (cm^-1)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=True,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("n vs E2g FWHM Errorbars")
+                fig = _build_errorbar_figure(
+                    data=n_e2g_maps,
+                    colors=color_map,
+                    title=f"n vs E2g FWHM errorbars ({center_metric} +/- {error_metric})",
+                    x_label=DOPING_N_AXIS_LABEL,
+                    y_label="E2g FWHM (cm^-1)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=True,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid n vs E2g FWHM data.")
 
-with tab_absolute:
+elif active_plot_group == "Absolute Positions":
     if absolute_maps:
-        fig = _build_errorbar_figure(
-            data=absolute_maps,
-            colors=color_map,
-            title=f"E2g vs A1g absolute errorbars ({center_metric} +/- {error_metric})",
-            x_label="E2g position (cm^-1)",
-            y_label="A1g position (cm^-1)",
-            center_metric=center_metric,
-            error_metric=error_metric,
-            overlay_scatter=overlay_scatter,
-            add_zero_lines=False,
-        )
-
-        x_all = np.concatenate([vals[0] for vals in absolute_maps.values()]) if absolute_maps else np.array([])
-        y_all = np.concatenate([vals[1] for vals in absolute_maps.values()]) if absolute_maps else np.array([])
-        x_range = _auto_axis_range(x_all, pad_ratio=0.12, min_span=0.8)
-        y_range = _auto_axis_range(y_all, pad_ratio=0.12, min_span=0.8)
-        if x_range is not None:
-            fig.update_xaxes(range=x_range)
-        if y_range is not None:
-            fig.update_yaxes(range=y_range)
-
-        # Keep default view visually balanced, but do not lock aspect during zoom/pan.
-        fig.update_layout(height=720)
-        fig.update_xaxes(
-            fixedrange=False,
-            zeroline=False,
-        )
-        fig.update_yaxes(
-            fixedrange=False,
-            zeroline=False,
-        )
-
-        if show_absolute_isolines:
-            _add_absolute_isolines(
-                fig=fig,
-                omega_e0=omega_e0,
-                omega_a0=omega_a0,
-                s_e=float(s_e),
-                s_a=float(s_a),
-                d_e=float(d_e),
-                d_a=float(d_a),
-                eps_step=eps_step,
-                n_step=n_step,
-                eps_range=isoline_eps_range,
-                n_range=isoline_n_range,
+        with st.container(border=True):
+            panel_title("E2g vs A1g Absolute Positions")
+            fig = _build_errorbar_figure(
+                data=absolute_maps,
+                colors=color_map,
+                title=f"E2g vs A1g absolute errorbars ({center_metric} +/- {error_metric})",
+                x_label="E2g position (cm^-1)",
+                y_label="A1g position (cm^-1)",
+                center_metric=center_metric,
+                error_metric=error_metric,
+                overlay_scatter=overlay_scatter,
+                add_zero_lines=False,
             )
-        _show_styled(fig, "sample_square")
+
+            x_all = np.concatenate([vals[0] for vals in absolute_maps.values()]) if absolute_maps else np.array([])
+            y_all = np.concatenate([vals[1] for vals in absolute_maps.values()]) if absolute_maps else np.array([])
+            x_range = _auto_axis_range(x_all, pad_ratio=0.12, min_span=0.8)
+            y_range = _auto_axis_range(y_all, pad_ratio=0.12, min_span=0.8)
+            if x_range is not None:
+                fig.update_xaxes(range=x_range)
+            if y_range is not None:
+                fig.update_yaxes(range=y_range)
+
+            # Keep default view visually balanced, but do not lock aspect during zoom/pan.
+            fig.update_layout(height=720)
+            fig.update_xaxes(fixedrange=False, zeroline=False)
+            fig.update_yaxes(fixedrange=False, zeroline=False)
+
+            if show_absolute_isolines:
+                _add_absolute_isolines(
+                    fig=fig,
+                    omega_e0=omega_e0,
+                    omega_a0=omega_a0,
+                    s_e=float(s_e),
+                    s_a=float(s_a),
+                    d_e=float(d_e),
+                    d_a=float(d_a),
+                    eps_step=eps_step,
+                    n_step=n_step,
+                    eps_range=isoline_eps_range,
+                    n_range=isoline_n_range,
+                )
+            _show_styled(fig, "sample_square")
     else:
         st.info("No valid absolute E2g/A1g position data.")
 
-with tab_fwhm:
+elif active_plot_group == "FWHM Pair":
     if fwhm_maps:
-        fig = _build_errorbar_figure(
-            data=fwhm_maps,
-            colors=color_map,
-            title=f"E2g FWHM vs A1g FWHM ({center_metric} +/- {error_metric})",
-            x_label="E2g FWHM (cm^-1)",
-            y_label="A1g FWHM (cm^-1)",
-            center_metric=center_metric,
-            error_metric=error_metric,
-            overlay_scatter=overlay_scatter,
-            add_zero_lines=False,
-        )
-        fwhm_x_all = np.concatenate([vals[0] for vals in fwhm_maps.values()]) if fwhm_maps else np.array([])
-        fwhm_y_all = np.concatenate([vals[1] for vals in fwhm_maps.values()]) if fwhm_maps else np.array([])
-        fwhm_x_range = _auto_axis_range(fwhm_x_all, pad_ratio=0.12, min_span=1.0)
-        fwhm_y_range = _auto_axis_range(fwhm_y_all, pad_ratio=0.12, min_span=1.0)
-        if fwhm_x_range is not None:
-            fig.update_xaxes(range=fwhm_x_range)
-        if fwhm_y_range is not None:
-            fig.update_yaxes(range=fwhm_y_range)
-        fig.update_layout(height=720)
-        fig.update_xaxes(fixedrange=False)
-        fig.update_yaxes(fixedrange=False)
-        _show_styled(fig, "sample_square")
+        with st.container(border=True):
+            panel_title("E2g FWHM vs A1g FWHM")
+            fig = _build_errorbar_figure(
+                data=fwhm_maps,
+                colors=color_map,
+                title=f"E2g FWHM vs A1g FWHM ({center_metric} +/- {error_metric})",
+                x_label="E2g FWHM (cm^-1)",
+                y_label="A1g FWHM (cm^-1)",
+                center_metric=center_metric,
+                error_metric=error_metric,
+                overlay_scatter=overlay_scatter,
+                add_zero_lines=False,
+            )
+            fwhm_x_all = np.concatenate([vals[0] for vals in fwhm_maps.values()]) if fwhm_maps else np.array([])
+            fwhm_y_all = np.concatenate([vals[1] for vals in fwhm_maps.values()]) if fwhm_maps else np.array([])
+            fwhm_x_range = _auto_axis_range(fwhm_x_all, pad_ratio=0.12, min_span=1.0)
+            fwhm_y_range = _auto_axis_range(fwhm_y_all, pad_ratio=0.12, min_span=1.0)
+            if fwhm_x_range is not None:
+                fig.update_xaxes(range=fwhm_x_range)
+            if fwhm_y_range is not None:
+                fig.update_yaxes(range=fwhm_y_range)
+            fig.update_layout(height=720)
+            fig.update_xaxes(fixedrange=False)
+            fig.update_yaxes(fixedrange=False)
+            _show_styled(fig, "sample_square")
     else:
         st.info("No valid E2g/A1g FWHM pair data.")
 
-with tab_lo:
+else:
     source_info = {}
     source_info.update(lo_ratio_source_n)
     source_info.update(lo_ratio_source_eps)
@@ -1477,70 +1559,78 @@ with tab_lo:
     else:
         st.caption("LO ratio source unavailable (missing LO/A1g area and height data).")
 
-    c1, c2 = st.columns(2)
+    c1, c2 = st.columns(2, gap="medium")
     with c1:
         if lo_n_maps:
-            fig = _build_errorbar_figure(
-                data=lo_n_maps,
-                colors=color_map,
-                title=f"LO ratio vs n ({center_metric} +/- {error_metric})",
-                x_label=DOPING_N_AXIS_LABEL,
-                y_label="LO ratio (LO/A1g)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=True,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("LO ratio vs n")
+                fig = _build_errorbar_figure(
+                    data=lo_n_maps,
+                    colors=color_map,
+                    title=f"LO ratio vs n ({center_metric} +/- {error_metric})",
+                    x_label=DOPING_N_AXIS_LABEL,
+                    y_label="LO ratio (LO/A1g)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=True,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid LO ratio vs n data.")
 
         if lo_eps_maps:
-            fig = _build_errorbar_figure(
-                data=lo_eps_maps,
-                colors=color_map,
-                title=f"LO ratio vs eps ({center_metric} +/- {error_metric})",
-                x_label="Strain eps (%)",
-                y_label="LO ratio (LO/A1g)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=True,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("LO ratio vs eps")
+                fig = _build_errorbar_figure(
+                    data=lo_eps_maps,
+                    colors=color_map,
+                    title=f"LO ratio vs eps ({center_metric} +/- {error_metric})",
+                    x_label="Strain eps (%)",
+                    y_label="LO ratio (LO/A1g)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=True,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid LO ratio vs eps data.")
 
     with c2:
         if lo_a1g_fwhm_maps:
-            fig = _build_errorbar_figure(
-                data=lo_a1g_fwhm_maps,
-                colors=color_map,
-                title=f"LO ratio vs A1g FWHM ({center_metric} +/- {error_metric})",
-                x_label="LO ratio (LO/A1g)",
-                y_label="A1g FWHM (cm^-1)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=False,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("LO ratio vs A1g FWHM")
+                fig = _build_errorbar_figure(
+                    data=lo_a1g_fwhm_maps,
+                    colors=color_map,
+                    title=f"LO ratio vs A1g FWHM ({center_metric} +/- {error_metric})",
+                    x_label="LO ratio (LO/A1g)",
+                    y_label="A1g FWHM (cm^-1)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=False,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid LO ratio vs A1g FWHM data.")
 
         if lo_e2g_fwhm_maps:
-            fig = _build_errorbar_figure(
-                data=lo_e2g_fwhm_maps,
-                colors=color_map,
-                title=f"LO ratio vs E2g FWHM ({center_metric} +/- {error_metric})",
-                x_label="LO ratio (LO/A1g)",
-                y_label="E2g FWHM (cm^-1)",
-                center_metric=center_metric,
-                error_metric=error_metric,
-                overlay_scatter=overlay_scatter,
-                add_zero_lines=False,
-            )
-            _show_styled(fig)
+            with st.container(border=True):
+                panel_title("LO ratio vs E2g FWHM")
+                fig = _build_errorbar_figure(
+                    data=lo_e2g_fwhm_maps,
+                    colors=color_map,
+                    title=f"LO ratio vs E2g FWHM ({center_metric} +/- {error_metric})",
+                    x_label="LO ratio (LO/A1g)",
+                    y_label="E2g FWHM (cm^-1)",
+                    center_metric=center_metric,
+                    error_metric=error_metric,
+                    overlay_scatter=overlay_scatter,
+                    add_zero_lines=False,
+                )
+                _show_styled(fig)
         else:
             st.info("No valid LO ratio vs E2g FWHM data.")
 

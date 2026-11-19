@@ -28,7 +28,9 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from labkit.chrome import panel_title  # noqa: E402
 from mos2_gui.components import data_bin as _data_bin  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
 from mos2_gui.components.report_loader import stage_uploaded_raw_files  # noqa: E402
 
 STAGES = ("fit", "select", "review")
@@ -455,7 +457,8 @@ def _stream_command_output(
     return return_code, omitted, artifacts
 
 
-st.title("Run Analysis")
+render_mos2_chrome("Run", "Run Analysis · MoS2 Optical Analysis")
+st.header("Run Analysis")
 st.caption("Select a raw folder and run Raman/PL analysis without typing CLI arguments.")
 
 modality = st.selectbox("Modality", options=["raman", "pl"], index=0)

@@ -51,7 +51,10 @@ def test_every_kind_is_used_and_has_inputs_on_its_page() -> None:
     for name, kinds in shown.items():
         if "/pages/" not in name:
             continue
-        section = re.search(r"figure_size_section\(\"\d\) Figure size\", \[([^\]]*)\]\)", sources[name])
+        section = re.search(
+            r"(?:figure_size_section\(\"\d\) Figure size\",|figure_settings_popover\()\s*\[([^\]]*)\]",
+            sources[name],
+        )
         assert section, name
         offered = set(re.findall(r"\"(\w+)\"", section.group(1)))
         assert kinds <= offered, (name, kinds - offered)
@@ -61,9 +64,9 @@ def test_pages_that_draw_spectra_offer_the_spectrum_size() -> None:
     sources = _sources()
     for name, text in sources.items():
         if "/pages/" in name and "render_spectrum_overlay(" in text:
-            assert re.search(r"figure_size_section\(.*\"spectrum\"", text), name
+            assert re.search(r"(?:figure_size_section\([^\n]*\"spectrum\"|figure_settings_popover\(\s*\[[^\]]*\"spectrum\")", text), name
         if "/pages/" in name and "render_metric_histogram(" in text:
-            assert re.search(r"figure_size_section\(.*\"model_charts\"", text), name
+            assert re.search(r"(?:figure_size_section\([^\n]*\"model_charts\"|figure_settings_popover\(\s*\[[^\]]*\"model_charts\")", text), name
 
 
 def test_packaging_includes_labkit() -> None:

@@ -102,7 +102,10 @@ def style_inputs(prefix: str, values: pd.Series, size_section: str) -> None:
     v1.checkbox("Show values", key=key("show_values"))
     v2.number_input("Decimals", min_value=0, max_value=6, step=1, key=key("value_decimals"))
     v3.checkbox("Y origin at top", key=key("y_origin_top"))
-    st.caption(f"Width, height, grid and image format: sidebar section {size_section}.")
+    if "sidebar" in size_section.lower() or size_section.endswith(") Figure size") or size_section[0:1].isdigit():
+        st.caption(f"Width, height, grid and image format: sidebar section {size_section}.")
+    else:
+        st.caption(f"Width, height, grid and image format: {size_section} above the map.")
 
 
 def current_style(prefix: str, height_px: int) -> MapStyle:

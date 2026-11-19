@@ -7,7 +7,8 @@ import streamlit as st
 
 
 def render_review_table(df: pd.DataFrame, title: str = "Review Table") -> None:
-    st.subheader(title)
+    if title:
+        st.subheader(title)
     if df.empty:
         st.info("No rows to display.")
         return

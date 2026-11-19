@@ -23,8 +23,10 @@ ROOT = runtime_project_root(__file__, 2)
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from labkit.chrome import panel_title  # noqa: E402
+from mos2_gui.components.chrome import render_mos2_chrome  # noqa: E402
 from mos2_gui.components.derived_parameters import add_derived_map_parameters  # noqa: E402
-from mos2_gui.components.figure_sizes import figure_size_section, show, size_of  # noqa: E402
+from mos2_gui.components.figure_sizes import figure_settings_popover, show, size_of  # noqa: E402
 from mos2_gui.components.map_editing import selected_ids_from_event  # noqa: E402
 from mos2_gui.components.map_figure import (  # noqa: E402
     MOUSE_MODES,
@@ -39,18 +41,16 @@ from mos2_gui.components.map_selection import selection_panel  # noqa: E402
 from mos2_gui.components.map_style_panel import current_style, init_style_state, preset_inputs, style_inputs  # noqa: E402
 from mos2_gui.components.report_loader import (  # noqa: E402
     choose_report_sidebar,
-    filter_store,
     load_graph_config,
     project_root,
-    sidebar_filters_section,
-    sidebar_section,
+    render_status_rejected_filters,
 )
 from mos2_gui.components.science_settings import strain_doping_settings  # noqa: E402
 
 K = "map_viewer"  # session_state key prefix
 CHART_KEY = f"{K}_chart"
 SELECTED_KEY = f"{K}_selected_ids"
-SIZE_SECTION = "4) Figure size"
+SIZE_SECTION = "Figure settings"
 STATUS_OPTIONS = ["valid", "attention", "invalid"]
 PRESET_DIR = project_root() / "data" / "style_presets" / "map"
 ROW_COLUMNS = ("spectrum_id", "map_x", "map_y", "selected_model", "fit_status", "review_decision", "rmse", "r2", "attention_reasons", "invalid_reasons")
@@ -64,16 +64,14 @@ def _lowered(frame: pd.DataFrame, column: str) -> pd.Series:
     return frame[column].astype(str).str.strip().str.lower()
 
 
-st.title("Map Viewer")
-st.caption("One fitted parameter over the measurement points. Select points on the map with the mouse.")
-
+render_mos2_chrome("Viewer", "Map Viewer · MoS2 Optical Analysis", viewer_sub="Map")
 report_path, payload, df = choose_report_sidebar(K)
+
 if report_path is None or payload is None:
+    st.header("Map Viewer")
     st.stop()
-filters_box = sidebar_filters_section()
-ratio_box = sidebar_section("3) Ratio Builder", expanded=False)
-figure_size_section("4) Figure size", ["map_editor", "map_status", "spectrum"])
 if df.empty or not {"map_x", "map_y", "spectrum_id"}.issubset(df.columns):
+    st.header("Map Viewer")
     st.warning("This report has no map_x / map_y rows.")
     st.stop()
 
@@ -83,35 +81,30 @@ if modality not in {"raman", "pl"}:
 graph_cfg = load_graph_config()
 work_df = add_derived_map_parameters(df, strain_doping_settings(graph_cfg)["coefficients"])
 work_df["spectrum_id"] = work_df["spectrum_id"].astype(str)
-with ratio_box:
-    work_df, ratio_column = ratio_builder(work_df, "map_custom_ratio")
 
-# Filters hide points (drawn as empty cells); they do not remove them from the map grid.
-f_store = filter_store()
+# Body filters hide points (drawn as empty cells); they stay selectable and keep grid geometry intact.
+_, selected_statuses, hide_rejected = render_status_rejected_filters(work_df, key_prefix=K)
 has_decisions, has_status = "review_decision" in work_df.columns, "fit_status" in work_df.columns
-hide_rejected = filters_box.checkbox(
-    "Exclude rejected spectra",
-    value=bool(f_store.get("hide_rejected", False)),
-    key=f"{K}_hide_rejected",
-    disabled=not has_decisions,
-)
-stored_statuses = [s for s in STATUS_OPTIONS if s in f_store.get("statuses", STATUS_OPTIONS)] or STATUS_OPTIONS
-selected_statuses = filters_box.multiselect(
-    "Allowed fit_status values", STATUS_OPTIONS, default=stored_statuses, key=f"{K}_status_filter", disabled=not has_status
-)
-f_store.update(hide_rejected=bool(hide_rejected), statuses=list(selected_statuses) if has_status else stored_statuses)
+
+st.header("Map Viewer")
+st.caption("One fitted parameter over the measurement points. Drag or click on the map to inspect or review points.")
+
 if has_status and not selected_statuses:
     st.info("Select at least one fit_status value.")
     st.stop()
+
+p_col, m_col, r_col, f_col = st.columns([2.0, 1.2, 1.1, 1.1], vertical_alignment="bottom")
+with r_col.popover("Custom ratio", width="stretch"):
+    work_df, ratio_column = ratio_builder(work_df, "map_custom_ratio")
 
 params = parameter_candidates(work_df, first=(ratio_column,) if ratio_column else ())
 if not params:
     st.warning("No numeric parameter columns found.")
     st.stop()
-top = st.columns([2, 1])
-param = top[0].selectbox("Color by parameter", params, key=f"{K}_param")
+param = p_col.selectbox("Color by parameter", params, key=f"{K}_param")
 map_ids = sorted(work_df["map_id"].dropna().astype(str).unique()) if "map_id" in work_df.columns else ["default_map"]
-map_id = top[1].selectbox("Map ID", map_ids, key=f"{K}_map_id")
+map_id = m_col.selectbox("Map ID", map_ids, key=f"{K}_map_id")
+figure_settings_popover(["map_editor", "map_status", "spectrum"], container=f_col)
 
 plot_df = work_df[work_df["map_id"].astype(str) == map_id].copy() if "map_id" in work_df.columns else work_df.copy()
 if plot_df.dropna(subset=["map_x", "map_y"]).empty:
@@ -144,7 +137,7 @@ selected_ids = [s for s in st.session_state.get(SELECTED_KEY, []) if s in set(vi
 values = finite_values(visible_df, param)
 
 map_col, side_col = st.columns([3, 2], gap="large")
-with side_col:
+with side_col, st.container(border=True):
     tab_select, tab_style = st.tabs(["Selection", "Figure style"])
 with tab_style:
     style_inputs(K, values, SIZE_SECTION)
@@ -152,7 +145,8 @@ style = current_style(K, size_of("map_editor").height_px)
 with tab_style:
     preset_inputs(K, style, PRESET_DIR)
 
-with map_col:
+with map_col, st.container(border=True):
+    panel_title(f"{map_id}: {param}")
     mouse_mode = st.radio(
         "Mouse mode",
         list(MOUSE_MODES),
@@ -186,9 +180,10 @@ with st.expander("Fit Status Map", expanded=False):
     else:
         st.info("This report has no fit_status column.")
 
-st.subheader("Map Rows")
-row_columns = [c for c in (*ROW_COLUMNS[:6], param, *ROW_COLUMNS[6:]) if c in visible_df.columns]
-st.dataframe(visible_df[list(dict.fromkeys(row_columns))], width="stretch", height=320, hide_index=True)
+with st.container(border=True):
+    panel_title("Map Rows")
+    row_columns = [c for c in (*ROW_COLUMNS[:6], param, *ROW_COLUMNS[6:]) if c in visible_df.columns]
+    st.dataframe(visible_df[list(dict.fromkeys(row_columns))], width="stretch", height=320, hide_index=True)
 
 with st.expander("Map Summary", expanded=False):
     st.dataframe(pd.DataFrame(payload.get("map_summary", [])), width="stretch")
