@@ -171,7 +171,7 @@ def transfer_linear_figure(branches: list[Branch], results: dict[str, SweepResul
     return fig
 
 
-def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, height: int = 560) -> go.Figure:
+def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, height: int = 560, log_scale: bool = True) -> go.Figure:
     """Transfer curves of many devices, one colour per group.
 
     ``curves``: dicts with ``group``, ``label``, ``vg``, ``current`` (A) and ``W_um``.
@@ -185,7 +185,7 @@ def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, 
         fig.add_trace(
             go.Scatter(
                 x=curve["vg"],
-                y=_positive(y),
+                y=_positive(y) if log_scale else y,
                 mode="lines",
                 name=curve["group"],
                 legendgroup=curve["group"],
@@ -197,7 +197,11 @@ def overlay_figure(curves: list[dict], colors: dict[str, str], per_width: bool, 
         )
         seen.add(curve["group"])
     apply_paper_layout(fig, height=height)
-    fig.update_yaxes(type="log", title_text="|Id| (µA/µm)" if per_width else "|Id| (A)", exponentformat="power")
+    fig.update_yaxes(
+        type="log" if log_scale else "linear",
+        title_text="|Id| (µA/µm)" if per_width else "|Id| (A)",
+        exponentformat="power",
+    )
     fig.update_xaxes(title_text="Vg (V)")
     fig.update_layout(legend=LEGEND_INSIDE)
     return fig

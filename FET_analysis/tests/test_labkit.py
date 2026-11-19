@@ -42,6 +42,8 @@ def test_comparison_figures() -> None:
     assert fig.data[0].y[1] == 1e-7 * 1e6 / 10.0  # absolute value, per micrometre of width
     assert pd.isna(fig.data[1].y[0])  # a zero current cannot be drawn on a log axis
     assert fig.layout.yaxis.type == "log" and "µA/µm" in fig.layout.yaxis.title.text
+    fig_linear = overlay_figure(curves, colors, per_width=False, log_scale=False)
+    assert fig_linear.layout.yaxis.type == "linear" and fig_linear.data[1].y[0] == 0.0
 
     frame = pd.DataFrame(
         {
