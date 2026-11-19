@@ -178,7 +178,7 @@ def filters(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
         if "fet_filter_rejected" not in st.session_state:
             st.session_state["fet_filter_rejected"] = bool(store["show_rejected"])
 
-    c_grp, c_swp, c_sts, c_rej = st.columns([2.2, 1.3, 1.5, 1.0], vertical_alignment="bottom")
+    c_grp, c_swp, c_sts, c_rej = st.columns([1.9, 1.25, 1.35, 1.5], vertical_alignment="bottom")
     chosen_groups = c_grp.multiselect("Groups", groups, key="fet_filter_groups", placeholder="No groups selected")
     chosen_sweeps = c_swp.multiselect(
         "Sweep direction",

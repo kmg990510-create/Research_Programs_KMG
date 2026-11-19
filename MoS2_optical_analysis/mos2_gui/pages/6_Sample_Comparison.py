@@ -882,10 +882,10 @@ isoline_cfg = sample_cfg.get("absolute_isolines", {}) if isinstance(sample_cfg, 
 isoline_steps_cfg = isoline_cfg.get("steps", {}) if isinstance(isoline_cfg, dict) else {}
 
 # Strain/doping coefficients and isoline spans: strain (%), carrier density (1e13 cm^-2).
-strain_doping = strain_doping_settings(graph_cfg)
-coefficients = strain_doping["coefficients"]
-isoline_eps_range = strain_doping["eps_range"]
-isoline_n_range = strain_doping["n_range"]
+sd_settings = strain_doping_settings(graph_cfg)
+coefficients = sd_settings["coefficients"]
+isoline_eps_range = sd_settings["eps_range"]
+isoline_n_range = sd_settings["n_range"]
 
 report_files = list_report_json_files()
 if not report_files:
@@ -1017,7 +1017,7 @@ st.caption(
 )
 
 default_colors_by_id = categorical_colors(raw_sample_frames.keys())
-ctrl_seg, ctrl_samples, ctrl_analysis, ctrl_fig = st.columns([3.4, 1.0, 1.05, 1.0], vertical_alignment="center")
+ctrl_seg, ctrl_samples, ctrl_analysis, ctrl_fig = st.columns([2.1, 1.25, 1.35, 1.25], vertical_alignment="center")
 
 display_name_by_id: dict[str, str] = {}
 display_color_by_id: dict[str, str] = {}
@@ -1222,24 +1222,7 @@ use_paper_style = bool(fig_opts["use_paper_style"])
 scatter_style = fig_opts["scatter_style"]
 
 with ctrl_seg:
-    if not is_pl_mode:
-        plot_groups = ("eps-n", "Absolute Positions", "n vs FWHM", "FWHM Pair", "LO Ratio")
-        plot_store = st.session_state.setdefault("sample_cmp_plot_group_store", {"group": "eps-n"})
-        plot_key = "sample_cmp_plot_group"
-        if plot_key not in st.session_state or st.session_state[plot_key] not in plot_groups:
-            st.session_state[plot_key] = plot_store["group"] if plot_store.get("group") in plot_groups else "eps-n"
-        active_plot_group = (
-            st.segmented_control(
-                "Comparison plot",
-                options=plot_groups,
-                key=plot_key,
-                label_visibility="collapsed",
-            )
-            or "eps-n"
-        )
-        plot_store["group"] = active_plot_group
-    else:
-        st.caption("PL cross-sample & temperature mode")
+    st.caption("PL cross-sample & temperature mode" if is_pl_mode else "Raman strain/doping & LO comparison")
 
 if is_pl_mode:
     _render_pl_comparison(
@@ -1251,6 +1234,22 @@ if is_pl_mode:
         scatter_style=scatter_style if use_paper_style else None,
     )
     st.stop()
+
+plot_groups = ("eps-n", "Absolute Positions", "n vs FWHM", "FWHM Pair", "LO Ratio")
+plot_store = st.session_state.setdefault("sample_cmp_plot_group_store", {"group": "eps-n"})
+plot_key = "sample_cmp_plot_group"
+if plot_key not in st.session_state or st.session_state[plot_key] not in plot_groups:
+    st.session_state[plot_key] = plot_store["group"] if plot_store.get("group") in plot_groups else "eps-n"
+active_plot_group = (
+    st.segmented_control(
+        "Comparison plot",
+        options=plot_groups,
+        key=plot_key,
+        label_visibility="collapsed",
+    )
+    or "eps-n"
+)
+plot_store["group"] = active_plot_group
 
 selected_step_cfg = (
     isoline_steps_cfg.get(isoline_density, {})

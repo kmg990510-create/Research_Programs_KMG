@@ -59,9 +59,8 @@ if st.session_state.get("ads_compare_view") not in CMP_VIEWS:
         view_store["view"] if view_store.get("view") in CMP_VIEWS else CMP_VIEWS[0]
     )
 
-c_view, c_grp, c_fig = st.columns([3.4, 1.0, 1.0], vertical_alignment="center")
 active_view = (
-    c_view.segmented_control(
+    st.segmented_control(
         "Compare view",
         CMP_VIEWS,
         key="ads_compare_view",
@@ -70,6 +69,8 @@ active_view = (
     or CMP_VIEWS[0]
 )
 view_store["view"] = active_view
+c_info, c_grp, c_fig = st.columns([3.4, 1.15, 1.15], vertical_alignment="center")
+c_info.caption(f"{len(shown)} pose(s) matching filters across {len(shown_groups)} group(s).")
 render_group_manager_popover(batch, frame, review, groups, container=c_grp)
 sizes = figure_settings_popover(
     [

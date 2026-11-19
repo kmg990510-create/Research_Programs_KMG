@@ -319,7 +319,7 @@ def filters(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
     if first_visit or "ads_filter_rejected" not in st.session_state:
         st.session_state["ads_filter_rejected"] = bool(store["show_rejected"])
 
-    c_srf, c_mol, c_sts, c_grp, c_rej = st.columns([1.4, 1.4, 1.2, 1.8, 1.1], vertical_alignment="bottom")
+    c_srf, c_mol, c_sts, c_grp, c_rej = st.columns([1.25, 1.25, 1.15, 1.6, 1.5], vertical_alignment="bottom")
     chosen_surfaces = c_srf.multiselect("Surface", surfaces, key="ads_filter_surfaces")
     chosen_molecules = c_mol.multiselect("Molecule", molecules, key="ads_filter_molecules")
     chosen_statuses = c_sts.multiselect("Status", statuses, key="ads_filter_status")

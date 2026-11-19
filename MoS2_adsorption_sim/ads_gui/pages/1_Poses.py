@@ -50,7 +50,7 @@ if st.session_state.get(VIEW_KEY) not in VIEWS:
     st.session_state[VIEW_KEY] = view_store["view"] if view_store.get("view") in VIEWS else VIEWS[0]
 st.session_state.setdefault(GALLERY_COLUMNS_KEY, 4)
 
-c_view, c_info, c_fig = st.columns([1.4, 2.8, 1.1], vertical_alignment="center")
+c_view, c_info, c_fig = st.columns([1.5, 2.6, 1.3], vertical_alignment="center")
 active_view = (
     c_view.segmented_control(
         "View",
@@ -228,7 +228,7 @@ artifact = run.artifacts[selected]
 fmax_target = RelaxationSettings.from_config(run.config).fmax_eV_per_A
 
 with st.container(key="kmg_review_workspace"):
-    list_box, center_box, review_box = st.columns([1.45, 3.85, 1.6], gap="medium")
+    list_box, center_box, review_box = st.columns([1.6, 3.6, 1.85], gap="medium")
 
     with list_box, st.container(border=True):
         panel_title("Pose List")
@@ -263,7 +263,7 @@ with st.container(key="kmg_review_workspace"):
         st.caption("Click a row to inspect. ⚠ attention · ✕ invalid · ✓ valid.")
 
     with center_box, st.container(border=True):
-        head_t, prev_b, next_b = st.columns([6, 1, 1], vertical_alignment="center")
+        head_t, prev_b, next_b = st.columns([3.6, 1.5, 1.4], vertical_alignment="center")
         head_t.markdown(f"#### {result.surface_id} · {result.molecule_id} — {result.site_type} ({result.orientation}) · :{STATUS_TEXT_COLOR[result.status]}[{result.status}]")
         head_t.caption(f"{position + 1} of {len(pose_ids)} · `{result.pose_id}`")
         prev_b.button("Previous", on_click=_step, args=(-1, pose_ids), width="stretch", key="poses_prev", disabled=len(pose_ids) < 2)
@@ -316,9 +316,8 @@ with st.container(key="kmg_review_workspace"):
         if not result.reasons:
             st.caption("No quality warnings raised.")
 
-        c_app, c_rej = st.columns(2)
-        c_app.button("Approve", type="primary", on_click=_decide, args=(batch, selected, "approved", next_id), width="stretch", key="poses_approve", disabled=decision == "approved")
-        c_rej.button("Reject", on_click=_decide, args=(batch, selected, "rejected", next_id), width="stretch", key="poses_reject", disabled=decision == "rejected")
+        st.button("Approve", type="primary", on_click=_decide, args=(batch, selected, "approved", next_id), width="stretch", key="poses_approve", disabled=decision == "approved")
+        st.button("Reject", on_click=_decide, args=(batch, selected, "rejected", next_id), width="stretch", key="poses_reject", disabled=decision == "rejected")
         st.button("Clear", on_click=_decide, args=(batch, selected, "auto", None), width="stretch", key="poses_clear", disabled=decision == "auto")
         note_key = f"poses_note_{selected}"
         st.text_input("Note", value=str(row["note"]), key=note_key, on_change=_save_note, args=(batch, selected, note_key), placeholder="Saved when you press Enter")

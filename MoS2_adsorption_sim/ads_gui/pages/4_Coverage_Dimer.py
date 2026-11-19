@@ -69,9 +69,8 @@ view_store = st.session_state.setdefault("cov_view_store", {"view": COV_VIEWS[0]
 if st.session_state.get("cov_active_view") not in COV_VIEWS:
     st.session_state["cov_active_view"] = view_store["view"] if view_store.get("view") in COV_VIEWS else COV_VIEWS[0]
 
-c_view, c_disp, c_fig = st.columns([3.0, 1.15, 1.0], vertical_alignment="center")
 active_view = (
-    c_view.segmented_control(
+    st.segmented_control(
         "Coverage view",
         COV_VIEWS,
         key="cov_active_view",
@@ -80,6 +79,9 @@ active_view = (
     or COV_VIEWS[0]
 )
 view_store["view"] = active_view
+
+c_info, c_disp, c_fig = st.columns([3.2, 1.2, 1.15], vertical_alignment="center")
+c_info.caption(f"Study: `{chosen_study}` · {len(overview_df)} coverage case(s)")
 
 with c_disp.popover("Display options", width="stretch"):
     if st.session_state.get("cov_repeat_xy") not in REPEAT_OPTIONS:

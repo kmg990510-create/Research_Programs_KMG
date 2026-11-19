@@ -106,7 +106,7 @@ st.session_state.setdefault(GALLERY_COLUMNS_KEY, GALLERY_COLUMNS)
 if st.session_state.get(SELECTED_KEY) not in keys:
     st.session_state[SELECTED_KEY] = keys[0]
 
-v_left, v_mid, v_right = st.columns([1.4, 3.6, 1.1], vertical_alignment="center")
+v_left, v_mid, v_right = st.columns([1.5, 3.2, 1.4], vertical_alignment="center")
 if st.session_state.get(VIEW_CTRL_KEY) not in VIEWS:
     st.session_state[VIEW_CTRL_KEY] = st.session_state[VIEW_KEY]
 picked_view = v_left.segmented_control(
@@ -193,7 +193,7 @@ results = {r.sweep: r for r in run.analysis.results if (r.source_file, r.run_id)
 branches, _ = split_branches(measurement.data, run.settings)
 
 with st.container(key="kmg_review_workspace"):
-    list_box, chart_box, review_box = st.columns([1.45, 3.85, 1.6], gap="medium")
+    list_box, chart_box, review_box = st.columns([1.6, 3.6, 1.8], gap="medium")
 
 with list_box, st.container(border=True):
     panel_title("Devices")
@@ -227,7 +227,7 @@ with list_box, st.container(border=True):
     st.caption("⚠ needs attention · ✕ invalid · ✓ valid (attention listed first)")
 
 with chart_box:
-    title_col, prev_col, next_col = st.columns([5, 1, 1], vertical_alignment="center")
+    title_col, prev_col, next_col = st.columns([4.0, 1.35, 1.25], vertical_alignment="center")
     run_part = f" · run {result.run_id}" if result.run_id not in (row["label"], "1") else ""
     title_col.caption(
         f"**{_device_name(row['group_display'], row['label'])}{run_part} · {result.sweep} sweep** · "

@@ -163,3 +163,37 @@ def test_mos2_body_filters_and_subnavigation_smoke(
         _clear_report_caches()
         if saved_main is not None:
             sys.modules["__main__"] = saved_main
+
+
+def test_sample_comparison_raman_renders_without_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from streamlit.testing.v1 import AppTest
+
+    for idx in (1, 2):
+        raman_ctx = build_default_context(
+            run_id=f"smoke_raman_{idx}",
+            artifact_dir=tmp_path,
+            config_dir=PROJECT_ROOT / "fitting" / "mos2_raman" / "config",
+        )
+        run_pipeline(
+            raw_spectra=generate_dummy_spectra(count=4),
+            stages=build_default_stages(config=raman_ctx.config),
+            context=raman_ctx,
+        )
+    monkeypatch.setattr(report_loader, "project_root", lambda: tmp_path)
+    _clear_report_caches()
+
+    saved_main = sys.modules.get("__main__")
+    old_cwd = Path.cwd()
+    try:
+        os.chdir(GUI_DIR)
+        at = AppTest.from_file(str(GUI_DIR / "pages/6_Sample_Comparison.py"), default_timeout=60)
+        at.run()
+        assert not at.exception
+        assert len(at.get("plotly_chart")) >= 2
+    finally:
+        os.chdir(old_cwd)
+        _clear_report_caches()
+        if saved_main is not None:
+            sys.modules["__main__"] = saved_main

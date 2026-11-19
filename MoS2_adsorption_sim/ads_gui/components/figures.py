@@ -96,10 +96,10 @@ def convergence_figure(
         )
 
     apply_paper_layout(fig, height=height)
-    fig.update_yaxes(title_text="ΔE (eV)", row=1, col=1)
-    fig.update_yaxes(title_text="fmax (eV/Å)", type="log", exponentformat="power", row=2, col=1)
+    fig.update_yaxes(title_text="ΔE (eV)", automargin=True, row=1, col=1)
+    fig.update_yaxes(title_text="fmax (eV/Å)", type="log", exponentformat="power", automargin=True, row=2, col=1)
     fig.update_xaxes(title_text="Optimization step", row=2, col=1)
-    fig.update_layout(title_text="Relaxation convergence", legend=LEGEND_INSIDE)
+    fig.update_layout(title_text="Relaxation convergence", legend=LEGEND_INSIDE, margin={"l": 72})
     return fig
 
 
@@ -481,7 +481,11 @@ def site_energy_map_figure(
     apply_paper_layout(fig, height=height)
     fig.update_xaxes(title_text="x (Å)")
     fig.update_yaxes(title_text="y (Å)", scaleanchor="x", scaleratio=1)
-    fig.update_layout(title_text=f"Adsorption COM Map — {surface_id}", legend={"orientation": "h", "y": 1.02, "yanchor": "bottom", "x": 0.0})
+    fig.update_layout(
+        title={"text": f"Adsorption COM Map — {surface_id}", "y": 0.97, "yanchor": "top"},
+        margin={"t": 170},
+        legend={"orientation": "h", "y": 1.02, "yanchor": "bottom", "x": 0.0, "xanchor": "left", "font": {"size": 11}},
+    )
     return fig
 
 

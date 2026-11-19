@@ -82,7 +82,7 @@ def _closest_pair_coords(
 def _trajectory_3d_html(
     frames: Sequence[Atoms],
     pose_id: str,
-    width: int = 560,
+    width: int | str = "100%",
     height: int = 420,
     *,
     cell_atoms: Atoms | None = None,
@@ -109,7 +109,7 @@ def _trajectory_3d_html(
 
 def md_3d_html(
     md_result: MdResult,
-    width: int = 560,
+    width: int | str = "100%",
     height: int = 420,
 ) -> str:
     """Render interactive py3Dmol 3D trajectory animation for one ``MdResult``."""
@@ -121,7 +121,7 @@ def pose_3d_html(
     artifact: PoseArtifact,
     result: PoseResult,
     mode: str = "relaxed_with_ghost",
-    width: int = 560,
+    width: int | str = "100%",
     height: int = 420,
 ) -> str:
     """Render interactive py3Dmol HTML for either Ghost comparison or relaxation trajectory animation."""
