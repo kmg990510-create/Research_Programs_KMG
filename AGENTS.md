@@ -62,13 +62,14 @@ Research_Programs_KMG/
 
 ### 화면 규칙
 
-- 사이드바에서는 데이터·결과를 고르고, 본문에서는 결과를 본다.
-- 사이드바는 번호 붙은 접이식 구획으로만 구성한다: `1) Report`, `2) Filters`, 그다음 페이지별 구획. 구획 밖에 입력란을 두지 않는다 (`labkit.sidebar.sidebar_section`).
-- 필터 선택은 페이지를 옮겨도 유지되고, 기본값은 아무것도 숨기지 않는다.
-- 판단(승인·제외)은 근거가 되는 그래프와 같은 화면에서 한다.
-- 다시 계산할 필요가 없는 수정(결정, 메모, 이름)은 즉시 저장한다. 다시 계산해야 하는 입력만 `Apply` 버튼을 쓴다.
+- 모든 화면은 고정 전체 폭 상단 헤더(`#14273b`, 48 px, `labkit/chrome.py`)와 밝은 슬레이트 UI 테마(`.streamlit/config.toml`: `#f2f6fa` 바탕, `#e7eef5` 사이드바, `#067674` 강조, `#14273b` 글자, `#ccd9e5` 테두리)를 공유한다. UI 강조색은 데이터 의미별 색상 규칙을 덮어쓰지 않는다.
+- 사이드바에는 여러 단계에서 유지되는 작업 대상(통합 실행의 `1) Program`, 그다음 활성 `Batch` 또는 `Report`)만 기본 펼침으로 둔다. 번호 붙은 접이식 구획 규칙(`labkit.sidebar.sidebar_section`)은 사이드바 항목에만 적용한다.
+- 본문은 `프로그램 제목 + 단계 이동(segmented_control)` → `공통 필터 한 줄` → `단계 제목` → `하위 보기(segmented_control) + 오른쪽 설정/관리 popover` → `테두리 카드(st.container(border=True)) 결과` 계층을 따른다. 본문 입력은 각 업무 영역(Run 입력, 필터, Figure settings, 판정/관리 popover)에 둔다.
+- 필터 선택은 페이지를 옮겨도 유지되며, 활성 필터 범위와 표시 개수를 결과 가까이 보여 준다.
+- 판단(승인·제외)은 근거가 되는 그래프와 같은 화면에서 한다. 넓은 화면에서는 목록–그래프–판정을 나란히 두고, 좁은 창에서는 곡선과 판정이 자연스럽게 아래로 재배치되도록 반응형 레이아웃을 쓴다.
+- 다시 계산할 필요가 없는 수정(결정, 메모, 그룹 이름)은 즉시 저장한다. 다시 계산해야 하는 입력만 `Apply` 버튼을 쓴다.
 - 효과가 없는 입력란은 숨기지 않고 비활성화한다.
-- 기본값만으로 분석이 실행되어야 한다. 자주 안 쓰는 설정은 `Advanced` expander에 넣는다.
+- 기본값만으로 분석이 실행되어야 한다. 자주 안 쓰는 설정은 `Advanced` expander 또는 설정 popover에 넣는다.
 - 분석 결과에 영향을 주는 입력(FET의 `W`, `L`, `t_ox`, `eps_r` 등)은 Run 단계에서 항상 보이고 결과에 기록된다.
 - 화면 라벨과 그래프 축은 영어, 사용 매뉴얼과 설정 주석은 한국어로 쓴다.
 - 축 라벨에는 항상 단위를 쓴다.
@@ -78,22 +79,22 @@ Research_Programs_KMG/
 ### 그래프
 
 - 화면의 대화형 그래프는 Plotly, 내보내는 그림 파일은 matplotlib로 그린다.
-- 두 프로그램의 모든 그래프가 하나의 모양을 쓴다: `labkit/plot_theme.py`의 논문 스타일 (Arial 14, 흰 바탕, 사방 테두리 축, 눈금 안쪽). 프로그램이나 페이지가 자기 테마를 따로 만들지 않는다.
+- 모든 프로그램의 모든 그래프가 하나의 모양을 쓴다: `labkit/plot_theme.py`의 논문 스타일 (Arial 14, 흰 바탕, 사방 테두리 축, 눈금 안쪽). 프로그램이나 페이지가 자기 테마를 따로 만들지 않는다.
 - 그래프 코드는 색·선 굵기·점 크기 숫자를 직접 쓰지 않고 `labkit.plot_theme`의 이름을 쓴다.
   - 색 역할: `DATA`(측정 곡선), `AUX`(보조·기준선·제외된 것), `FIT`(fit·접선), `MARK`(추출한 값), `STATUS_COLORS`(valid/attention/invalid), `CATEGORICAL`(그룹·샘플)
   - 색상표: `SEQUENTIAL`(순서 있는 값), `DIVERGING`(0 같은 중심이 있는 값)
   - 선 굵기: `LINE_DATA`, `LINE_AUX`, `LINE_FIT`. 점 크기: `MARKER_ON_LINE`, `MARKER_RAW`, `MARKER_CENTER`, `MARKER_MAP`
   - 점 테두리: `OUTLINE`, `OUTLINE_THIN`. 오차막대: `ERRORBAR_WIDTH`, `ERRORBAR_CAP`
 - 그리기 직전에 `finish_figure`가 모든 그래프에 같은 마무리를 한다: 위첨자 표기(`cm^-1` → `cm⁻¹`), 10의 거듭제곱 표기, 격자, 범례 위치, colorbar 모양. 축 제목은 `이름 (단위)` 형식으로 쓴다 (`axis_label`).
-- 격자는 기본으로 없다. 사용자가 사이드바 `Figure size` 구획의 `Grid`로 켜며, 모든 그래프에 같이 적용된다. 같은 구획의 `Image format`(png/svg)도 모든 그래프에 적용된다.
+- 격자는 기본으로 없다. 사용자가 결과 영역 `Figure settings` popover의 `Grid`로 켜며, 모든 그래프에 같이 적용된다. 같은 popover의 `Image format`(png/svg)도 모든 그래프에 적용되며, 전역 옵션임을 popover 안에 함께 명시한다.
 - 그래프마다 달라도 되는 것은 근거가 있는 것뿐이다.
   - 축 스케일: 값이 여러 자릿수에 걸치면 log
   - 가로세로 1:1: x와 y가 같은 물리량(위치)인 맵
   - 범례 위치: 선·점 그래프는 안쪽 좌상단(`LEGEND_INSIDE`), 면을 채우는 그래프(맵·막대·히스토그램·box)와 항목이 많은 그래프는 오른쪽 바깥(`LEGEND_RIGHT`). colorbar가 오른쪽에 있는 맵은 위쪽
-  - 글씨 크기: 패널이 작은 그래프만 작게 (FET Gallery)
+  - 글씨 크기: 패널이 작은 그래프만 작게 (FET/Adsorption Gallery)
   - 의미가 고정된 색: 피크 종류별 색(MoS2 Spectrum, `raman_graph.yaml`)
 - 그리는 코드는 추출·피팅 함수 안에 넣지 않는다.
-- 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 사이드바 `Figure size` 구획에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기이고 해상도는 3배다. 그리는 쪽은 파일 이름만 넘긴다 (`labkit/figure_size.py`).
+- 모든 그래프는 사용자가 가로·세로 크기(px)를 정할 수 있다. 입력은 결과 영역의 `Figure settings` popover에 두고, 가로 기본값은 페이지 폭에 맞춤이다. 카메라 버튼으로 저장한 그림도 같은 크기이고 해상도는 3배다. 그리는 쪽은 파일 이름만 넘긴다 (`labkit/figure_size.py`).
 
 ### 페이지 코드
 
@@ -120,9 +121,9 @@ Research_Programs_KMG/
 
 - 두 번째 프로그램에서 실제로 같은 코드가 필요해졌을 때만 `labkit/`으로 옮긴다. 미리 만들지 않는다.
 - 후보: Plotly 테마, 사이드바 구획, 클라우드 감지, 업로드/압축 해제, zip 내보내기, 휴지통, 빌드 정보, 재현성 메타데이터 작성.
-- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기·격자·이미지 형식 입력과 그리기). 두 프로그램이 모두 쓴다.
-- 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `mos2_gui/__init__.py`, 통합 실행: 루트 `app.py`).
-- 배포물에는 `labkit`을 프로그램 안에 넣는다: Docker는 `COPY labkit/ $HOME/app/labkit/`, PyInstaller spec은 `pathex`와 `hiddenimports`에 추가한다.
+- 지금 들어 있는 것: `labkit/plot_theme.py`(논문 스타일 Plotly 모양), `labkit/sidebar.py`(번호 붙은 사이드바 구획), `labkit/figure_size.py`(그래프 크기·격자·이미지 형식 입력·`Figure settings` popover와 그리기), `labkit/chrome.py`(고정 상단 헤더, 프로그램/단계 탐색 bar, 카드 제목, 반응형 레이아웃 CSS). 세 프로그램이 모두 쓴다.
+- 프로그램은 저장소 루트를 `sys.path`에 넣어 `labkit`을 찾는다 (FET: 페이지 맨 위, MoS2: `mos2_gui/__init__.py`, Adsorption: 페이지 맨 위, 통합 실행: 루트 `app.py`).
+- 배포물에는 `labkit`과 루트 `.streamlit/`을 프로그램 안에 넣는다: Docker는 `COPY labkit/ $HOME/app/labkit/` 및 `COPY .streamlit/ $HOME/app/.streamlit/`, PyInstaller spec은 `pathex`와 `hiddenimports`에 추가한다.
 - 그림을 그리는 코드는 `st.plotly_chart`를 직접 부르지 않고 `labkit.figure_size.show_figure`(또는 프로그램의 얇은 래퍼)를 쓴다.
 - `labkit`에는 특정 측정 방법(Raman, FET)에 대한 지식을 넣지 않는다.
 

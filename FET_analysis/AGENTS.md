@@ -175,8 +175,9 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 
 - 페이지는 배치만 한다. 계산은 `fet_core`, 그림은 `fet_gui/components/figures.py`에 둔다.
 - 모든 페이지는 `fet_gui.state.active()`로 배치, 실행 결과, review, 결과 표를 받는다. 분석은 폴더의 파일 목록과 review의 분석 입력이 바뀔 때만 다시 돈다 (`st.cache_resource`).
-- 사이드바의 공통 구획은 두 개다: `1) Batch`(배치 선택), `2) Filters`(sweep 방향, 상태, 그룹, rejected 표시). 필터 선택은 모든 페이지가 공유하고, 기본값은 아무것도 숨기지 않는다.
-- 그래프가 있는 페이지(Devices, Compare)는 `3) Figure size` 구획을 가진다. 그래프 종류마다 가로·세로(px)를 정하고, 그림은 `labkit.figure_size.show_figure`로만 그린다. Gallery는 패널 하나의 크기와 한 줄의 패널 수를 정한다. 가로를 고정하면 그림들이 옆으로 놓이다가 자리가 모자라면 다음 줄로 넘어간다.
+- 사이드바는 활성 작업 대상만 둔다: 통합 실행에서는 `1) Program`, 그다음 `2) Batch`(단독 실행에서는 `1) Batch`), 기본 펼침. sweep 방향, 상태, 그룹, rejected 표시 필터는 본문 상단 공통 행에 두며 페이지 이동 후에도 유지된다 (기본값은 기존처럼 첫 sweep + 전체 상태·그룹 + rejected 표시).
+- 상단 고정 헤더와 `Run / Devices / Compare / Finalize` 단계 bar는 `labkit.chrome`과 `fet_gui.state.render_fet_chrome`으로 모든 페이지에 공통 적용한다.
+- 그래프가 있는 페이지(Devices, Compare)는 결과 영역의 `Figure settings` popover에서 그래프 종류별 가로·세로(px), 전역 `Grid`, 전역 `Image format`을 정하고, 그림은 `labkit.figure_size.show_figure`로만 그린다. Gallery는 패널 하나의 크기와 한 줄의 패널 수를 정한다. Compare의 그룹 표시 이름과 순서는 `Manage groups` popover에서 즉시 저장한다.
 - 저장 규칙: 결정, 메모, 그룹 이름·순서는 바꾸는 즉시 `review.json`에 쓴다 (저장 버튼 없음). 다시 분석해야 하는 치수와 방법 옵션만 `Apply` / `Save per-device geometry` 버튼을 쓴다.
 - sweep 방향 하나가 목록의 한 행이다. 값과 결정은 그 행의 것이고, 그림에는 같은 측정의 다른 방향이 흐리게 같이 그려진다.
 - 데이터 폴더는 `FET_analysis/data`이고, 환경 변수 `FET_DATA_ROOT`로 바꿀 수 있다 (테스트가 쓴다).
@@ -186,8 +187,8 @@ $env:FET_REAL_DATA_DIR = "..\legacy\FET device analysis\data\raw"; .\.venv\Scrip
 | 페이지 | 하는 일 |
 | --- | --- |
 | Run | 파일 업로드로 배치 만들기, 배치 기본 치수와 방법 옵션, 소자별 치수, 파일 목록과 경고 |
-| Devices | Detail: 왼쪽 sweep 목록(attention 먼저), 오른쪽에 고른 행의 log / linear 그림(off 구간, SS 직선, gm 접선, Vth 표시)과 `Approve` / `Reject` / `Clear`, 메모, 추출값 표. Gallery: 모든 소자의 작은 그림 격자(상태별 색), 패널을 누르면 Detail로 이동 |
-| Compare | 지표 여러 개의 box + 점을 2열로, 그룹별 overlay(통계에 드는 sweep만), 그룹 통계 표, 그룹 이름과 순서 |
+| Devices | Detail: 왼쪽 sweep 목록(`st.dataframe`, attention 먼저), 중앙에 고른 행의 linear / log 그림(off 구간, SS 직선, gm 접선, Vth 표시)과 상세 경고/추출값 expander, 오른쪽에 핵심 지표·요약 경고·`Approve` / `Reject` / `Clear`·메모. Gallery: 모든 소자의 작은 그림 격자(상태별 색), 패널을 누르면 Detail로 이동 |
+| Compare | Quantities 선택 + `Figure settings` + `Manage groups` popover, 지표 여러 개의 box + 점을 2열로, 그룹별 overlay(Linear/Log 및 채널 폭 정규화, 통계 포함 여부 구분), 그룹 요약 표(원본 그룹 식별자 추적 포함) |
 | Finalize | 그룹 요약, 결과 파일 쓰기, zip 내려받기 |
 
 ## 설정 규칙
