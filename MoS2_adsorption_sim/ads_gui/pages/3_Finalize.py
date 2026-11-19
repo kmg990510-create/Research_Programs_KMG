@@ -19,10 +19,11 @@ from ads_core.model import ReportSettings  # noqa: E402
 from ads_core.pipeline import md_results_table, ordered_groups, status_counts  # noqa: E402
 from ads_core.report.export import export_run  # noqa: E402
 from ads_core.report.summary import molecule_summary  # noqa: E402
-from ads_gui.state import REVIEW_FILE, active, results_root  # noqa: E402
+from ads_gui.state import REVIEW_FILE, active, render_ads_chrome, results_root  # noqa: E402
+from labkit.chrome import panel_title  # noqa: E402
 
-st.set_page_config(page_title="Finalize · MoS2 Adsorption", layout="wide")
-st.title("Finalize")
+render_ads_chrome("Finalize", "Finalize · MoS2 Adsorption")
+st.header("Finalize")
 st.caption("Write Origin-ready CSVs, extended XYZ relaxed structures, and run_metadata.json (including review.json).")
 
 batch, run, review, frame = active()
@@ -43,64 +44,67 @@ if open_attention > 0:
 elif not frame.empty:
     st.success("All attention poses have been reviewed.")
 
-st.subheader("Molecule & Surface Summary")
-summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
-if not summary.empty:
-    display_cols = [
-        "group_display",
-        "surface_id",
-        "molecule_id",
-        "n_poses",
-        "n_included",
-        "best_site",
-        "e_ads_min_eV",
-        "e_ads_boltzmann_eV",
-        "e_ads_corrugation_eV",
-        "vdw_fraction_at_best",
-        "d_min_at_best_A",
-    ]
-    st.dataframe(summary[display_cols], hide_index=True, width="stretch")
+with st.container(border=True):
+    panel_title("Molecule & Surface Summary")
+    summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
+    if not summary.empty:
+        display_cols = [
+            "group_display",
+            "surface_id",
+            "molecule_id",
+            "n_poses",
+            "n_included",
+            "best_site",
+            "e_ads_min_eV",
+            "e_ads_boltzmann_eV",
+            "e_ads_corrugation_eV",
+            "vdw_fraction_at_best",
+            "d_min_at_best_A",
+        ]
+        st.dataframe(summary[display_cols], hide_index=True, width="stretch")
 
 if run.md_results:
-    st.subheader(f"Finite-temperature MD Summary ({len(run.md_results)})")
-    st.dataframe(md_results_table(run.md_results), hide_index=True, width="stretch")
+    with st.container(border=True):
+        panel_title(f"Finite-temperature MD Summary ({len(run.md_results)})")
+        st.dataframe(md_results_table(run.md_results), hide_index=True, width="stretch")
 
-st.subheader("Result files")
-if st.button("Write result files", type="primary", key="finalize_export_btn"):
-    files = export_run(run, review, output_dir)
-    st.session_state["finalize_written"] = (batch, len(files))
+with st.container(border=True):
+    panel_title("Result files")
+    if st.button("Write result files", type="primary", key="finalize_export_btn"):
+        files = export_run(run, review, output_dir)
+        st.session_state["finalize_written"] = (batch, len(files))
 
-written = st.session_state.get("finalize_written")
-if written and written[0] == batch:
-    st.success(f"Wrote {written[1]} file(s) to {output_dir}")
+    written = st.session_state.get("finalize_written")
+    if written and written[0] == batch:
+        st.success(f"Wrote {written[1]} file(s) to {output_dir}")
 
-existing = sorted(p for p in output_dir.rglob("*") if p.is_file()) if output_dir.is_dir() else []
-exported = [p for p in existing if p.name != REVIEW_FILE]
-if exported:
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "file": p.relative_to(output_dir).as_posix(),
-                    "size (kB)": round(p.stat().st_size / 1024, 1),
-                    "written": pd.Timestamp(p.stat().st_mtime, unit="s").strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                for p in exported
-            ]
-        ),
-        hide_index=True,
-        width="stretch",
-    )
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in existing:
-            archive.write(path, f"{batch}/{path.relative_to(output_dir).as_posix()}")
-    st.download_button(
-        "Download all as zip",
-        data=buf.getvalue(),
-        file_name=f"{batch}_results.zip",
-        mime="application/zip",
-        key="finalize_zip_btn",
-    )
-else:
-    st.info("No exported result files found yet for this batch.")
+    existing = sorted(p for p in output_dir.rglob("*") if p.is_file()) if output_dir.is_dir() else []
+    exported = [p for p in existing if p.name != REVIEW_FILE]
+    if exported:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "file": p.relative_to(output_dir).as_posix(),
+                        "size (kB)": round(p.stat().st_size / 1024, 1),
+                        "written": pd.Timestamp(p.stat().st_mtime, unit="s").strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                    for p in exported
+                ]
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in existing:
+                archive.write(path, f"{batch}/{path.relative_to(output_dir).as_posix()}")
+        st.download_button(
+            "Download all as zip",
+            data=buf.getvalue(),
+            file_name=f"{batch}_results.zip",
+            mime="application/zip",
+            key="finalize_zip_btn",
+        )
+    else:
+        st.info("No exported result files found yet for this batch.")

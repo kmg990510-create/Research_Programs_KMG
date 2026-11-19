@@ -1,9 +1,4 @@
-"""Shared page state: data folders, active batch selection, cached batch loading, sidebar 1) and 2).
-
-Pages call ``active()`` to obtain the loaded ``BatchRun``, ``ReviewState``, and
-review-applied pose DataFrame. Heavy uMLIP calculations happen in ``ads_core``;
-GUI pages only read completed batches or trigger ``run_batch`` from ``Run.py``.
-"""
+"""Shared page state: data folders, active batch selection, cached batch loading, chrome, body filters."""
 
 from __future__ import annotations
 
@@ -13,6 +8,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -21,10 +17,21 @@ from ads_core.model import STATUS_ATTENTION, STATUS_INVALID, STATUS_VALID
 from ads_core.pipeline import BatchRun, poses_frame
 from ads_core.report.export import BATCH_STATE_FILE, load_batch_run
 from ads_core.review import ReviewState, load_review, save_review
+from labkit.chrome import (
+    is_unified_mode,
+    render_masthead,
+    render_stage_header,
+    render_subnav,
+    resolve_page,
+    sidebar_section_label,
+)
 from labkit.sidebar import sidebar_section
 
 SIM_ROOT = Path(__file__).resolve().parents[1]
 ACTIVE_BATCH_KEY = "ads_active_batch"
+FILTER_STORE_KEY = "ads_filter_store"
+POSES_SUB_STORE_KEY = "ads_poses_sub_last"
+GROUPS_NONCE_KEY = "ads_compare_groups_nonce"
 REVIEW_FILE = "review.json"
 STATUS_ORDER = (STATUS_VALID, STATUS_ATTENTION, STATUS_INVALID)
 
@@ -181,10 +188,45 @@ def load_run(batch: str) -> BatchRun:
     return _cached_run(str(folder), int(state_file.stat().st_mtime_ns))
 
 
+def _poses_target() -> object:
+    if st.session_state.get(POSES_SUB_STORE_KEY) == "Coverage & Dimer":
+        return resolve_page("ads", "coverage", "pages/4_Coverage_Dimer.py")
+    return resolve_page("ads", "poses", "pages/1_Poses.py")
+
+
+def render_ads_chrome(active_stage: str, page_title: str, *, poses_sub: str | None = None) -> None:
+    """Render standalone page config, fixed masthead, program title, and workflow/sub-view bars."""
+    if not is_unified_mode():
+        st.set_page_config(page_title=page_title, layout="wide")
+        render_masthead("MoS₂ Adsorption Sim · uMLIP + DFT-D3")
+
+    if poses_sub in {"Single-Molecule Poses", "Coverage & Dimer"}:
+        st.session_state[POSES_SUB_STORE_KEY] = poses_sub
+
+    stages = (
+        ("Run", resolve_page("ads", "run", "Run.py")),
+        ("Poses", _poses_target()),
+        ("Compare", resolve_page("ads", "compare", "pages/2_Compare.py")),
+        ("Finalize", resolve_page("ads", "finalize", "pages/3_Finalize.py")),
+    )
+    render_stage_header("MoS₂ Adsorption Sim", stages, active_stage, key_prefix="ads_stage")
+
+    if poses_sub is not None:
+        render_subnav(
+            "Poses mode",
+            (
+                ("Single-Molecule Poses", resolve_page("ads", "poses", "pages/1_Poses.py")),
+                ("Coverage & Dimer", resolve_page("ads", "coverage", "pages/4_Coverage_Dimer.py")),
+            ),
+            poses_sub,
+            key_prefix="ads_poses_sub",
+        )
+
+
 def choose_batch() -> str | None:
-    """Sidebar section 1: select an existing batch from ``data/results``."""
+    """Sidebar section: select an existing batch from ``data/results``."""
     batches = list_batches()
-    with sidebar_section("1) Batch"):
+    with sidebar_section(sidebar_section_label(1, "Batch"), expanded=True):
         if not batches:
             st.caption("No simulation batches in data/results yet. Run a batch on the Run page.")
             return None
@@ -216,39 +258,87 @@ def active() -> tuple[str, BatchRun, ReviewState, pd.DataFrame]:
     return batch, run, review, frame
 
 
-def _sync_filter_state(key: str, options: list[str], batch_changed: bool) -> None:
-    if key not in st.session_state:
-        st.session_state[key] = list(options)
-        return
-    kept = [val for val in st.session_state[key] if val in options]
-    if batch_changed and not kept:
-        kept = list(options)
-    st.session_state[key] = kept
+def sync_renamed_filter_groups(name_map: dict[str, str]) -> None:
+    """Keep selected groups active in the persistent filter store when groups are renamed."""
+    store = st.session_state.get(FILTER_STORE_KEY)
+    if isinstance(store, dict) and "groups" in store:
+        updated = [name_map.get(g, g) for g in store["groups"]]
+        store["groups"] = list(dict.fromkeys(updated))
+        if "ads_filter_groups" in st.session_state:
+            st.session_state["ads_filter_groups"] = list(store["groups"])
 
 
 def filters(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
-    """Sidebar section 2: shared filters for surfaces, molecules, statuses, groups, rejected poses."""
-    surfaces = list(dict.fromkeys(frame["surface_id"].astype(str)))
-    molecules = list(dict.fromkeys(frame["molecule_id"].astype(str)))
-    statuses = [s for s in STATUS_ORDER if s in set(frame["status"].astype(str))]
+    """Body filter row shared across Poses and Compare."""
+    batch_id = st.session_state.get(ACTIVE_BATCH_KEY, "__default__")
+    surfaces = list(dict.fromkeys(frame["surface_id"].astype(str))) if not frame.empty else []
+    molecules = list(dict.fromkeys(frame["molecule_id"].astype(str))) if not frame.empty else []
+    statuses = [s for s in STATUS_ORDER if s in set(frame["status"].astype(str))] if not frame.empty else []
 
-    batch_sig = (tuple(surfaces), tuple(molecules), tuple(groups), tuple(statuses))
-    batch_changed = st.session_state.get("ads_filter_sig") != batch_sig
-    st.session_state["ads_filter_sig"] = batch_sig
+    store = st.session_state.setdefault(FILTER_STORE_KEY, {})
+    sig = (batch_id, tuple(surfaces), tuple(molecules), tuple(groups), tuple(statuses))
+    batch_changed = store.get("batch") != batch_id
+    sig_changed = store.get("sig") != sig
 
-    _sync_filter_state("ads_filter_surfaces", surfaces, batch_changed)
-    _sync_filter_state("ads_filter_molecules", molecules, batch_changed)
-    _sync_filter_state("ads_filter_status", statuses, batch_changed)
-    _sync_filter_state("ads_filter_groups", groups, batch_changed)
-    st.session_state.setdefault("ads_filter_rejected", True)
+    if batch_changed:
+        store.update(
+            batch=batch_id,
+            sig=sig,
+            surfaces=list(surfaces),
+            molecules=list(molecules),
+            statuses=list(statuses),
+            groups=list(groups),
+            show_rejected=True,
+        )
+    else:
+        store["sig"] = sig
+        for k, opts in (
+            ("surfaces", surfaces),
+            ("molecules", molecules),
+            ("statuses", statuses),
+            ("groups", groups),
+        ):
+            kept = [v for v in store.get(k, opts) if v in opts]
+            if sig_changed and not kept:
+                kept = list(opts)
+            store[k] = kept
+        store.setdefault("show_rejected", True)
 
-    with sidebar_section("2) Filters"):
-        chosen_surfaces = st.multiselect("Surface", surfaces, key="ads_filter_surfaces")
-        chosen_molecules = st.multiselect("Molecule", molecules, key="ads_filter_molecules")
-        chosen_statuses = st.multiselect("Status", statuses, key="ads_filter_status")
-        chosen_groups = st.multiselect("Groups", groups, key="ads_filter_groups")
-        show_rejected = st.checkbox("Show rejected poses", key="ads_filter_rejected")
+    widget_map = (
+        ("ads_filter_surfaces", "surfaces", surfaces),
+        ("ads_filter_molecules", "molecules", molecules),
+        ("ads_filter_status", "statuses", statuses),
+        ("ads_filter_groups", "groups", groups),
+    )
+    first_visit = st.session_state.get("ads_filter_last_batch") != batch_id
+    for w_key, s_key, opts in widget_map:
+        if first_visit or w_key not in st.session_state:
+            st.session_state[w_key] = list(store[s_key])
+        else:
+            st.session_state[w_key] = [v for v in st.session_state[w_key] if v in opts]
+    if first_visit or "ads_filter_rejected" not in st.session_state:
+        st.session_state["ads_filter_rejected"] = bool(store["show_rejected"])
 
+    c_srf, c_mol, c_sts, c_grp, c_rej = st.columns([1.4, 1.4, 1.2, 1.8, 1.1], vertical_alignment="bottom")
+    chosen_surfaces = c_srf.multiselect("Surface", surfaces, key="ads_filter_surfaces")
+    chosen_molecules = c_mol.multiselect("Molecule", molecules, key="ads_filter_molecules")
+    chosen_statuses = c_sts.multiselect("Status", statuses, key="ads_filter_status")
+    chosen_groups = c_grp.multiselect("Groups", groups, key="ads_filter_groups")
+    show_rejected = c_rej.checkbox("Show rejected poses", key="ads_filter_rejected")
+
+    store.update(
+        batch=batch_id,
+        sig=sig,
+        surfaces=list(chosen_surfaces),
+        molecules=list(chosen_molecules),
+        statuses=list(chosen_statuses),
+        groups=list(chosen_groups),
+        show_rejected=bool(show_rejected),
+    )
+    st.session_state["ads_filter_last_batch"] = batch_id
+
+    if frame.empty:
+        return frame
     mask = (
         frame["surface_id"].isin(chosen_surfaces)
         & frame["molecule_id"].isin(chosen_molecules)
@@ -262,8 +352,56 @@ def filters(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
 
 def stop_if_empty(frame: pd.DataFrame) -> None:
     if frame.empty:
-        st.info("No poses match the active filters in the sidebar.")
+        st.info("No poses match the active filters.")
         st.stop()
+
+
+def render_group_manager_popover(
+    batch: str,
+    frame: pd.DataFrame,
+    review: ReviewState,
+    groups: list[str],
+    *,
+    container: Any,
+) -> None:
+    """Render the immediate-save group rename and ordering editor inside a popover."""
+    with container.popover("Manage groups", width="stretch"):
+        st.markdown("**Group display names and order**")
+        if frame.empty:
+            st.info("No relaxation groups in this MD-only batch.")
+            return
+        st.caption("Used across every plot and exported CSV. Changes are saved immediately to review.json.")
+        st.session_state.setdefault(GROUPS_NONCE_KEY, 0)
+        originals = list(dict.fromkeys(frame["group_key"].astype(str)))
+        old_display_by_key = {g: review.display_group(g) for g in originals}
+        table = pd.DataFrame(
+            {
+                "group key": originals,
+                "name": [old_display_by_key[g] for g in originals],
+                "order": [groups.index(old_display_by_key[g]) + 1 for g in originals],
+            }
+        )
+        edited = st.data_editor(
+            table,
+            hide_index=True,
+            width="stretch",
+            disabled=["group key"],
+            column_config={"order": st.column_config.NumberColumn("order", min_value=1, step=1, required=True)},
+            key=f"ads_compare_groups_{batch}_{st.session_state[GROUPS_NONCE_KEY]}",
+        )
+        names = {r["group key"]: (str(r["name"] or "").strip() or r["group key"]) for r in edited.to_dict("records")}
+        moved = edited["order"] != table["order"]
+        if moved.any() or names != dict(zip(table["group key"], table["name"])):
+            ranked = edited.assign(display=[names[g] for g in edited["group key"]], kept=~moved).sort_values(
+                ["order", "kept"], kind="stable"
+            )
+            name_map = {old_display_by_key[g]: names[g] for g in originals}
+            review.group_names = {g: n for g, n in names.items() if n != g}
+            review.group_order = list(dict.fromkeys(ranked["display"]))
+            put_review(batch, review)
+            sync_renamed_filter_groups(name_map)
+            st.session_state[GROUPS_NONCE_KEY] += 1
+            st.rerun()
 
 
 def render_data_manager(batch: str | None, existing_mol_files: list[Path]) -> None:

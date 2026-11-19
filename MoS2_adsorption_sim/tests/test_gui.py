@@ -38,12 +38,11 @@ ADS_CORE = Path(__file__).resolve().parents[1] / "ads_core"
 COMPONENTS = GUI / "components"
 
 PAGES = ["Run.py", "pages/1_Poses.py", "pages/2_Compare.py", "pages/3_Finalize.py"]
-SECTIONS = {
-    "Run.py": ["1) Batch"],
-    "pages/1_Poses.py": ["1) Batch", "2) Filters", "3) Figure size"],
-    "pages/2_Compare.py": ["1) Batch", "2) Filters", "3) Figure size"],
-    "pages/3_Finalize.py": ["1) Batch"],
-}
+SECTIONS = {page: ["1) Batch"] for page in PAGES}
+
+
+def _segmented(at: AppTest, label: str):
+    return next(s for s in at.get("button_group") if s.label == label)
 
 
 @pytest.fixture(scope="module")
@@ -227,8 +226,8 @@ def test_poses_gallery_and_3d_viewer_modes(data_root: Path) -> None:
     at.run()
     assert [str(e.value) for e in at.exception] == []
 
-    next(r for r in at.radio if r.label == "View").set_value("Gallery")
-    next(n for n in at.sidebar.number_input if n.label == "Gallery: panels per row").set_value(2)
+    _segmented(at, "View").set_value("Gallery").run()
+    next(n for n in at.number_input if n.label == "Gallery: panels per row").set_value(2)
     at.run()
     assert [str(e.value) for e in at.exception] == []
     assert not at.dataframe  # pose selection table belongs to Detail view
@@ -237,36 +236,47 @@ def test_poses_gallery_and_3d_viewer_modes(data_root: Path) -> None:
 
 
 def test_filters_shared_between_poses_and_compare(data_root: Path) -> None:
-    poses_at = run_page("pages/1_Poses.py")
-    status_ms = next(m for m in poses_at.sidebar.multiselect if m.label == "Status")
+    at = run_page("Run.py")
+    at.switch_page("pages/1_Poses.py").run()
+    assert [str(e.value) for e in at.exception] == []
+    status_ms = next(m for m in at.multiselect if m.label == "Status")
     assert set(status_ms.value) == set(status_ms.options)
-    poses_keys = {m.label: m.key for m in poses_at.sidebar.multiselect}
+    assert not at.sidebar.multiselect
+    poses_keys = {m.label: m.key for m in at.multiselect}
 
-    compare_at = run_page("pages/2_Compare.py")
-    assert [str(e.value) for e in compare_at.exception] == []
-    assert {m.label: m.key for m in compare_at.sidebar.multiselect} == poses_keys
-    assert [t.label for t in compare_at.tabs] == [
+    at.multiselect(key="ads_filter_status").set_value(["valid"]).run()
+    at.switch_page("Run.py").run()
+    assert [str(e.value) for e in at.exception] == []
+    at.switch_page("pages/2_Compare.py").run()
+    assert [str(e.value) for e in at.exception] == []
+    assert at.multiselect(key="ads_filter_status").value == ["valid"]
+    assert {m.label: m.key for m in at.multiselect if m.label in poses_keys} == poses_keys
+    assert _segmented(at, "Compare view").options == [
         "Statistics",
         "Energy & Binding Curves",
         "Surface Site Map",
-        "Summary & Group Names",
+        "Summary table",
     ]
+    _segmented(at, "Compare view").set_value("Summary table").run()
+    assert [str(e.value) for e in at.exception] == []
+    assert any("group_key" in df.value.columns for df in at.dataframe)
 
 
 @pytest.mark.parametrize("page", ["pages/1_Poses.py", "pages/2_Compare.py"])
-def test_figure_size_controls_are_in_sidebar(data_root: Path, page: str) -> None:
+def test_figure_size_controls_are_in_figure_settings_popover(data_root: Path, page: str) -> None:
     at = run_page(page)
     figures = at.get("plotly_chart")
     assert figures and all(json.loads(f.proto.spec)["layout"].get("width") is None for f in figures)
+    assert not at.sidebar.number_input  # figure sizes live in Figure settings popover, not sidebar
 
-    for box in at.sidebar.checkbox:
+    for box in at.checkbox:
         if box.label == "Grid":
             box.set_value(True)
         elif box.label == "Fit width to the page":
             box.set_value(False)
-    next(r for r in at.sidebar.radio if r.label == "Image format").set_value("svg")
+    next(r for r in at.radio if r.label == "Image format").set_value("svg")
     at.run()
-    for field in at.sidebar.number_input:
+    for field in at.number_input:
         if field.label == "Width (px)":
             assert not field.disabled
             field.set_value(610)
@@ -296,45 +306,39 @@ def test_unified_hub_switches_across_all_three_programs_without_collision(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Unified root app.py switches across all three GUIs without module or route collision."""
+    """Unified root app.py switches across all three GUIs (and Coverage & Dimer) without module or route collision."""
     import sys
     from streamlit.testing.v1 import AppTest
 
     fet_dir = tmp_path / "fet_data"
     fet_dir.mkdir(parents=True, exist_ok=True)
+    ads_dir = tmp_path / "ads_data"
+    ads_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FET_DATA_ROOT", str(fet_dir))
+    monkeypatch.setenv("ADS_DATA_ROOT", str(ads_dir))
 
     app_path = _REPO_ROOT / "app.py"
     mos2_main = _REPO_ROOT / "MoS2_optical_analysis" / "mos2_gui" / "Main.py"
     fet_run = _REPO_ROOT / "FET_analysis" / "fet_gui" / "Run.py"
     ads_run = _REPO_ROOT / "MoS2_adsorption_sim" / "ads_gui" / "Run.py"
+    ads_cov = _REPO_ROOT / "MoS2_adsorption_sim" / "ads_gui" / "pages" / "4_Coverage_Dimer.py"
 
     at = AppTest.from_file(str(app_path), default_timeout=120).run()
     assert not at.exception
 
-    # Click hub card button for MoS2 Optical Analysis: only MoS2 pages are registered
+    # Click hub card button for MoS2 Optical Analysis
     at.button(key="hub_open_mos2").click().run()
     assert not at.exception
-    with pytest.raises(ValueError, match="Could not find a navigation page"):
-        at.switch_page(str(fet_run))
 
-    # Return to Program Hub and open FET Analysis
-    at.session_state["hub_active_program"] = None
-    at.run()
+    # Switch cleanly to FET Analysis, Adsorption Run, and Coverage & Dimer via unified navigation
+    at.switch_page(str(fet_run)).run()
     assert not at.exception
-    at.button(key="hub_open_fet").click().run()
+    at.switch_page(str(ads_run)).run()
     assert not at.exception
-    with pytest.raises(ValueError, match="Could not find a navigation page"):
-        at.switch_page(str(ads_run))
-
-    # Return to Program Hub and open MoS2 Adsorption Sim
-    at.session_state["hub_active_program"] = None
-    at.run()
+    at.switch_page(str(ads_cov)).run()
     assert not at.exception
-    at.button(key="hub_open_ads").click().run()
+    at.switch_page(str(mos2_main)).run()
     assert not at.exception
-    with pytest.raises(ValueError, match="Could not find a navigation page"):
-        at.switch_page(str(mos2_main))
 
     assert {"mos2_gui", "fet_gui", "ads_gui"} <= set(sys.modules)
     assert "gui" not in sys.modules
@@ -486,13 +490,18 @@ def test_coverage_dimer_page_renders_empty_and_populated(tmp_path: Path, monkeyp
 
     pop_at = run_page("pages/4_Coverage_Dimer.py")
     assert [str(e.value) for e in pop_at.exception] == []
-    assert [e.label for e in pop_at.sidebar.expander] == [
-        "1) Study",
-        "2) Display & Distance Options",
-        "3) Figure size",
-    ]
+    assert [e.label for e in pop_at.sidebar.expander] == ["1) Study"]
     figures = pop_at.get("plotly_chart")
     assert figures and all(json.loads(f.proto.spec)["layout"].get("width") is None for f in figures)
+    assert _segmented(pop_at, "Coverage view").options == [
+        "N=1–4 Coverage & Distances",
+        "N=1–4 3D & 2D Viewer",
+        "Dimer & Disulfide Formation",
+    ]
+    _segmented(pop_at, "Coverage view").set_value("N=1–4 3D & 2D Viewer").run()
+    assert [str(e.value) for e in pop_at.exception] == []
+    _segmented(pop_at, "Coverage view").set_value("Dimer & Disulfide Formation").run()
+    assert [str(e.value) for e in pop_at.exception] == []
 
     bundle = load_coverage_study(tmp_path / "results" / raw["study"]["name"])
     n2_rel = bundle.structures["N2_dimer_head_to_tail_relaxed"]

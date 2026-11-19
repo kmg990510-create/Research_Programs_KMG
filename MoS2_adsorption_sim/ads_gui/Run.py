@@ -45,15 +45,17 @@ from ads_gui.state import (  # noqa: E402
     get_review,
     load_run,
     molecules_root,
+    render_ads_chrome,
     render_data_manager,
     results_root,
     safe_batch_name,
 )
+from labkit.chrome import panel_title  # noqa: E402
 
 SITE_OPTIONS = [SITE_MO_TOP, SITE_S_TOP, SITE_HOLLOW, SITE_BRIDGE, SITE_VS, SITE_VS_RIM, SITE_VS2]
 
-st.set_page_config(page_title="MoS2 Adsorption · Run", layout="wide")
-st.title("Run")
+render_ads_chrome("Run", "Run · MoS2 Adsorption")
+st.header("Run")
 st.caption(
     f"MoS2_adsorption_sim {__version__} · Run uMLIP + DFT-D3 (or synthetic potential) screening batches into `data/results/<batch>`. "
     "Reviewers then inspect 3D structures and convergence on **Poses**, compare energetics on **Compare**, and export files on **Finalize**."
@@ -316,31 +318,33 @@ st.caption(
 )
 
 if not frame.empty:
-    st.subheader("Group summary (active batch)")
-    temp_K = ReportSettings.from_config(run.config).boltzmann_temp_K
-    summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
-    if not summary.empty:
-        show_cols = [
-            "group_display",
-            "n_poses",
-            "n_included",
-            "best_site",
-            "e_ads_min_eV",
-            "e_ads_boltzmann_eV",
-            "vdw_fraction_at_best",
-            "d_min_at_best_A",
-        ]
-        st.dataframe(summary[show_cols], hide_index=True, width="stretch")
+    with st.container(border=True):
+        panel_title("Group summary (active batch)")
+        temp_K = ReportSettings.from_config(run.config).boltzmann_temp_K
+        summary = molecule_summary(frame, temp_K, ordered_groups(frame, review))
+        if not summary.empty:
+            show_cols = [
+                "group_display",
+                "n_poses",
+                "n_included",
+                "best_site",
+                "e_ads_min_eV",
+                "e_ads_boltzmann_eV",
+                "vdw_fraction_at_best",
+                "d_min_at_best_A",
+            ]
+            st.dataframe(summary[show_cols], hide_index=True, width="stretch")
 
-    with st.expander(f"All poses ({len(frame)})", expanded=False):
-        pose_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "status", "e_ads_eV", "d_min_A", "decision"]
-        st.dataframe(frame[pose_cols], hide_index=True, width="stretch")
+        with st.expander(f"All poses ({len(frame)})", expanded=False):
+            pose_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "status", "e_ads_eV", "d_min_A", "decision"]
+            st.dataframe(frame[pose_cols], hide_index=True, width="stretch")
 
 if run.md_results:
-    st.subheader(f"Finite-temperature MD summary ({len(run.md_results)})")
-    md_df = md_results_table(run.md_results)
-    md_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "temperature_K", "n_steps", "residence_fraction", "stayed_adsorbed", "final_dz_com_A", "mean_dz_com_A"]
-    st.dataframe(md_df[md_cols], hide_index=True, width="stretch")
+    with st.container(border=True):
+        panel_title(f"Finite-temperature MD summary ({len(run.md_results)})")
+        md_df = md_results_table(run.md_results)
+        md_cols = ["pose_id", "surface_id", "molecule_id", "site_type", "orientation", "temperature_K", "n_steps", "residence_fraction", "stayed_adsorbed", "final_dz_com_A", "mean_dz_com_A"]
+        st.dataframe(md_df[md_cols], hide_index=True, width="stretch")
 
 warn_df = warnings_frame(run)
 with st.expander(f"Warnings ({len(warn_df)})", expanded=False):
