@@ -156,7 +156,6 @@ def render_stage_header(
     chosen = st.segmented_control(
         "Workflow",
         options=labels,
-        default=active_stage,
         key=widget_key,
         label_visibility="collapsed",
     )
@@ -180,7 +179,6 @@ def render_subnav(
     chosen = st.segmented_control(
         label,
         options=labels,
-        default=active_option,
         key=widget_key,
         label_visibility="collapsed",
     )
