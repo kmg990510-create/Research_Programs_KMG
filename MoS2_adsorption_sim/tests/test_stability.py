@@ -29,7 +29,7 @@ def test_5x5_stability_and_mechanical_yaml_keys_are_all_read() -> None:
         assert cid in case_ids
 
 
-def test_5x5_stability_cases_build_without_overlap() -> None:
+def test_5x5_stability_cases_build_without_overlap(four_atp_xyz_path: Path) -> None:
     study = StudySettings.from_config(load_config(STAB_YAML), project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     slab = build_mos2_slab(
@@ -39,7 +39,7 @@ def test_5x5_stability_cases_build_without_overlap() -> None:
         defect_type=study.defect_type,
         fix_bottom_layer=study.fix_bottom_layer,
     )
-    mol = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
     for case in study.cases:
         asm = build_multimol_assembly(slab.atoms, len(slab.atoms), (), mol, case, study)
         assert len(asm.new_mol_groups) == case.n_molecules

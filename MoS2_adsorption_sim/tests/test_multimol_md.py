@@ -23,12 +23,12 @@ def test_md_yaml_all_keys_read() -> None:
     assert len(settings.runs) == 4
 
 
-def test_multimol_md_smoke_synth(tmp_path: Path) -> None:
+def test_multimol_md_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     study_cfg = load_config(PROJECT_ROOT / "configs" / "mos2_5x5_4atp_stability.yaml")
     study = StudySettings.from_config(study_cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     slab = build_mos2_slab(base_cfg, supercell=(5, 5), vacuum_A=26.0, fix_bottom_layer=True)
-    mol = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
     case = next(c for c in study.cases if c.case_id == "N4_brick_flat")
     asm = build_multimol_assembly(slab.atoms, len(slab.atoms), (), mol, case, study)
 
@@ -62,7 +62,7 @@ def test_multimol_md_smoke_synth(tmp_path: Path) -> None:
     assert (tmp_path / "md_out" / "trajectories" / "smoke_N4_traj.extxyz").exists()
 
 
-def test_multilayer_md_yaml_and_two_layer_smoke(tmp_path: Path) -> None:
+def test_multilayer_md_yaml_and_two_layer_smoke(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     import yaml
 
     ml_md_yaml = PROJECT_ROOT / "configs" / "mos2_6x5_4atp_multilayer_md.yaml"
@@ -74,7 +74,7 @@ def test_multilayer_md_yaml_and_two_layer_smoke(tmp_path: Path) -> None:
     study = StudySettings.from_config(load_config(ml_study_yaml), project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     slab = build_mos2_slab(base_cfg, supercell=(6, 5), vacuum_A=38.0, fix_bottom_layer=True)
-    mol = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
 
     c1 = next(c for c in study.cases if c.case_id == "L1_N4_parallel")
     c2a = next(c for c in study.cases if c.case_id == "L2_N4_AB_diag_anti")

@@ -453,7 +453,9 @@ def test_gui_md_only_batch_workflow_across_all_pages(tmp_path: Path, monkeypatch
     assert any(m.label == "Stayed adsorbed" for m in poses_at.metric)
 
 
-def test_coverage_dimer_page_renders_empty_and_populated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_coverage_dimer_page_renders_empty_and_populated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, four_atp_xyz_path: Path
+) -> None:
     """4_Coverage_Dimer.py handles both empty results and populated coverage/disulfide studies."""
     import yaml
     from ads_core.simulation.coverage import run_coverage_study
@@ -471,7 +473,7 @@ def test_coverage_dimer_page_renders_empty_and_populated(tmp_path: Path, monkeyp
     sim_root = Path(__file__).resolve().parents[1]
     raw = load_config(sim_root / "configs" / "track_a_4atp.yaml").as_dict()
     raw["study"]["base_config_path"] = str(sim_root / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(sim_root / "data" / "molecules" / "4-ATP.xyz")
+    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
     raw["relaxation"]["max_steps"] = 6
     raw["relaxation"]["fmax_eV_per_A"] = 0.25
     raw["grid_cases"] = {"N1_monomer_flat": raw["grid_cases"]["N1_monomer_flat"]}

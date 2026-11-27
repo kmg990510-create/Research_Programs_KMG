@@ -27,7 +27,7 @@ def test_every_track_a_yaml_key_is_read() -> None:
     assert cfg.unread_keys() == set()
 
 
-def test_track_a_cases_build_without_overlap() -> None:
+def test_track_a_cases_build_without_overlap(four_atp_xyz_path: Path) -> None:
     cfg = load_config(TRACK_A_YAML)
     study = StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
@@ -39,7 +39,7 @@ def test_track_a_cases_build_without_overlap() -> None:
         vacuum_A=study.vacuum_A,
         fix_bottom_layer=study.fix_bottom_layer,
     )
-    mol_spec = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
 
     for case in study.cases:
         if case.base_case:
@@ -60,7 +60,7 @@ def test_track_a_cases_build_without_overlap() -> None:
             assert float(np.min(d_slab)) >= study.min_initial_distance_A - 1e-6
 
 
-def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path) -> None:
+def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     """Changing supercell, grid count (N=6), and layer stacking works purely via YAML."""
     raw = load_config(TRACK_A_YAML).as_dict()
     raw["substrate"]["supercell_nx"] = 8
@@ -109,7 +109,7 @@ def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path) -> None:
 
     base_cfg = load_config(study.base_config_path)
     slab_spec = build_mos2_slab(base_cfg, supercell=(study.supercell_nx, study.supercell_ny), vacuum_A=34.0)
-    mol_spec = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
 
     c1 = next(c for c in study.cases if c.case_id == "N6_layer1")
     c2 = next(c for c in study.cases if c.case_id == "N1_layer2")
@@ -122,11 +122,11 @@ def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path) -> None:
     assert z_l2 > z_l1 + 2.5
 
 
-def test_disulfide_dimer_geometry() -> None:
+def test_disulfide_dimer_geometry(four_atp_xyz_path: Path) -> None:
     cfg = load_config(TRACK_A_YAML)
     study = StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
-    mol_spec = load_molecule_file(study.molecule_path, base_cfg, molecule_id=study.molecule_id)
+    mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
 
     dimer = build_disulfide_dimer(
         mol_spec,
@@ -150,7 +150,7 @@ def test_disulfide_dimer_geometry() -> None:
     assert abs(angle_css - study.disulfide.c_s_s_angle_deg) < 5.0
 
 
-def test_run_coverage_study_end_to_end_synth(tmp_path: Path) -> None:
+def test_run_coverage_study_end_to_end_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     """Smoke test the full A1-A2 pipeline with synth_morse and verify exact energy decomposition."""
     raw = load_config(TRACK_A_YAML).as_dict()
     raw["relaxation"]["max_steps"] = 10
@@ -172,7 +172,7 @@ def test_run_coverage_study_end_to_end_synth(tmp_path: Path) -> None:
 
     # Point relative paths inside raw to PROJECT_ROOT
     raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(PROJECT_ROOT / "data" / "molecules" / "4-ATP.xyz")
+    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
     yaml_path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
 
     out = run_coverage_study(
@@ -216,7 +216,7 @@ def test_multilayer_yaml_all_keys_read() -> None:
     assert cfg.unread_keys() == set()
 
 
-def test_multilayer_best_of_and_decomposition_synth(tmp_path: Path) -> None:
+def test_multilayer_best_of_and_decomposition_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     """Verify 1L -> best_of Layer 2 -> Layer 3 stacking, vacancy desorption, and substrate decay."""
     import yaml
 
@@ -299,7 +299,7 @@ def test_multilayer_best_of_and_decomposition_synth(tmp_path: Path) -> None:
         "L3_N1_probe": "best_of:L2_cand_a,L2_cand_b",
     }
     raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(PROJECT_ROOT / "data" / "molecules" / "4-ATP.xyz")
+    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
 
     yaml_path = tmp_path / "ml_study.yaml"
     yaml_path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
