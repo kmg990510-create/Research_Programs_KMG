@@ -43,6 +43,8 @@ FET_analysis/
   docs/DEV_LOG.md      작업 기록
 ```
 
+- 향후 탐색 연구 스크립트(`research/<topic>/`)나 보고서·그림을 만들 때도 루트 `AGENTS.md` 1장(코드·방법만 공개, 결과·보고서·그림·로그는 전부 `data/` 전용)을 따른다.
+
 ## 명령
 
 `FET_analysis` 폴더에서 실행한다.

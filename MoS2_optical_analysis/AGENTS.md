@@ -111,6 +111,8 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Keep docs and code in the same commit when behavior changes.
 - Keep commits small and reversible; avoid mixing unrelated changes.
 - If user explicitly requests no commit/branch for a task, follow user request.
+- `research/<topic>/` tracks analysis code and method-only `README.md`; all logs, figures, summary write-ups, and result-hardcoded deck builders (`build_deck.py`, etc.) stay under `data/results/research/<topic>/`.
+- Do not record unpublished sample IDs, correlation numbers, or experimental conclusions in `docs/DEV_LOG.md`.
 
 ## Raman Config Rules
 
