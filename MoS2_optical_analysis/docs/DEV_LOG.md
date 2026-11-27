@@ -1435,3 +1435,223 @@ Older entries mention paths that no longer exist (`legacy/`, `mos2_spectra_pipel
 
 - Workflow publishes a GitHub Release with the zipped app folder for `mos2-v*` tags; manual runs still only upload an Artifact.
 - First release: `mos2-v1.0` (commit with build identification).
+
+## Strict Config / Dependency Test (2026-10-30)
+
+- Scope: user pointed out remaining hardcoded values and that before/after identical results cannot prove the code
+  depends on config.yaml (values were copied). Removed all code-side copies; config access is strict.
+- Details: `ARCHITECTURE.md` "Strict Config Access (2026-10-30)".
+- Tests: `tests/test_config_dependency.py` (every config.yaml leaf read strictly, none via `.get(default)`, missing keys
+  raise `ConfigKeyError` naming the key); mutation check (planted fallback + ignored key) detected.
+- Also fixed: parallel fit worker signature (workers silently fell back to sequential) and a circular import in
+  `core/__init__`; covered by a real process-pool test.
+
+## Web / Cloud Mode & Hugging Face Spaces Support (2026-11-12)
+
+- Scope: enable full cloud/web execution (e.g. Hugging Face Spaces / Streamlit Community Cloud) while keeping local desktop behavior unchanged.
+- Related Files:
+  - `gui/components/report_loader.py` (`stage_uploaded_raw_files`, `save_uploaded_report_files`, sidebar report upload expander)
+  - `gui/components/spectrum_viewer.py` (`resolve_source_file` cross-OS path normalization and `data/raw/...` suffix resolution)
+  - `gui/pages/1_Run_Analysis.py` (Step 2 raw file/ZIP/mapping CSV upload expander + `Generated Artifacts` direct JSON/CSV download buttons)
+  - `gui/pages/3_All_Spectra_Viewer.py` (`Web Manual Refit (In-Browser Editor for Cloud/Web)` expander using `st.data_editor`, `ManualEditorController`, and `SingleSpectrumRefitAPI`)
+  - `README.md` (Hugging Face Spaces YAML frontmatter and cloud deployment documentation)
+  - `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEV_LOG.md`
+  - `tests/test_web_cloud_features.py`
+- Key Behaviors Added:
+  1. Raw file & archive upload in **Run Analysis**: users can upload `.txt`, `.asc`, Raman mapping `.csv` (auto-split via `split_mapping_csv`), or `.zip` folder archives into `data/raw/{raman,pl}/<folder_name>` directly from the browser.
+  2. In-browser manual refit in **All Spectra Viewer**: users on web/cloud hosts can edit peak `center`, `height`, `fwhm`, `fraction`, and `Fix F/C/H/W` flags in a browser table, inspect live preview `RMSE`/`AIC`, and trigger `Apply Manual Refit (Web)` or `Auto Fit from Current Peaks (Web)` without needing a local `PySide6` display.
+  3. Sidebar report upload & cross-OS path resolution: existing `*_fit_report.json`, `*_fit_parameters.csv`, and `*_manual_overrides.json` files can be uploaded from the sidebar, and `resolve_source_file` normalizes Windows/Linux separators (`\` -> `/`).
+- Tests & Validation:
+  - `pytest`: 37 passed (`tests/test_web_cloud_features.py` + all existing config/packaging/PL/splitter tests).
+  - Pipeline & GUI smoke: Raman/PL dummy pipelines, Raman single & batch runs, and `AppTest` smoke on `Main.py`, `1_Run_Analysis.py`, and `3_All_Spectra_Viewer.py` all pass.
+
+## Cloud Runtime Auto-Detection, Standalone JSON Restoration & Intermediate State Sync (2026-11-12)
+
+- Scope: resolve stateless cloud workflow gaps so users can run analysis on the web, save/export intermediate state as a single file, re-upload that single JSON later (with full raw/fitted overlay and manual refit support), and persist Flagged Spectra review decisions.
+- Related Files:
+  - `fitting/mos2_core/core/runtime_paths.py` (`is_cloud_runtime()`)
+  - `fitting/mos2_core/preprocess/basic.py` (preserve `spectrum_raw_xy` in pipeline context state)
+  - `fitting/mos2_core/analysis/reporting.py` (embed `raw_x`, `raw_y` in `_fit_report.json` rows; exclude from CSV via `reserved_for_json_only`)
+  - `fitting/mos2_core/review/manual_overrides.py` (`review_decision` field support, chronological field merging across multiple override actions, partial `params`/`metrics` projection)
+  - `gui/components/report_loader.py` (`build_projected_report_json_bytes`, `build_projected_csv_bytes`, `Export / Save Intermediate State` sidebar expander, stale override cleanup on single-report upload, cloud auto-expand)
+  - `gui/components/parameter_editor.py` (`apply_table_edits_to_report`, `Apply Edits to Active Report` button)
+  - `gui/pages/1_Run_Analysis.py`, `gui/pages/2_Flagged_Spectra.py`, `gui/pages/3_All_Spectra_Viewer.py`, `gui/pages/7_Finalize.py`, `gui/Main.py`
+  - `tests/test_web_cloud_features.py`, `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DEV_LOG.md`
+- Key Behaviors Added:
+  1. **Environment Auto-Detection (`is_cloud_runtime()`) & Cloud OOM Protection**: detects Streamlit Community Cloud / Hugging Face Spaces or `MOS2_CLOUD_MODE` override, auto-expanding upload/export expanders, hiding local-only controls (`Open Manual Editor (Desktop)`, `Custom raw folder path`), and defaulting `fit_workers=1` (max `2`) + `progress_every=5` + throttled UI log updates (`0.25s`) in `1_Run_Analysis.py` so host `os.cpu_count()` (8–16 cores) does not spawn a large worker pool and trigger a 1 GB container OOM kill.
+  2. **Problem 1 -> Solution 1 (Standalone Single-JSON Restoration)**: `*_fit_report.json` now embeds rounded `raw_x` and `raw_y` in each spectrum row while keeping `*_fit_parameters.csv` unchanged. `3_All_Spectra_Viewer.py` falls back to embedded `raw_x`/`raw_y` when `source_file` is absent on disk, enabling full spectrum viewing and in-browser manual refit from a single uploaded JSON file.
+  3. **Problem 2 (Intermediate & Final Override Synchronization)**: all JSON/CSV download buttons (`Main.py`, `7_Finalize.py`, and the new sidebar `Export / Save Intermediate State` expander) export the override-projected payload (`build_projected_report_json_bytes`, `build_projected_csv_bytes`) so manual refits, model overrides, and review decisions are never lost across sessions.
+  4. **Problem 3 (Flagged Spectra Decision Persistence)**: `2_Flagged_Spectra.py` now includes an `Apply Edits to Active Report` button that writes `review_decision` and edited peak parameters directly into `{run_id}_manual_overrides.json`.
+- Tests & Validation:
+  - `pytest`: 39 passed (`tests/test_web_cloud_features.py` expanded with `test_is_cloud_runtime_honors_env_override` and `test_standalone_report_embeds_raw_xy_only_in_json_and_merges_overrides_on_export`, plus `tests/test_config_dependency.py` strict config check).
+  - Pipeline & GUI smoke: Raman/PL dummy pipelines and `AppTest` smoke in both local and `MOS2_CLOUD_MODE=1` modes pass without errors.
+
+
+## Map Viewer Prototype: Paper-Style Plotly Theme, Style Panel, Point Selection (2026-11-13)
+
+- Scope: experimental page to evaluate (a) a paper-style Plotly look, (b) on-screen figure style editing, and (c) selecting map points to record review decisions. The existing `4_Map_Viewer.py` and the global theme (`plot_theme.py`) are unchanged.
+- Related Files:
+  - `gui/components/paper_theme.py` (opt-in template: boxed axes, outside ticks, no grid; image-download config)
+  - `gui/components/map_figure.py` (`MapStyle`, `build_map_figure`, style preset YAML save/load; no Streamlit import)
+  - `gui/components/map_editing.py` (`selected_ids_from_event`, `apply_decision` -> `upsert_manual_override` with `action_type="map_viewer_edit"`)
+  - `gui/pages/8_Map_Viewer_Prototype.py`
+  - `tests/test_map_viewer_prototype.py`
+- Key Behaviors:
+  1. The map is a heatmap with an invisible square scatter layer on top; the scatter layer carries hover, click, box and lasso selection (Plotly heatmaps do not report selections).
+  2. Streamlit forces `clickmode="event"` while the drag mode is box/lasso, so a single click is reported only in `Mouse mode = Click` (drag mode `zoom`).
+  3. The selection is kept in `st.session_state` and drawn as outlines by the figure builder, so it survives style changes and reruns.
+  4. Streamlit overrides the figure font and paper colour from a template; `build_map_figure` sets them on the layout directly.
+  5. Style presets are saved to `data/style_presets/map/*.yaml` (runtime user data, git-ignored).
+  6. `rejected` points can be hidden from the map (drawn as missing cells); the fit report JSON is never modified.
+- Tests & Validation:
+  - `pytest`: 44 passed.
+  - Browser check on `proto_map_SampleA` (SampleA 9x9 Raman map, 81 spectra): box selection (12 points), click selection with spectrum overlay, `rejected` decision written to `proto_map_SampleA_manual_overrides.json`, live colormap / value-label changes.
+  - Not checked: lasso selection, preset save/load buttons in the browser, image download, PL reports, cloud mode.
+
+## Map Physical Axes and Sample Comparison Figure Style (2026-11-13)
+
+- Scope: (1) the map prototype can show physical coordinates instead of point indices; (2) Sample Comparison scatter / error-bar figures get an adjustable paper-style look.
+- Related Files:
+  - `gui/components/map_figure.py` (`MapStyle.axis_mode`, `axis_unit`, `x_start/x_end/y_start/y_end`, `to_physical`, `default_axis_labels`)
+  - `gui/pages/8_Map_Viewer_Prototype.py` (`Axis coordinates` controls in the Figure style tab)
+  - `gui/components/scatter_style.py` (`ScatterStyle`, `apply_scatter_style`, `pretty_label`; no Streamlit import)
+  - `gui/pages/6_Sample_Comparison.py` (sidebar `5) Figure Style`, `_show_styled`, default sample colours)
+  - `tests/test_map_viewer_prototype.py`, `tests/test_scatter_style.py`
+- Key Behaviors:
+  1. `Axis coordinates = Physical`: the lowest and highest scan index are placed at Start and End, points evenly spaced in between; the unit is free text (default `µm`). Axis labels follow the mode and unit until edited. The map keeps a 1:1 physical aspect ratio. Equal Start and End falls back to point index with a warning.
+  2. Physical axis settings are part of `MapStyle`, so they are saved in style presets.
+  3. Sample Comparison Raman tabs: `5) Figure Style` controls font size, height, point size / opacity / outline, centre marker size, error-bar width, grid, tick direction, legend position, superscript labels (`cm^-1` -> `cm⁻¹`, `eps` -> `ε`) and image download format. `Paper style` off restores the previous look.
+  4. Default sample colours start with the Okabe-Ito colourblind-safe set (previously Dark24); per-sample colour pickers are unchanged.
+  5. Inputs that are only sometimes relevant (`Color min/max`, axis Start/End/Unit) are always rendered and disabled when unused: Streamlit discards the stored value of a keyed widget on runs where it is not drawn.
+- Tests & Validation:
+  - `pytest`: 49 passed.
+  - Browser check: map with X 0-20 µm / Y 0-10 µm on `proto_map_SampleA`; Sample Comparison `eps-n` and `FWHM Pair` tabs with the paper style.
+  - Not checked: the other Sample Comparison tabs (`Absolute Positions`, `n vs FWHM`, `LO Ratio`), changing the Figure Style controls in the browser, PL comparison (unchanged, still the old look), LO ratio heatmap (unchanged).
+  - Known limit: with non-square physical cells the selection outline stays square.
+
+## Sample Comparison Sidebar Regrouping (2026-11-13)
+
+- Scope: the sidebar had an empty `1) Report Source` heading, the report picker inside `2) Filters`, `Reference sample` floating between two expanders, and display options mixed into `4) Advanced Model Params`.
+- Related Files: `gui/pages/6_Sample_Comparison.py`
+- New layout (all expanders, in this order):
+  1. `1) Reports`: reports to compare
+  2. `2) Filters`: `fit_status` filter
+  3. `3) Samples`: display name and colour on one row per report
+  4. `4) Analysis`: reference sample, center / error metric, strain-doping coefficients (Raman only)
+  5. `5) Figure`: point-cloud overlay, isolines, and the figure style controls (Raman only)
+- Controls that have no effect are disabled instead of hidden (`Isoline density` without isolines, style controls with `Paper style` off).
+- No change to calculations or defaults.
+- Tests & Validation: `pytest` 49 passed; `AppTest` run of the page without exceptions; browser check with all five expanders open.
+
+## Sidebar Sections Unified Across Pages (2026-11-13)
+
+- Scope: every page sidebar is now built only from numbered, collapsible sections; no widget sits outside a section.
+- Related Files:
+  - `gui/components/report_loader.py` (`sidebar_section`, `sidebar_filters_section`, `choose_report_sidebar`; removed `sidebar_filters_header` / `sidebar_advanced_header`)
+  - `gui/pages/3_All_Spectra_Viewer.py`, `gui/pages/4_Map_Viewer.py`, `gui/pages/5_Model_Comparison.py`, `gui/pages/6_Sample_Comparison.py`
+  - root `AGENTS.md` (sidebar rule)
+- Layout:
+  - `1) Report` (all single-report pages): report selector, path, then `Upload Report JSON / CSV` and `Export / Save Intermediate State` nested inside. The selector now comes before upload; with no reports the section shows the warning and an open upload box. Cloud mode still opens upload/export automatically.
+  - `2) Filters`: All Spectra Viewer, Map Viewer, Model Comparison, Sample Comparison.
+  - Page sections: `3) Navigation` (All Spectra Viewer, was `3) Spectrum Navigation`), `3) Ratio Builder` (Map Viewer), `3) Samples` / `4) Analysis` / `5) Figure` (Sample Comparison, which uses `1) Reports` because it selects several).
+  - The divider under the report block is gone.
+- Widget keys and behaviour are unchanged.
+- Tests & Validation: `pytest` 49 passed; `AppTest` run of `Main.py` and pages 2-8 without exceptions; browser check of All Spectra Viewer and Map Viewer sidebars.
+  - Not checked in the browser: Main, Flagged Spectra, Model Comparison, Finalize, the no-report state, cloud mode. `1_Run_Analysis.py` has no sidebar controls and was not changed.
+
+## labkit adoption: shared theme, sidebar sections, figure size (2026-11-14)
+
+- Scope: use the repository-level `labkit` package instead of local copies, and let the user set width and height of every figure.
+- Files:
+  - removed `gui/components/paper_theme.py`; `map_figure.py`, `scatter_style.py`, pages 6 and 8 import `labkit.plot_theme`
+  - `gui/components/report_loader.py` re-exports `labkit.sidebar.sidebar_section`
+  - new `gui/components/figure_sizes.py` (`KINDS`, `figure_size_section`, `size_of`, `show`)
+  - `gui/__init__.py` puts the repository root on `sys.path` when `labkit` is not inside the program folder
+  - `gui/components/spectrum_viewer.py`, `fit_plot_component.py`, pages 3, 4, 5, 6, 8: every figure is drawn with `figure_sizes.show`
+  - `Dockerfile` copies `labkit/` into the app folder; `packaging/mos2_optical_analysis.spec` adds the repository root to `pathex` and collects `labkit`
+  - `tests/test_labkit_usage.py`
+- Behavior:
+  - Each page with figures has a numbered `Figure size` sidebar section. Width defaults to the page width; height defaults to the previous fixed values (720 for the parameter map and the absolute-position / FWHM plots, 620 for the prototype map, 520 for comparison plots, 450 otherwise).
+  - Sample Comparison: the `Height (px)` input moved from `5) Figure` to `6) Figure size`. Without paper style the default height is now 520 (was 450).
+  - Map Viewer (prototype): the `Height (px)` input moved from the Figure style tab to the sidebar; a loaded preset no longer changes the height.
+- Verification:
+  - `pytest`: 55 passed.
+  - Browser, existing reports: Map Viewer, All Spectra Viewer, Model Comparison, Sample Comparison and Map Viewer (prototype) render without exceptions, with the `Figure size` section and the default heights.
+- Not verified:
+  - Changing a size in the browser on a MoS2 page (the browser pane stopped drawing); covered by `test_a_figure_follows_the_sidebar_size_even_when_it_is_drawn_first` only.
+  - Docker image and PyInstaller exe were not rebuilt.
+- Note: an `AppTest` run replaces `sys.modules["__main__"]`; without restoring it, `test_real_process_pool_fits_without_falling_back` hangs when it runs afterwards.
+
+## One look for every figure (2026-11-14)
+
+- Scope: every figure of the GUI uses the paper style of `labkit.plot_theme`; the large-font theme is removed. Grid lines are off by default and can be switched on by the user.
+- Files:
+  - removed `gui/components/plot_theme.py` (`apply_plotly_theme`, `plotly_white` with font 20 / 24 / 32)
+  - `gui/components/figure_sizes.py`: `show(fig, kind, filename=None)`; `figure_size_section` also draws `Grid` and `Image format`
+  - `gui/components/spectrum_viewer.py`: no own template, no own grid; legend at `LEGEND_RIGHT`
+  - `gui/components/fit_plot_component.py`, pages 4, 5, 6, 8: no `theme=`, no `export_config`, colours and sizes from `labkit.plot_theme`
+  - `gui/components/scatter_style.py`: `show_grid` and `pretty_labels` removed (now common to all figures); `pretty_label` moved to `labkit.plot_theme`; default font 14, default legend inside top-left
+  - `tests/test_labkit_usage.py`, `tests/test_scatter_style.py`
+- Behavior:
+  - All figures: Arial 14, white surface, boxed axes, ticks inside, no grid, superscripts in titles (`cm^-1` -> `cm⁻¹`), camera button saves a 3x image named after the content.
+  - Sidebar `Figure size` section: `Grid` (all figures) and `Image format` png / svg (all figures). The separate image-format inputs of Sample Comparison and Map Viewer (prototype) and the `Show grid` / `Superscripts in labels` inputs of Sample Comparison are removed.
+  - Sample Comparison: `Paper style` is now `Adjust style`; switched off, figures keep the common look without the adjustments.
+  - Fit status map: colours follow `STATUS_COLORS` (valid black, attention orange, invalid red-orange), legend outside on the right.
+  - Not changed on purpose: peak colours and line widths of the spectrum figure come from `raman_graph.yaml`.
+- Verification:
+  - `pytest`: 61 passed.
+  - Browser, existing reports: All Spectra Viewer, Model Comparison and Sample Comparison show Arial 14, boxed axes, no grid, named 3x image; `Grid` switched on in All Spectra Viewer draws grid lines.
+- Not verified:
+  - Map Viewer and Map Viewer (prototype) do not load: `ImportError: cannot import name 'strain_doping_settings' from 'gui.components.report_loader'`. The import is in uncommitted changes of these two pages that are not part of this work (the function is in `gui/components/science_settings.py`). Their figures are covered by tests of `finish_figure` only.
+  - `svg` image format in the browser (test only).
+
+## Principle audit fixes (2026-11-14)
+
+- Scope: differences between the code and the repository principles found in an audit, except the decision-save buttons (kept as they are).
+- Files:
+  - new `gui/components/derived_parameters.py` (`strain_doping`, `add_derived_map_parameters`); pages 4, 6, 8 call it instead of three copies
+  - new `gui/components/spectrum_view.py` (`view_window`, `to_plot_axis`, `default_view_range`, `si_check_range`); pages 3, 8 and `spectrum_viewer.py` call it
+  - `fitting/mos2_raman/config/raman_graph.yaml`: view-range keys under `all_spectra_viewer.x_window`, PL component colours under `style.component_colors`
+  - `gui/components/spectrum_viewer.py`: no colour / width / fit-curve defaults in code; `NM_TO_EV` imported from `fitting.mos2_pl.run_raw_pipeline`
+  - new `fitting/mos2_core/core/progress_log.py`; `model_selection.py`, `raman_lmfit.py`, `review/queue.py` log progress instead of printing; the seven `main()` entry points call `configure_cli_logging()`
+  - marker and outline sizes from `labkit.plot_theme` (`MARKER_MAP`, `OUTLINE`, `OUTLINE_THIN`, `ERRORBAR_WIDTH`, `ERRORBAR_CAP`)
+  - `tests/test_desktop_editor_plot.py`: the Qt widget is destroyed in its own test (the suite aborted in about one run out of four)
+  - `tests/test_gui_shared_logic.py`
+- Behavior:
+  - Map Viewer (prototype), spectrum of a selected point: Raman range is peak +/- 18 cm^-1 (was 30), PL range reaches down to 1.4 eV, same as All Spectra Viewer; line colours follow `raman_graph.yaml` (were code defaults).
+  - LO ratio map axes: `X (point index)` / `Y (point index)` (were `map_x` / `map_y`).
+  - Marker outlines: 0.5 -> 0.8 on status maps, 1.4 -> 1.5 on centre markers; error bars 1.2 -> 1.4 thick, cap 3 -> 4.
+  - A missing display key in `raman_graph.yaml` now stops the figure with the key name instead of using a hidden default.
+  - Progress lines on standard output are unchanged for command-line runs.
+  - Map Viewer (prototype) on a report without map coordinates shows a message (was an IndexError).
+- Verification:
+  - `pytest`: 69 passed; the full suite ran 6 more times without an abort.
+  - Raman and PL dummy pipelines run.
+  - Pages 3, 4, 6 and 8 executed with `AppTest` on the existing `proto_map_SampleA` report: no exceptions; prototype with one point selected draws its spectrum; a report without map coordinates shows a message instead of an error.
+- Not verified: the pages in a real browser after this change (the browser pane did not accept input); Run Analysis reading the progress lines from a real run.
+- Not done: splitting the large pages (`6_Sample_Comparison.py`, `1_Run_Analysis.py`, `3_All_Spectra_Viewer.py`); the desktop editor keeps its own view-range code.
+
+## Map Viewer replaces its prototype (2026-11-15)
+
+- Scope: the prototype page becomes the Map Viewer; the old Map Viewer features that the prototype did not have are kept. There is one map page.
+- Files:
+  - `mos2_gui/pages/4_Map_Viewer.py` rewritten (194 lines, layout only); `mos2_gui/pages/8_Map_Viewer_Prototype.py` removed; its entry removed from root `app.py`
+  - new `mos2_gui/components/map_parameters.py` (parameter list, ratio builder), `map_style_panel.py` (style inputs, presets), `map_selection.py` (selected points, decision, spectrum)
+  - `mos2_gui/components/map_figure.py`: `status_map_figure`
+  - `mos2_gui/components/figure_sizes.py`: kind `map_parameter` removed (the map uses `map_editor`)
+  - `tests/test_map_viewer_prototype.py` -> `tests/test_map_viewer.py`
+- Behavior:
+  - From the prototype: paper-style map with editable style and presets, box / lasso / click selection, review decision for the selected points, spectrum of a single selected point.
+  - Kept from the old Map Viewer: sidebar `2) Filters` (exclude rejected, allowed fit_status), `3) Ratio Builder`, Fit Status Map, Map Rows table, Map Summary.
+  - Filters hide points: a hidden point is drawn as an empty cell and is left out of the selection, the colour range, the status map and the table. The old page removed the rows, which changed the map grid.
+  - `Hide rejected points` toggle of the prototype is now the `Exclude rejected spectra` filter in the sidebar.
+  - Session keys start with `map_viewer_`. Style presets saved by the prototype (`data/style_presets/map`) still load.
+  - Fit Status Map is collapsed by default (was expanded).
+- Verification:
+  - `pytest`: 72 passed.
+  - Page executed with `AppTest` on the existing `proto_map_SampleA` report: map and status map draw; selecting one point shows its statistics and spectrum; status filter hides all 81 points; custom ratio is offered first in the parameter list; manual colour range; a report without map coordinates shows a message.
+- Not verified: mouse selection, saving a decision and saving / loading a preset in a real browser.
+
+## Repository hygiene: research/ made local-only
+
+- Moved topic-specific exploration code, outputs, logs, and slides into unified git-ignored `research/<topic>/` workspaces matching root `.gitignore`, `.dockerignore`, `RESEARCH_GUIDE.md`, and `scripts/check_repo_hygiene.py`.
