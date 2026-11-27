@@ -17,18 +17,19 @@ from ads_core.builders.slab import build_mos2_slab
 from ads_core.config import Config, load_config
 from ads_core.simulation.coverage import run_coverage_study
 
+from synth_helpers import make_synthetic_multilayer_dict, make_synthetic_study_dict
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TRACK_A_YAML = PROJECT_ROOT / "configs" / "track_a_4atp.yaml"
 
 
-def test_every_track_a_yaml_key_is_read() -> None:
-    cfg = load_config(TRACK_A_YAML)
+def test_every_study_yaml_key_is_read(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "out"))
     StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     assert cfg.unread_keys() == set()
 
 
-def test_track_a_cases_build_without_overlap(four_atp_xyz_path: Path) -> None:
-    cfg = load_config(TRACK_A_YAML)
+def test_study_cases_build_without_overlap(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "out"))
     study = StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
 
@@ -62,7 +63,7 @@ def test_track_a_cases_build_without_overlap(four_atp_xyz_path: Path) -> None:
 
 def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     """Changing supercell, grid count (N=6), and layer stacking works purely via YAML."""
-    raw = load_config(TRACK_A_YAML).as_dict()
+    raw = make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "out")
     raw["substrate"]["supercell_nx"] = 8
     raw["substrate"]["supercell_ny"] = 8
     raw["grid_cases"] = {
@@ -122,8 +123,8 @@ def test_reconfigurable_supercell_grid_and_stacking(tmp_path: Path, four_atp_xyz
     assert z_l2 > z_l1 + 2.5
 
 
-def test_disulfide_dimer_geometry(four_atp_xyz_path: Path) -> None:
-    cfg = load_config(TRACK_A_YAML)
+def test_disulfide_dimer_geometry(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "out"))
     study = StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
@@ -152,27 +153,22 @@ def test_disulfide_dimer_geometry(four_atp_xyz_path: Path) -> None:
 
 def test_run_coverage_study_end_to_end_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     """Smoke test the full A1-A2 pipeline with synth_morse and verify exact energy decomposition."""
-    raw = load_config(TRACK_A_YAML).as_dict()
+    raw = make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "results")
     raw["relaxation"]["max_steps"] = 10
     raw["relaxation"]["fmax_eV_per_A"] = 0.2
     raw["grid_cases"] = {
         "N1_monomer_flat": raw["grid_cases"]["N1_monomer_flat"],
-        "N4_monolayer_parallel": raw["grid_cases"]["N4_monolayer_parallel"],
+        "N4_parallel_flat": raw["grid_cases"]["N4_parallel_flat"],
     }
     raw["cluster_cases"] = {
         "N2_dimer_head_to_tail": raw["cluster_cases"]["N2_dimer_head_to_tail"],
     }
-    raw["vacancy_desorption"]["source_cases"] = ["N4_monolayer_parallel"]
+    raw["vacancy_desorption"]["source_cases"] = ["N4_parallel_flat"]
     raw["vacancy_desorption"]["sequential_pairs"] = {"N2_dimer_head_to_tail": "N1_monomer_flat"}
 
     yaml_path = tmp_path / "study.yaml"
     import yaml
 
-    yaml_path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
-
-    # Point relative paths inside raw to PROJECT_ROOT
-    raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
     yaml_path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
 
     out = run_coverage_study(
@@ -209,9 +205,8 @@ def test_run_coverage_study_end_to_end_synth(tmp_path: Path, four_atp_xyz_path: 
     assert len(meta["method_warnings"]) >= 2
 
 
-def test_multilayer_yaml_all_keys_read() -> None:
-    ml_yaml = PROJECT_ROOT / "configs" / "mos2_6x5_4atp_multilayer.yaml"
-    cfg = load_config(ml_yaml)
+def test_multilayer_yaml_all_keys_read(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_multilayer_dict(four_atp_xyz_path, tmp_path / "out"))
     StudySettings.from_config(cfg, project_root=PROJECT_ROOT)
     assert cfg.unread_keys() == set()
 
@@ -220,7 +215,7 @@ def test_multilayer_best_of_and_decomposition_synth(tmp_path: Path, four_atp_xyz
     """Verify 1L -> best_of Layer 2 -> Layer 3 stacking, vacancy desorption, and substrate decay."""
     import yaml
 
-    raw = load_config(TRACK_A_YAML).as_dict()
+    raw = make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "results")
     raw["substrate"]["supercell_nx"] = 8
     raw["substrate"]["supercell_ny"] = 8
     raw["substrate"]["vacuum_A"] = 38.0

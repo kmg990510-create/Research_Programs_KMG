@@ -21,7 +21,7 @@ from pymatgen.symmetry.groups import SpaceGroup
 
 from ads_core.builders.molecule import load_molecule_file
 from ads_core.calculators.factory import CalculatorBundle, build_calculator_bundle
-from ads_core.config import Config, load_config
+from ads_core.config import Config, infer_project_root, load_config
 from ads_core.simulation.metrics import single_point_components
 from ads_core.simulation.reference import ReferenceResult, relax_reference_molecule
 
@@ -73,7 +73,7 @@ class BulkCrystalSettings:
     @classmethod
     def from_config(cls, cfg: Config, *, project_root: Path | None = None) -> "BulkCrystalSettings":
         if project_root is None:
-            project_root = cfg.source.resolve().parents[1] if cfg.source is not None else Path.cwd()
+            project_root = infer_project_root(cfg.source) if cfg.source is not None else Path.cwd()
 
         def _res(rel: str) -> Path:
             p = Path(rel)

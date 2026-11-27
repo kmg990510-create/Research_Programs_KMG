@@ -1,12 +1,8 @@
-# 내 데이터: 로컬 전용 (공개 레포)
+# 내 데이터·연구 작업 공간: 로컬 전용 (공개 레포)
 */data/
 data/
-
-# 연구 임시 코드
-*/research/*/scratch/
-
-# 연구 slides 템플릿 (실험실 양식, 비공개)
-*/research/*/slides/templates/
+*/research/
+research/
 
 # Python / 도구
 __pycache__/

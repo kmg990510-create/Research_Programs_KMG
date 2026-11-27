@@ -470,10 +470,9 @@ def test_coverage_dimer_page_renders_empty_and_populated(
     assert empty_at.info
 
     # Build a small synthetic coverage study with N1, N2 dimer, and disulfide
-    sim_root = Path(__file__).resolve().parents[1]
-    raw = load_config(sim_root / "configs" / "track_a_4atp.yaml").as_dict()
-    raw["study"]["base_config_path"] = str(sim_root / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
+    from synth_helpers import make_synthetic_study_dict
+
+    raw = make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "results")
     raw["relaxation"]["max_steps"] = 6
     raw["relaxation"]["fmax_eV_per_A"] = 0.25
     raw["grid_cases"] = {"N1_monomer_flat": raw["grid_cases"]["N1_monomer_flat"]}

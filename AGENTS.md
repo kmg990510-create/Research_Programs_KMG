@@ -13,6 +13,10 @@
 ```text
 Research_Programs_KMG/
   AGENTS.md                 공통 원칙 (이 문서)
+  RESEARCH_GUIDE.md         탐색 연구 실행·보고·정리 규범 (Start/Done/Cleanup Gate)
+  scripts/
+    check_repo_hygiene.py   공개 레포 위생 점검 (pre-commit 훅)
+    init_research.py        새 비공개 연구 폴더 생성기
   app.py                    통합 Streamlit 진입점 (Program Hub + 3개 프로그램 전환)
   Run_Lab_GUI.cmd           통합 GUI Windows 실행 스크립트
   MoS2_optical_analysis/    Raman/PL 분석
@@ -24,12 +28,14 @@ Research_Programs_KMG/
 
 - 프로그램 하나는 폴더 하나이고, 그 폴더만으로 실행·테스트·배포가 된다. 통합 실행 시에는 루트 `app.py`(`Run_Lab_GUI.cmd`)가 `Program Hub`에서 세 프로그램을 함께 띄운다.
 - 통합 실행 시 `sys.modules` 패키지 충돌이 나지 않도록 각 프로그램의 Streamlit GUI 패키지 이름은 고유하게 둔다 (`mos2_gui`, `fet_gui`, `ads_gui`).
-- 프로그램 폴더는 `AGENTS.md`, `README.md`, 설정 YAML, `tests/`, `docs/`를 가진다.
-- **공개 코드 / 비공개 연구 데이터 분리 원칙 (이 저장소는 공개 레포다):**
-  - **공개(git 추적):** 분석·시뮬레이션 방법만 담은 프로그램 코드, 탐색 스크립트(`research/<topic>/scripts/`), 계산 설정 YAML, 방법·설계·개발 문서.
-  - **비공개(로컬 전용, `data/` 아래에만 두어 git 제외):** 측정 원본(`data/raw`), 정규 분석 결과(`data/results/<modality|batch>/`), AI 코드 연구 결과(`data/results/research/<topic>/` 또는 시뮬레이션 `data/<topic>/`), 연구 결과를 담은 보고서(`*.md`, `*.pptx`, 발표 PDF), 그림, 실행 로그, 실험 관찰 기록(`PLANS.md`), 휴지통(`data/bin`).
-  - 탐색 연구 폴더 `research/<topic>/`의 공개 영역에는 방법과 실행법만 두고(`README.md`에 결과 수치·관찰·결론 금지), `research/*/scratch/`와 `research/*/slides/templates/`는 git에서 제외한다.
-  - 시뮬레이션 프로그램(`MoS2_adsorption_sim`)은 주제별 연구 자료를 `data/<topic>/{molecules,mlip,dft,reports,figures}`에 두고, GUI 일반 배치·공용 분자·휴지통은 `data/{molecules,results,bin}`을 사용한다.
+- 프로그램 폴더는 `AGENTS.md`, `README.md`, 기준 설정 `config.yaml`, 합성 `tests/`, `docs/`를 가진다.
+- **공개 코드 / 비공개 연구·데이터 분리 원칙 (이 저장소는 공개 레포다):**
+  - **공개(git 추적):** 누구에게나 적용되는 공용 분석·시뮬레이션·GUI 코드(`*_core/`, `*_gui/`, `fitting/`, `labkit/`), 프로그램 공통 기준 설정(`config.yaml`), 합성 fixture 기반 단위 테스트(`tests/`), 아키텍처·원리 문서(`docs/`).
+  - **비공개(로컬 전용, `data/` 및 `research/` 통째로 git 제외):**
+    - `data/`: 측정 원본(`data/raw/`), 정규 GUI/CLI 배치 결과(`data/results/`), 공용 분자(`data/molecules/`), 휴지통(`data/bin/`).
+    - `research/<topic>/`: 특정 연구 주제의 스크립트(`scripts/`), 연구 전용 설정 YAML·후보·구조(`configs/`), 연구 전용 모듈·테스트(`engine/`, `tests/`), 계산 결과(`mlip/`, `dft/`), 보고서(`reports/*.md`, `*.pptx`, 발표 PDF), 그림(`figures/`), 실행 로그(`logs/`), 연구 계획(`PLANS.md`), `README.md`, 임시 `scratch/`.
+  - **`tests/` vs `research/` 구분:** `tests/`는 공용 프로그램 코드 자체를 합성 입력으로 검증한다. 특정 분자·공정 조건·실험 구조(`.cif`)·연구 가설 관련 코드·설정·테스트는 전부 `research/<topic>/`에 둔다.
+  - 탐색 연구를 시작할 때는 `python scripts/init_research.py --program <prog> --topic <topic>`을 실행하고, [RESEARCH_GUIDE.md](RESEARCH_GUIDE.md)의 Start / Done / Cleanup Gate를 따른다.
   - `data/` 아래에는 `.gitkeep`을 두지 않고 코드가 출력 폴더를 `mkdir(parents=True, exist_ok=True)`로 자동 생성한다.
   - git 추적 파일 이름에는 판 번호 접미(`_v2`, `_updated`, `_final`, `_review`)를 붙이지 않는다 (이전 판은 git 이력이 보관).
 
@@ -37,15 +43,12 @@ Research_Programs_KMG/
 
 | 파일 성격 | 저장 위치 | 공개 여부 |
 | --- | --- | --- |
-| 프로그램 코어·GUI·자동 테스트 | `<Program>/<pkg>_core/`, `<pkg>_gui/`, `tests/` | 공개 |
-| 재사용 탐색 분석 스크립트·방법 안내 | `<Program>/research/<topic>/scripts/`, `README.md` (수치·결론 금지) | 공개 |
-| 계산 설정 YAML·공개 결정 구조(`.cif`) | `<Program>/configs/` | 공개 |
-| 프로그램 아키텍처·기능 설계 계획 | `<Program>/docs/PLAN.md` | 공개 |
-| 개발·엔지니어링 작업 기록 | `<Program>/docs/DEV_LOG.md` (미공개 연구 수치·시료 관찰 금지) | 공개 |
-| 측정 원본·정규 파이프라인 분석 결과 | `<Program>/data/raw/`, `data/results/<modality\|batch>/` | **비공개** |
-| AI 코드 연구 결과·로그·그림·보고서·`PLANS.md` | 측정 `data/results/research/<topic>/`, 시뮬 `data/<topic>/{molecules,mlip,dft,reports,figures}` | **비공개** |
-| 결과 수치·결론이 하드코딩된 발표/보고서 빌더(`build_*pptx*.py`, `build_deck.py`) | `data/.../reports/` (코드가 아니라 데이터로 취급) | **비공개** |
-| 임시 스크래치·발표 PPTX 템플릿 | `research/<topic>/scratch/`, `research/<topic>/slides/templates/` | **비공개** |
+| 프로그램 코어·GUI·합성 단위 테스트 | `<Program>/<pkg>_core/`, `<pkg>_gui/`, `tests/` | 공개 |
+| 프로그램 공용 기본 설정 YAML | `<Program>/config.yaml` (Raman 그래프는 `raman_graph.yaml`) | 공개 |
+| 프로그램 아키텍처·기능 설계 계획·개발 기록 | `<Program>/docs/PLAN.md`, `docs/DEV_LOG.md` (연구 수치·시료 관찰 금지) | 공개 |
+| 측정 원본·정규 GUI/CLI 파이프라인 결과 | `<Program>/data/{raw,results,molecules,bin}/` | **비공개** |
+| 특정 연구 주제 일체(코드·설정·테스트·결과·보고서·로그·그림·`PLANS.md`) | `<Program>/research/<topic>/` | **비공개** |
+| 결과 수치·결론이 하드코딩된 발표/보고서 빌더(`build_*pptx*.py`, `build_deck.py`) | `<Program>/research/<topic>/reports/` (또는 `data/.../reports/`) | **비공개** |
 
 ## 2. 개발 원칙
 
@@ -149,7 +152,7 @@ Research_Programs_KMG/
 
 ## 7. 테스트와 Git
 
-- 테스트는 `data/` 아래 어떤 파일에도 의존하지 않는다. 합성 입력·fixture만 만들어 쓰고, 실제 파일이 필요한 테스트는 파일이 없으면 skip한다.
+- 테스트는 `data/`와 `research/` 아래 어떤 파일에도 의존하지 않는다. 합성 입력·fixture만 만들어 쓰고, 실제 파일이 필요한 테스트는 파일이 없으면 skip한다.
 - 추출·피팅 방법을 바꾸면 기존 결과와의 차이를 수치로 확인한 뒤 기본값을 바꾼다 (MoS2 TASK-021 방식).
 - 작업마다 브랜치를 만든다 (`feat/...`, `fix/...`, `chore/...`, `exp/...`). 커밋은 작게, 동작이 바뀌면 문서도 같은 커밋에 넣는다.
 - 커밋 전 `python scripts/check_repo_hygiene.py` (`.git/hooks/pre-commit` 자동 실행)로 비공개 경로·바이너리·판 번호 파일 혼입을 차단한다. 새 클론에서는 `python scripts/check_repo_hygiene.py --install-hook`으로 훅을 등록한다.

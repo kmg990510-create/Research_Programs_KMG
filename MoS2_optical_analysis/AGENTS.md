@@ -8,8 +8,8 @@ This guide defines safe working conventions for the migrated workspace.
 - `fitting/mos2_raman`: Raman entrypoints and config
 - `fitting/mos2_pl`: PL entrypoints and config
 - `mos2_gui`: Streamlit UI
-- `research/<topic>`: public exploration scripts and methods only (no results/numbers in tracked README; `scratch/` and `slides/templates/` are git-ignored)
-- `data/`: local-only, git-ignored (`data/raw`, `data/bin/results`, `data/results/<modality>/`, `data/results/research/<topic>/` for logs, figures, reports)
+- `research/<topic>`: local-only, git-ignored per-topic research workspace (scripts, configs, logs, figures, reports, slides, README.md, scratch; created via `python ../scripts/init_research.py`)
+- `data/`: local-only, git-ignored (`data/raw`, `data/bin/results`, `data/results/<modality>/`)
 
 ## Required References
 
@@ -111,7 +111,7 @@ Run from workspace root (`MoS2_optical_analysis`):
 - Keep docs and code in the same commit when behavior changes.
 - Keep commits small and reversible; avoid mixing unrelated changes.
 - If user explicitly requests no commit/branch for a task, follow user request.
-- `research/<topic>/` tracks analysis code and method-only `README.md`; all logs, figures, summary write-ups, and result-hardcoded deck builders (`build_deck.py`, etc.) stay under `data/results/research/<topic>/`.
+- All topic-specific `research/<topic>/` files (scripts, logs, figures, reports, summary write-ups, slides, and result-hardcoded deck builders) stay local and git-ignored (`../RESEARCH_GUIDE.md`).
 - Do not record unpublished sample IDs, correlation numbers, or experimental conclusions in `docs/DEV_LOG.md`.
 
 ## Raman Config Rules

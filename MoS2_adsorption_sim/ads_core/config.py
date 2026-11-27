@@ -16,6 +16,16 @@ import yaml
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
+def infer_project_root(yaml_path: Path) -> Path:
+    """Resolve the MoS2_adsorption_sim root from a study YAML path."""
+    resolved = yaml_path.resolve()
+    if resolved.parent.name == "configs":
+        if len(resolved.parents) > 3 and resolved.parents[2].name == "research":
+            return resolved.parents[3]
+        return resolved.parents[1]
+    return resolved.parent
+
+
 class ConfigKeyError(KeyError):
     """A config key is missing or holds a value of the wrong type."""
 

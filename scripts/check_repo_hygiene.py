@@ -26,7 +26,7 @@ FORBIDDEN_EXTS: frozenset[str] = frozenset(
 )
 
 _RE_DATA_DIR = re.compile(r"(^|/)data/")
-_RE_RESEARCH_OUT = re.compile(r"(^|/)research/[^/]+/(logs|figures|reports|scratch|slides/templates)/")
+_RE_RESEARCH_DIR = re.compile(r"(^|/)research/")
 _RE_DOCS_FIGURES = re.compile(r"(^|/)docs/figures/")
 _RE_PRIVATE_DOC = re.compile(r"(^PLANS\.md$|Master_Report|internal seminar)", re.IGNORECASE)
 _RE_VERSIONED_STEM = re.compile(r"(_v\d+|_updated|_final|_review)$", re.IGNORECASE)
@@ -59,8 +59,8 @@ def check_paths(paths: Iterable[str]) -> list[str]:
 
         if _RE_DATA_DIR.search(norm):
             violations.append(f"{norm}: Private data directory must never be tracked")
-        if _RE_RESEARCH_OUT.search(norm):
-            violations.append(f"{norm}: Research outputs/logs/figures/reports/scratch/templates stay local")
+        if _RE_RESEARCH_DIR.search(norm):
+            violations.append(f"{norm}: Private research directory must never be tracked")
         if _RE_DOCS_FIGURES.search(norm):
             violations.append(f"{norm}: docs/figures/ is reserved for private local data/figures/")
         if _RE_PRIVATE_DOC.search(base):
@@ -70,7 +70,7 @@ def check_paths(paths: Iterable[str]) -> list[str]:
         if _RE_VERSIONED_STEM.search(stem):
             violations.append(f"{norm}: Versioned filename suffix (_vN/_updated/_final/_review) is disallowed")
         if _RE_RESULT_BUILDER.match(base):
-            violations.append(f"{norm}: Move result-hardcoded report/deck builders to data/.../reports/")
+            violations.append(f"{norm}: Move result-hardcoded report/deck builders to research/<topic>/reports/ or data/.../reports/")
     return violations
 
 
@@ -98,9 +98,9 @@ def _run_self_test() -> None:
     bad_cases = [
         ("MoS2_adsorption_sim/data/4-ATP.xyz", "Private data directory"),
         ("data/results/out.txt", "Private data directory"),
-        ("MoS2_optical_analysis/research/atp_raman/logs/01.txt", "Research outputs"),
-        ("MoS2_optical_analysis/research/atp_raman/scratch/tmp.py", "Research outputs"),
-        ("MoS2_optical_analysis/research/atp_raman/slides/templates/base.pptx", "Research outputs"),
+        ("MoS2_optical_analysis/research/atp_raman/scripts/02_v2_build.py", "Private research directory"),
+        ("MoS2_optical_analysis/research/atp_raman/logs/01.txt", "Private research directory"),
+        ("MoS2_adsorption_sim/research/4atp_deposition/configs/track_a_4atp.yaml", "Private research directory"),
         ("MoS2_adsorption_sim/docs/figures/summary.png", "docs/figures/"),
         ("MoS2_adsorption_sim/PLANS.md", "Private report/plan filename"),
         ("MoS2_adsorption_sim/docs/MoS2_4ATP_Master_Report_v6.md", "Private report/plan filename"),
@@ -109,7 +109,7 @@ def _run_self_test() -> None:
         ("MoS2_adsorption_sim/docs/design_v2.md", "Versioned filename suffix"),
         ("MoS2_adsorption_sim/docs/notes_final.md", "Versioned filename suffix"),
         ("MoS2_adsorption_sim/scripts/build_5slide_overview_pptx.py", "report/deck builders"),
-        ("MoS2_optical_analysis/research/atp_raman/slides/build_deck.py", "report/deck builders"),
+        ("MoS2_optical_analysis/build_deck.py", "report/deck builders"),
     ]
     for path, expected_frag in bad_cases:
         hits = check_paths([path])
@@ -117,12 +117,13 @@ def _run_self_test() -> None:
 
     good_cases = [
         "AGENTS.md",
+        "CLAUDE.md",
+        "RESEARCH_GUIDE.md",
         "scripts/check_repo_hygiene.py",
+        "scripts/init_research.py",
+        "MoS2_adsorption_sim/config.yaml",
         "MoS2_adsorption_sim/docs/PLAN.md",
         "MoS2_adsorption_sim/docs/DEV_LOG.md",
-        "MoS2_adsorption_sim/configs/structures/4atp_cod7111361.cif",
-        "MoS2_optical_analysis/research/atp_raman/scripts/02_v2_build.py",
-        "MoS2_optical_analysis/research/atp_raman/slides/render.py",
         "FET_analysis/docs/FET_분석_원리.pptx",
         "MoS2_adsorption_sim/docs/MoS2_흡착_시뮬레이션_원리.pptx",
         "MoS2_optical_analysis/docs/MoS2_분석_원리.pptx",

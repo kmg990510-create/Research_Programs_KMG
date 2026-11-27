@@ -40,17 +40,17 @@ st.header("Coverage & Dimer Inspector")
 st.caption("Inspect N=1–4 spatial packing, periodic intermolecular distances (S···S, N···S, Heavy···Heavy), and dimer formation in 3D/2D.")
 
 root = results_root()
-droot = data_root()
+res_root = data_root().parent / "research"
 study_dirs: dict[str, Path] = {name: root / name for name in list_coverage_studies(root)}
-if droot.is_dir():
-    for mlip_dir in sorted(droot.glob("*/mlip")):
+if res_root.is_dir():
+    for mlip_dir in sorted(res_root.glob("*/mlip")):
         topic = mlip_dir.parent.name
         for name in list_coverage_studies(mlip_dir):
             study_dirs[f"{topic}/{name}"] = mlip_dir / name
 studies = list(study_dirs.keys())
 with sidebar_section(sidebar_section_label(1, "Study"), expanded=True):
     if not studies:
-        st.caption("No coverage/multilayer study found under data/results/ or data/<topic>/mlip/. Run scripts/run_multilayer_study.py first.")
+        st.caption("No coverage/multilayer study found under data/results/ or research/<topic>/mlip/.")
         chosen_study = None
     else:
         cur = st.session_state.get(STUDY_KEY)
@@ -60,7 +60,7 @@ with sidebar_section(sidebar_section_label(1, "Study"), expanded=True):
         st.caption(f"Folder: {study_dirs[chosen_study]}")
 
 if chosen_study is None:
-    st.info("No coverage/multilayer study to display yet. Run `scripts/run_multilayer_study.py --study configs/track_a_4atp.yaml`.")
+    st.info("No coverage/multilayer study to display yet. Run a coverage study first.")
     st.stop()
 
 

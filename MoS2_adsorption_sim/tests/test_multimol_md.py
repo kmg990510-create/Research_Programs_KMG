@@ -12,20 +12,45 @@ from ads_core.builders.slab import build_mos2_slab
 from ads_core.config import Config, load_config
 from ads_core.simulation.multimol_md import MultiMolMdSettings, run_multimol_md_suite
 
+from synth_helpers import make_synthetic_md_dict, make_synthetic_multilayer_dict, make_synthetic_study_dict
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MD_YAML = PROJECT_ROOT / "configs" / "mos2_5x5_4atp_md.yaml"
 
 
-def test_md_yaml_all_keys_read() -> None:
-    cfg = load_config(MD_YAML)
+def test_md_yaml_all_keys_read(tmp_path: Path) -> None:
+    raw = make_synthetic_md_dict(
+        tmp_path / "study.yaml",
+        tmp_path / "md_out",
+        {
+            "run_a": {
+                "results_dir": str(tmp_path / "src"),
+                "source_case": "N4_brick_flat",
+                "temperature_K": 333.15,
+                "steps": 10,
+                "quench_after_md": True,
+            },
+            "run_b": {
+                "results_dir": str(tmp_path / "src"),
+                "source_case": "N4_brick_flat",
+                "temperature_K": 423.15,
+                "steps": 10,
+                "quench_after_md": False,
+            },
+        },
+    )
+    cfg = Config(raw)
     settings = MultiMolMdSettings.from_config(cfg, project_root=PROJECT_ROOT)
     assert cfg.unread_keys() == set()
-    assert len(settings.runs) == 4
+    assert len(settings.runs) == 2
 
 
 def test_multimol_md_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
-    study_cfg = load_config(PROJECT_ROOT / "configs" / "mos2_5x5_4atp_stability.yaml")
-    study = StudySettings.from_config(study_cfg, project_root=PROJECT_ROOT)
+    import yaml
+
+    study_raw = make_synthetic_study_dict(four_atp_xyz_path, tmp_path / "src_results", supercell=(5, 5))
+    study_yaml = tmp_path / "study.yaml"
+    study_yaml.write_text(yaml.safe_dump(study_raw), encoding="utf-8")
+    study = StudySettings.from_config(Config(study_raw), project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     slab = build_mos2_slab(base_cfg, supercell=(5, 5), vacuum_A=26.0, fix_bottom_layer=True)
     mol = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
@@ -36,23 +61,21 @@ def test_multimol_md_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path) -> Non
     src_dir.mkdir(parents=True)
     ase_write(src_dir / "N4_brick_flat_relaxed.xyz", asm.atoms)
 
-    raw = load_config(MD_YAML).as_dict()
-    raw["study"]["study_yaml"] = str(PROJECT_ROOT / "configs" / "mos2_5x5_4atp_stability.yaml")
-    raw["study"]["output_dir"] = str(tmp_path / "md_out")
-    raw["md"]["trajectory_stride"] = 5
+    raw = make_synthetic_md_dict(
+        study_yaml,
+        tmp_path / "md_out",
+        {
+            "smoke_N4": {
+                "results_dir": str(tmp_path / "src_results"),
+                "source_case": "N4_brick_flat",
+                "temperature_K": 333.15,
+                "steps": 10,
+                "quench_after_md": True,
+            }
+        },
+    )
     raw["quench"]["max_steps"] = 3
-    raw["runs"] = {
-        "smoke_N4": {
-            "results_dir": str(tmp_path / "src_results"),
-            "source_case": "N4_brick_flat",
-            "temperature_K": 333.15,
-            "steps": 10,
-            "quench_after_md": True,
-        }
-    }
     yaml_path = tmp_path / "md_smoke.yaml"
-    import yaml
-
     yaml_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     out = run_multimol_md_suite(yaml_path, backend_override="synth_morse", device_override="cpu")
     assert len(out["summary"]) == 1
@@ -65,13 +88,11 @@ def test_multimol_md_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path) -> Non
 def test_multilayer_md_yaml_and_two_layer_smoke(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     import yaml
 
-    ml_md_yaml = PROJECT_ROOT / "configs" / "mos2_6x5_4atp_multilayer_md.yaml"
-    cfg = load_config(ml_md_yaml)
-    MultiMolMdSettings.from_config(cfg, project_root=PROJECT_ROOT)
-    assert cfg.unread_keys() == set()
+    ml_raw = make_synthetic_multilayer_dict(four_atp_xyz_path, tmp_path / "src_ml")
+    ml_study_yaml = tmp_path / "ml_study.yaml"
+    ml_study_yaml.write_text(yaml.safe_dump(ml_raw), encoding="utf-8")
 
-    ml_study_yaml = PROJECT_ROOT / "configs" / "mos2_6x5_4atp_multilayer.yaml"
-    study = StudySettings.from_config(load_config(ml_study_yaml), project_root=PROJECT_ROOT)
+    study = StudySettings.from_config(Config(ml_raw), project_root=PROJECT_ROOT)
     base_cfg = load_config(study.base_config_path)
     slab = build_mos2_slab(base_cfg, supercell=(6, 5), vacuum_A=38.0, fix_bottom_layer=True)
     mol = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=study.molecule_id)
@@ -92,20 +113,24 @@ def test_multilayer_md_yaml_and_two_layer_smoke(tmp_path: Path, four_atp_xyz_pat
         encoding="utf-8",
     )
 
-    raw = load_config(ml_md_yaml).as_dict()
-    raw["study"]["study_yaml"] = str(ml_study_yaml)
-    raw["study"]["output_dir"] = str(tmp_path / "md_ml_out")
-    raw["md"]["trajectory_stride"] = 5
+    raw = make_synthetic_md_dict(
+        ml_study_yaml,
+        tmp_path / "md_ml_out",
+        {
+            "ml_2L": {
+                "results_dir": str(src_dir),
+                "source_case": "best_of:L2_N4_AB_diag_anti,L2_N4_AA_par",
+                "temperature_K": 333.15,
+                "steps": 10,
+                "quench_after_md": False,
+            }
+        },
+    )
     raw["quench"]["max_steps"] = 2
-    raw["runs"] = {
-        "ml_2L": {
-            "results_dir": str(src_dir),
-            "source_case": "best_of:L2_N4_AB_diag_anti,L2_N4_AA_par",
-            "temperature_K": 333.15,
-            "steps": 10,
-            "quench_after_md": False,
-        }
-    }
+    ml_cfg = Config(raw)
+    MultiMolMdSettings.from_config(ml_cfg, project_root=PROJECT_ROOT)
+    assert ml_cfg.unread_keys() == set()
+
     yaml_path = tmp_path / "ml_md_smoke.yaml"
     yaml_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
 

@@ -43,7 +43,7 @@ FET_analysis/
   docs/DEV_LOG.md      작업 기록
 ```
 
-- 향후 탐색 연구 스크립트(`research/<topic>/`)나 보고서·그림을 만들 때도 루트 `AGENTS.md` 1장(코드·방법만 공개, 결과·보고서·그림·로그는 전부 `data/` 전용)을 따른다.
+- 향후 탐색 연구 작업 공간을 만들 때는 `python ../scripts/init_research.py --program FET_analysis --topic <topic>`을 사용하고, 루트 [`AGENTS.md`](../AGENTS.md) 1장 및 [`RESEARCH_GUIDE.md`](../RESEARCH_GUIDE.md)를 따라 `data/`와 `research/` 전체를 로컬 전용(git 제외)으로 유지한다.
 
 ## 명령
 

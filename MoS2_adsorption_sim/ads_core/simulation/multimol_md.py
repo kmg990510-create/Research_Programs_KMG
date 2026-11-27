@@ -21,7 +21,7 @@ from ads_core.builders.molecule import load_molecule_file
 from ads_core.builders.multimol import StudySettings
 from ads_core.builders.slab import build_mos2_slab
 from ads_core.calculators.factory import CalculatorBundle, build_calculator_bundle
-from ads_core.config import Config, load_config
+from ads_core.config import Config, infer_project_root, load_config
 from ads_core.simulation.md import _init_momenta
 
 _OPTIMIZERS = {
@@ -246,16 +246,12 @@ def run_multimol_md_suite(
 ) -> dict[str, Any]:
     """Run YAML-configured finite-temperature MD and post-MD quenches."""
     yaml_path = Path(md_yaml).resolve()
-    project_root = yaml_path.parents[1] if yaml_path.parent.name == "configs" else yaml_path.parent
+    project_root = infer_project_root(yaml_path)
     md_cfg = load_config(yaml_path)
     settings = MultiMolMdSettings.from_config(md_cfg, project_root=project_root)
 
     study_cfg = load_config(settings.study_yaml_path)
-    study_root = (
-        settings.study_yaml_path.parents[1]
-        if settings.study_yaml_path.parent.name == "configs"
-        else settings.study_yaml_path.parent
-    )
+    study_root = infer_project_root(settings.study_yaml_path)
     study = StudySettings.from_config(study_cfg, project_root=study_root)
     base_cfg = load_config(study.base_config_path)
 

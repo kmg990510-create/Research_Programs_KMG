@@ -12,7 +12,7 @@ from ase import Atoms
 from ase.geometry import get_distances
 
 from ads_core.builders.poses import orient_molecule_positions
-from ads_core.config import Config
+from ads_core.config import Config, infer_project_root
 from ads_core.model import MoleculeSpec, ORIENTATION_FLAT
 
 
@@ -101,7 +101,7 @@ class StudySettings:
         """Read every key strictly from a study YAML ``Config`` object."""
         if project_root is None:
             if cfg.source is not None:
-                project_root = cfg.source.resolve().parents[1]
+                project_root = infer_project_root(cfg.source)
             else:
                 project_root = Path.cwd()
 

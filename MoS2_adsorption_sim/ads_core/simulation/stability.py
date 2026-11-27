@@ -20,7 +20,7 @@ from ads_core.builders.molecule import load_molecule_file
 from ads_core.builders.multimol import StudySettings
 from ads_core.builders.slab import build_mos2_slab
 from ads_core.calculators.factory import CalculatorBundle, build_calculator_bundle
-from ads_core.config import Config, load_config
+from ads_core.config import Config, infer_project_root, load_config
 
 _OPTIMIZERS = {
     "BFGS": BFGS,
@@ -144,12 +144,12 @@ def run_stability_checks(
 ) -> dict[str, Any]:
     """Execute perturbation, standalone sheet-strain, and double-vacancy stability checks."""
     mech_path = Path(mech_yaml).resolve()
-    project_root = mech_path.parents[1] if mech_path.parent.name == "configs" else mech_path.parent
+    project_root = infer_project_root(mech_path)
     mech_cfg = load_config(mech_path)
     stab = StabilitySettings.from_config(mech_cfg, project_root=project_root)
 
     study_cfg = load_config(stab.study_yaml_path)
-    study = StudySettings.from_config(study_cfg, project_root=project_root)
+    study = StudySettings.from_config(study_cfg, project_root=infer_project_root(stab.study_yaml_path))
     base_cfg = load_config(study.base_config_path)
 
     meta = json.loads((stab.results_dir / "study_metadata.json").read_text(encoding="utf-8"))

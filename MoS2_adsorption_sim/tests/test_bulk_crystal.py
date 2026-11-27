@@ -11,7 +11,7 @@ import pytest
 from ase.io import write as ase_write
 
 from ads_core.builders.molecule import load_molecule_file
-from ads_core.config import load_config
+from ads_core.config import Config, load_config
 from ads_core.simulation.bulk_crystal import (
     BulkCrystalSettings,
     generate_spacegroup_candidates,
@@ -19,19 +19,19 @@ from ads_core.simulation.bulk_crystal import (
     run_bulk_crystal_study,
 )
 
+from synth_helpers import make_synthetic_bulk_dict
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BULK_YAML = PROJECT_ROOT / "configs" / "4atp_bulk_pca21.yaml"
-PC_BULK_YAML = PROJECT_ROOT / "configs" / "4atp_bulk_pc_cod7111361.yaml"
 
 
-def test_bulk_crystal_yaml_all_keys_read() -> None:
-    cfg = load_config(BULK_YAML)
+def test_bulk_crystal_yaml_all_keys_read(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_bulk_dict(four_atp_xyz_path, tmp_path / "out"))
     BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
     assert cfg.unread_keys() == set()
 
 
-def test_zwitterion_and_pca21_packing_valid(four_atp_xyz_path: Path) -> None:
-    cfg = load_config(BULK_YAML)
+def test_zwitterion_and_pca21_packing_valid(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    cfg = Config(make_synthetic_bulk_dict(four_atp_xyz_path, tmp_path / "out"))
     settings = BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(settings.base_config_path)
     mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=settings.molecule_id)
@@ -63,9 +63,7 @@ def test_zwitterion_and_pca21_packing_valid(four_atp_xyz_path: Path) -> None:
 def test_bulk_crystal_study_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     import yaml
 
-    raw = load_config(BULK_YAML).as_dict()
-    raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
+    raw = make_synthetic_bulk_dict(four_atp_xyz_path, tmp_path / "bulk_out")
     raw["candidates"]["n_rot_trials"] = 120
     raw["candidates"]["n_per_tautomer"] = 1
     raw["relaxation"]["relax_cell"] = False
@@ -92,13 +90,20 @@ def test_bulk_crystal_study_smoke_synth(tmp_path: Path, four_atp_xyz_path: Path)
     assert any("DEPRECATED" in w.upper() for w in meta["method_warnings"])
 
 
-def test_pc_cod7111361_yaml_and_monoclinic_packing(four_atp_xyz_path: Path) -> None:
-    cfg = load_config(PC_BULK_YAML)
+def test_pc_monoclinic_yaml_and_packing(tmp_path: Path, four_atp_xyz_path: Path) -> None:
+    raw = make_synthetic_bulk_dict(
+        four_atp_xyz_path,
+        tmp_path / "pc_out",
+        space_group="Pc",
+        cell_abc=(7.2305, 5.8513, 7.7552),
+        cell_angles=(90.0, 107.364, 90.0),
+        source="Synthetic monoclinic Pc cell (Z=2)",
+    )
+    cfg = Config(raw)
     settings = BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
     assert cfg.unread_keys() == set()
     assert settings.space_group == "Pc"
     assert settings.cell_beta_deg == pytest.approx(107.364)
-    assert settings.cif_path is not None and settings.cif_path.is_file()
 
     base_cfg = load_config(settings.base_config_path)
     mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=settings.molecule_id)
@@ -123,7 +128,15 @@ def test_pc_cod7111361_yaml_and_monoclinic_packing(four_atp_xyz_path: Path) -> N
 def test_bulk_crystal_cif_direct_load_smoke(tmp_path: Path, four_atp_xyz_path: Path) -> None:
     import yaml
 
-    cfg = load_config(PC_BULK_YAML)
+    raw = make_synthetic_bulk_dict(
+        four_atp_xyz_path,
+        tmp_path / "pc_out",
+        space_group="Pc",
+        cell_abc=(7.2305, 5.8513, 7.7552),
+        cell_angles=(90.0, 107.364, 90.0),
+        source="Synthetic monoclinic Pc cell (Z=2)",
+    )
+    cfg = Config(raw)
     settings = BulkCrystalSettings.from_config(cfg, project_root=PROJECT_ROOT)
     base_cfg = load_config(settings.base_config_path)
     mol_spec = load_molecule_file(four_atp_xyz_path, base_cfg, molecule_id=settings.molecule_id)
@@ -141,9 +154,6 @@ def test_bulk_crystal_cif_direct_load_smoke(tmp_path: Path, four_atp_xyz_path: P
     cif_file = tmp_path / "pc_mock.cif"
     ase_write(cif_file, pc_atoms, format="cif")
 
-    raw = cfg.as_dict()
-    raw["study"]["base_config_path"] = str(PROJECT_ROOT / "config.yaml")
-    raw["adsorbate"]["molecule_path"] = str(four_atp_xyz_path)
     raw["crystal"]["cif_path"] = str(cif_file)
     raw["relaxation"]["relax_cell"] = False
     raw["relaxation"]["max_steps"] = 3
@@ -172,6 +182,6 @@ def test_bulk_crystal_cif_direct_load_smoke(tmp_path: Path, four_atp_xyz_path: P
     assert float(rows[0]["beta_deg"]) == pytest.approx(107.364, abs=0.2)
 
     meta = json.loads((out_dir / "study_metadata.json").read_text(encoding="utf-8"))
-    assert "COD 7111361" in meta["crystal_source"]
+    assert "monoclinic Pc" in meta["crystal_source"]
     assert isinstance(meta["method_warnings"], list)
     assert meta["cif_path"] == str(cif_file)
