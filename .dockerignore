@@ -6,3 +6,7 @@ dist
 build
 *.pptx
 *.pyc
+**/data/
+**/research/*/scratch/
+**/research/*/slides/templates/
+legacy
