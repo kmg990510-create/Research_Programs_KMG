@@ -25,7 +25,7 @@ from ads_core.report.coverage_view import (  # noqa: E402
 from ads_gui.components.atoms2d import multimol_top_side_png  # noqa: E402
 from ads_gui.components.figures import coverage_distance_summary_figure, pair_distance_heatmap_figure  # noqa: E402
 from ads_gui.components.viewer3d import multimol_3d_html  # noqa: E402
-from ads_gui.state import render_ads_chrome, results_root  # noqa: E402
+from ads_gui.state import data_root, render_ads_chrome, results_root  # noqa: E402
 from labkit.chrome import panel_title, sidebar_section_label  # noqa: E402
 from labkit.figure_size import figure_settings_popover, show_figure  # noqa: E402
 from labkit.sidebar import sidebar_section  # noqa: E402
@@ -40,17 +40,24 @@ st.header("Coverage & Dimer Inspector")
 st.caption("Inspect N=1–4 spatial packing, periodic intermolecular distances (S···S, N···S, Heavy···Heavy), and dimer formation in 3D/2D.")
 
 root = results_root()
-studies = list_coverage_studies(root)
+droot = data_root()
+study_dirs: dict[str, Path] = {name: root / name for name in list_coverage_studies(root)}
+if droot.is_dir():
+    for mlip_dir in sorted(droot.glob("*/mlip")):
+        topic = mlip_dir.parent.name
+        for name in list_coverage_studies(mlip_dir):
+            study_dirs[f"{topic}/{name}"] = mlip_dir / name
+studies = list(study_dirs.keys())
 with sidebar_section(sidebar_section_label(1, "Study"), expanded=True):
     if not studies:
-        st.caption("No coverage/multilayer study found under data/results/. Run scripts/run_multilayer_study.py first.")
+        st.caption("No coverage/multilayer study found under data/results/ or data/<topic>/mlip/. Run scripts/run_multilayer_study.py first.")
         chosen_study = None
     else:
         cur = st.session_state.get(STUDY_KEY)
         idx = studies.index(cur) if cur in studies else len(studies) - 1
         chosen_study = st.selectbox("Coverage study", studies, index=idx, key="cov_study_select")
         st.session_state[STUDY_KEY] = chosen_study
-        st.caption(f"Folder: {root / chosen_study}")
+        st.caption(f"Folder: {study_dirs[chosen_study]}")
 
 if chosen_study is None:
     st.info("No coverage/multilayer study to display yet. Run `scripts/run_multilayer_study.py --study configs/track_a_4atp.yaml`.")
@@ -62,7 +69,7 @@ def _cached_study(folder_str: str) -> CoverageStudyBundle:
     return load_coverage_study(folder_str)
 
 
-bundle = _cached_study(str(root / chosen_study))
+bundle = _cached_study(str(study_dirs[chosen_study]))
 overview_df = overview_distances_df(bundle)
 
 view_store = st.session_state.setdefault("cov_view_store", {"view": COV_VIEWS[0]})
