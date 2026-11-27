@@ -8,7 +8,8 @@ This guide defines safe working conventions for the migrated workspace.
 - `fitting/mos2_raman`: Raman entrypoints and config
 - `fitting/mos2_pl`: PL entrypoints and config
 - `mos2_gui`: Streamlit UI
-- `data/raw`, `data/bin/results`, `data/results`: runtime I/O
+- `research/<topic>`: public exploration scripts and methods only (no results/numbers in tracked README; `scratch/` and `slides/templates/` are git-ignored)
+- `data/`: local-only, git-ignored (`data/raw`, `data/bin/results`, `data/results/<modality>/`, `data/results/research/<topic>/` for logs, figures, reports)
 
 ## Required References
 

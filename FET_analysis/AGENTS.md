@@ -37,8 +37,9 @@ FET_analysis/
       b1500_csv.py     Keysight B1500 (EasyEXPERT) CSV
       clarius_xls.py   Keithley 4200A (Clarius) XLS
   tests/               pytest. 합성 데이터만 사용
-  data/raw/            측정 파일 (git 제외)
-  data/results/        분석 결과 (git 제외)
+  data/                로컬 전용 (통째로 git 제외, .gitkeep 없음)
+    raw/               측정 파일
+    results/           분석 결과
   docs/DEV_LOG.md      작업 기록
 ```
 

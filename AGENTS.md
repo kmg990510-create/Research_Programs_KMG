@@ -25,7 +25,12 @@ Research_Programs_KMG/
 - 프로그램 하나는 폴더 하나이고, 그 폴더만으로 실행·테스트·배포가 된다. 통합 실행 시에는 루트 `app.py`(`Run_Lab_GUI.cmd`)가 `Program Hub`에서 세 프로그램을 함께 띄운다.
 - 통합 실행 시 `sys.modules` 패키지 충돌이 나지 않도록 각 프로그램의 Streamlit GUI 패키지 이름은 고유하게 둔다 (`mos2_gui`, `fet_gui`, `ads_gui`).
 - 프로그램 폴더는 `AGENTS.md`, `README.md`, 설정 YAML, `tests/`, `docs/`를 가진다.
-- 측정 데이터와 분석 결과(`data/raw`, `data/results`, `data/outputs`)는 git에 올리지 않는다.
+- **공개 코드 / 비공개 연구 데이터 분리 원칙 (이 저장소는 공개 레포다):**
+  - **공개(git 추적):** 분석·시뮬레이션 방법만 담은 프로그램 코드, 탐색 스크립트(`research/<topic>/scripts/`), 계산 설정 YAML, 방법·설계·개발 문서.
+  - **비공개(로컬 전용, `data/` 아래에만 두어 git 제외):** 측정 원본(`data/raw`), 정규 분석 결과(`data/results/<modality|batch>/`), AI 코드 연구 결과(`data/results/research/<topic>/` 또는 시뮬레이션 `data/<topic>/`), 연구 결과를 담은 보고서(`*.md`, `*.pptx`, 발표 PDF), 그림, 실행 로그, 실험 관찰 기록(`PLANS.md`), 휴지통(`data/bin`).
+  - 탐색 연구 폴더 `research/<topic>/`의 공개 영역에는 방법과 실행법만 두고(`README.md`에 결과 수치·관찰·결론 금지), `research/*/scratch/`와 `research/*/slides/templates/`는 git에서 제외한다.
+  - 시뮬레이션 프로그램(`MoS2_adsorption_sim`)은 주제별 연구 자료를 `data/<topic>/{molecules,mlip,dft,reports,figures}`에 두고, GUI 일반 배치·공용 분자·휴지통은 `data/{molecules,results,bin}`을 사용한다.
+  - `data/` 아래에는 `.gitkeep`을 두지 않고 코드가 출력 폴더를 `mkdir(parents=True, exist_ok=True)`로 자동 생성한다.
 
 ## 2. 개발 원칙
 
